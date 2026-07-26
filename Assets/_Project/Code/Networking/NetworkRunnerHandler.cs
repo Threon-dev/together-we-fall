@@ -36,6 +36,7 @@ namespace _Project.Code.Player
             {
                 Vector3 spawnPosition = new Vector3(0, 1, 0);
                 NetworkObject playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
+                _runner.SetPlayerObject(player, playerObject);
                 _spawnedPlayers.Add(player, playerObject);
             }
         }

@@ -1,4 +1,5 @@
-﻿using Fusion;
+﻿using _Project.Code.Enemies;
+using Fusion;
 using UnityEngine;
 
 namespace _Project.Code.Player
