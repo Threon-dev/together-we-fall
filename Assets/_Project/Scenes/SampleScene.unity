@@ -562,8 +562,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::_Project.Code.Enemies.EnemySpawner
   enemyPrefab:
     RawGuidValue: 9159a34ff564caa429e276c675a6275c
-  spawnInterval: 2
-  enemiesPerWave: 5
+  spawnInterval: 5
+  enemiesPerWave: 1
   minSpawnRadius: 8
   maxSpawnRadius: 15
 --- !u!4 &422763457
@@ -662,7 +662,7 @@ GameObject:
   - component: {fileID: 904319895}
   - component: {fileID: 904319897}
   m_Layer: 0
-  m_Name: Prototype Runner
+  m_Name: NetworkRunner
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
