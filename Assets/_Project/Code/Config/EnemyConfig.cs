@@ -19,8 +19,20 @@ namespace TogetherWeFall.Config
                  "the crowd shoves the player around and jitters against them.")]
         [SerializeField] private float _stoppingDistance = 1.5f;
 
+        [Header("Survivability")]
+        [Tooltip("Low on purpose. A prototype wants to see a hundred enemies die " +
+                 "to a chain, not to measure how long one takes.")]
+        [SerializeField, Min(1f)] private float _maxHealth = 40f;
+
+        [Tooltip("How long a body takes to shrink away after dying. Long enough " +
+                 "to see the crowd come apart, short enough that corpses are not " +
+                 "still on screen when the next wave arrives.")]
+        [SerializeField, Range(0.05f, 2f)] private float _deathFadeSeconds = 0.35f;
+
         public float MoveSpeed => _moveSpeed;
         public float RotationSpeed => _rotationSpeed;
         public float StoppingDistance => _stoppingDistance;
+        public float MaxHealth => _maxHealth;
+        public float DeathFadeSeconds => _deathFadeSeconds;
     }
 }

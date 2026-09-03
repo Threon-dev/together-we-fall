@@ -38,8 +38,22 @@ namespace TogetherWeFall.Player
         private InputAction _moveAction;
         private InputAction _pointerAction;
         private InputAction _aimStickAction;
+        private InputAction _interactAction;
+        private InputAction _inventoryAction;
+        private InputAction _primaryCastAction;
+        private InputAction _secondaryCastAction;
+        private InputAction _thirdCastAction;
+        private InputAction _fourthCastAction;
 
         private Vector3 _lastAimDirection = Vector3.forward;
+        private Vector3 _lastAimPoint;
+
+        /// <summary>
+        /// How far ahead a gamepad stick is treated as pointing. A stick gives a
+        /// direction and no distance, and something has to stand in for the
+        /// spot a mouse would name.
+        /// </summary>
+        private const float StickAimDistance = 12f;
         private bool _initialized;
 
         public void Initialize(TopDownCameraRig cameraRig)
@@ -73,6 +87,33 @@ namespace TogetherWeFall.Player
 
             _aimStickAction = new InputAction("AimStick", InputActionType.Value);
             _aimStickAction.AddBinding("<Gamepad>/rightStick");
+
+            _interactAction = new InputAction("Interact", InputActionType.Button);
+            _interactAction.AddBinding("<Keyboard>/e");
+            _interactAction.AddBinding("<Gamepad>/buttonSouth");
+
+            _inventoryAction = new InputAction("Inventory", InputActionType.Button);
+            _inventoryAction.AddBinding("<Keyboard>/i");
+            _inventoryAction.AddBinding("<Gamepad>/select");
+
+            // Held rather than pressed: in this genre you hold the button down
+            // and the cooldown decides the rhythm. Which is also why the host
+            // owns the cooldown and this only reports the button.
+            _primaryCastAction = new InputAction("PrimaryCast", InputActionType.Button);
+            _primaryCastAction.AddBinding("<Mouse>/leftButton");
+            _primaryCastAction.AddBinding("<Gamepad>/rightTrigger");
+
+            _secondaryCastAction = new InputAction("SecondaryCast", InputActionType.Button);
+            _secondaryCastAction.AddBinding("<Mouse>/rightButton");
+            _secondaryCastAction.AddBinding("<Gamepad>/leftTrigger");
+
+            _thirdCastAction = new InputAction("ThirdCast", InputActionType.Button);
+            _thirdCastAction.AddBinding("<Keyboard>/q");
+            _thirdCastAction.AddBinding("<Gamepad>/leftShoulder");
+
+            _fourthCastAction = new InputAction("FourthCast", InputActionType.Button);
+            _fourthCastAction.AddBinding("<Keyboard>/r");
+            _fourthCastAction.AddBinding("<Gamepad>/rightShoulder");
         }
 
         private void EnableActions()
@@ -80,6 +121,12 @@ namespace TogetherWeFall.Player
             _moveAction.Enable();
             _pointerAction.Enable();
             _aimStickAction.Enable();
+            _interactAction.Enable();
+            _inventoryAction.Enable();
+            _primaryCastAction.Enable();
+            _secondaryCastAction.Enable();
+            _thirdCastAction.Enable();
+            _fourthCastAction.Enable();
         }
 
         /// <summary>
@@ -93,10 +140,53 @@ namespace TogetherWeFall.Player
                 return PlayerMoveIntent.None;
 
             Vector3 move = ReadMoveDirection();
-            bool hasAim = TryReadAimDirection(playerPosition, out Vector3 aim);
+            bool hasAim = TryReadAimDirection(playerPosition, out Vector3 aim, out Vector3 aimPoint);
 
-            return new PlayerMoveIntent(move, aim, hasAim);
+            return new PlayerMoveIntent(move, aim, hasAim, aimPoint);
         }
+
+        /// <summary>
+        /// Whether the player asked to interact this frame.
+        ///
+        /// Kept out of PlayerMoveIntent because it is an event, not a state:
+        /// movement describes what is true right now and can be read twice
+        /// harmlessly, while a button press must be answered exactly once. It
+        /// still comes from here rather than from the bridge that publishes it,
+        /// because reading devices happens in one file in this project.
+        /// </summary>
+        public bool WasInteractPressed() => _initialized && _interactAction.WasPressedThisFrame();
+
+        /// <summary>
+        /// Whether the player asked to open or close the inventory this frame.
+        ///
+        /// A view preference, not a gameplay intent — it is read here only
+        /// because devices are read in one file, and it must never end up in
+        /// anything that travels to a host.
+        /// </summary>
+        public bool WasInventoryTogglePressed()
+            => _initialized && _inventoryAction.WasPressedThisFrame();
+
+        /// <summary>
+        /// Whether a cast button is down. Held rather than pressed, so holding
+        /// the button casts at whatever rate the host allows.
+        /// </summary>
+        public bool IsCastHeld(int slotIndex)
+        {
+            if (!_initialized)
+                return false;
+
+            switch (slotIndex)
+            {
+                case 0: return _primaryCastAction.IsPressed();
+                case 1: return _secondaryCastAction.IsPressed();
+                case 2: return _thirdCastAction.IsPressed();
+                case 3: return _fourthCastAction.IsPressed();
+                default: return false;
+            }
+        }
+
+        /// <summary>How many cast slots this reader has bindings for.</summary>
+        public int CastSlotCount => 4;
 
         private Vector3 ReadMoveDirection()
         {
@@ -113,7 +203,8 @@ namespace TogetherWeFall.Player
             return direction.normalized;
         }
 
-        private bool TryReadAimDirection(Vector3 playerPosition, out Vector3 direction)
+        private bool TryReadAimDirection(
+            Vector3 playerPosition, out Vector3 direction, out Vector3 point)
         {
             // A deflected stick wins over the pointer: on a gamepad the pointer
             // is stale rather than absent, and letting it through would snap
@@ -124,13 +215,17 @@ namespace TogetherWeFall.Player
                 direction = (_cameraRig.GroundForward * stick.y +
                              _cameraRig.GroundRight * stick.x).normalized;
                 _lastAimDirection = direction;
+                _lastAimPoint = playerPosition + direction * StickAimDistance;
+                point = _lastAimPoint;
                 return true;
             }
 
-            if (TryGetGroundPointUnderPointer(out Vector3 point))
+            if (TryGetGroundPointUnderPointer(out Vector3 groundPoint))
             {
-                Vector3 toPoint = point - playerPosition;
+                Vector3 toPoint = groundPoint - playerPosition;
                 toPoint.y = 0f;
+
+                _lastAimPoint = groundPoint;
 
                 // Right on top of the character the direction is noise, so hold
                 // the previous facing instead of spinning wildly.
@@ -138,11 +233,13 @@ namespace TogetherWeFall.Player
                 {
                     _lastAimDirection = toPoint.normalized;
                     direction = _lastAimDirection;
+                    point = groundPoint;
                     return true;
                 }
             }
 
             direction = _lastAimDirection;
+            point = _lastAimPoint;
             return true;
         }
 
@@ -172,6 +269,12 @@ namespace TogetherWeFall.Player
             _moveAction?.Dispose();
             _pointerAction?.Dispose();
             _aimStickAction?.Dispose();
+            _interactAction?.Dispose();
+            _inventoryAction?.Dispose();
+            _primaryCastAction?.Dispose();
+            _secondaryCastAction?.Dispose();
+            _thirdCastAction?.Dispose();
+            _fourthCastAction?.Dispose();
         }
     }
 }

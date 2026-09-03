@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9b264467090da44a34c9771d9817de, type: 3}
+  m_Name: ReavingSweep
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillDefinition
+  _displayName: Reaving Sweep
+  _effect: 1
+  _damageType: 0
+  _baseDamage: 34
+  _cooldown: 0.6
+  _range: 5
+  _radius: 4.5
+  _arcDegrees: 140
+  _projectileSpeed: 26
+  _baseChains: 0
+  _chainRange: 8
+  _chainDelay: 0.07
+  _modifiers:
+  - {fileID: 11400000, guid: 0dffee6f3cc4f174f899b3df079e16f7, type: 2}

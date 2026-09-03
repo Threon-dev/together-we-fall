@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 707460122cc9f8a4cb1fdf96825271c6, type: 3}
+  m_Name: DungeonGenerationConfig
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.DungeonGenerationConfig
+  _seedMode: 0
+  _fixedSeed: 20260902
+  _gridWidth: 64
+  _gridHeight: 64
+  _cellSize: 2
+  _maxSplitDepth: 4
+  _minLeafCells: 12
+  _minRoomCells: 6
+  _maxRoomCells: 16
+  _corridorWidthCells: 3
+  _treasureRoomCount: 2
+  _combatRoomShare: 0.65
+  _wallHeight: 4
+  _floorThickness: 0.4
+  _enemiesPerCombatRoom: 40
+  _bossRoomEnemyMultiplier: 3
+  _roomClearGraceSeconds: 2

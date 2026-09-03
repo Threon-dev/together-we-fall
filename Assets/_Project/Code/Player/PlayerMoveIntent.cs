@@ -29,15 +29,28 @@ namespace TogetherWeFall.Player
 
         public readonly bool HasAim;
 
-        public PlayerMoveIntent(Vector3 moveDirection, Vector3 aimDirection, bool hasAim)
+        /// <summary>
+        /// The point on the ground being aimed at, in world space.
+        ///
+        /// Carried alongside the direction because some things need the spot
+        /// rather than the way: an area burst lands where the pointer is, not
+        /// at arm's length in that direction. Resolved by the reader, so
+        /// nothing downstream needs a camera to work it out.
+        /// </summary>
+        public readonly Vector3 AimPoint;
+
+        public PlayerMoveIntent(
+            Vector3 moveDirection, Vector3 aimDirection, bool hasAim, Vector3 aimPoint)
         {
             MoveDirection = moveDirection;
             AimDirection = aimDirection;
             HasAim = hasAim;
+            AimPoint = aimPoint;
         }
 
         public bool HasMovement => MoveDirection.sqrMagnitude > 0.0001f;
 
-        public static PlayerMoveIntent None => new PlayerMoveIntent(Vector3.zero, Vector3.zero, false);
+        public static PlayerMoveIntent None =>
+            new PlayerMoveIntent(Vector3.zero, Vector3.zero, false, Vector3.zero);
     }
 }

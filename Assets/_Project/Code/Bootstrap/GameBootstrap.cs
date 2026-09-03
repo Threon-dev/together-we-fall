@@ -2,8 +2,11 @@ using Unity.Entities;
 using UnityEngine;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.DebugTools;
+using TogetherWeFall.Dungeon;
 using TogetherWeFall.Enemies;
 using TogetherWeFall.Player;
+using TogetherWeFall.UI;
+using TogetherWeFall.Vfx;
 
 namespace TogetherWeFall.Bootstrap
 {
@@ -13,9 +16,11 @@ namespace TogetherWeFall.Bootstrap
     /// somehow" there is one explicit order: references are handed out from
     /// here, and who depends on whom is visible at a glance.
     ///
-    /// The order matters: the camera must receive its target and settle into
-    /// place before the input reader starts converting screen coordinates
-    /// through it.
+    /// The order matters twice over. The dungeon is built first, because the
+    /// player has to be put down on a floor that exists — otherwise the first
+    /// frames are spent falling through an empty world. Then the camera receives
+    /// its target and settles into place before the input reader starts
+    /// converting screen coordinates through it.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     public sealed class GameBootstrap : MonoBehaviour
@@ -27,6 +32,21 @@ namespace TogetherWeFall.Bootstrap
         [SerializeField] private DebugHud _hud;
         [SerializeField] private DebugSpawnTrigger _spawnTrigger;
 
+        [Tooltip("Optional. Present in the dungeon scene and absent in the arena, " +
+                 "whose floor is authored by hand.")]
+        [SerializeField] private DungeonDirector _dungeon;
+
+        [Tooltip("Optional. Absent in scenes with nothing to interact with or cast at.")]
+        [SerializeField] private PlayerActionPublisher _actionPublisher;
+
+        [Tooltip("Optional. Absent in scenes with no loot to carry.")]
+        [SerializeField] private InventoryUI _inventoryUI;
+
+        [Tooltip("Optional. Without it the game plays identically and looks flat.")]
+        [SerializeField] private VfxPresenter _vfxPresenter;
+
+        private readonly DebugRunStatusProbe _statusProbe = new DebugRunStatusProbe();
+
         private EntityQuery _enemyQuery;
         private bool _hasEnemyQuery;
 
@@ -35,6 +55,8 @@ namespace TogetherWeFall.Bootstrap
             if (!ValidateReferences())
                 return;
 
+            BeginDungeonRun();
+
             _cameraRig.Initialize(_player.transform);
             _input.Initialize(_cameraRig);
             _player.Initialize(_input);
@@ -42,7 +64,33 @@ namespace TogetherWeFall.Bootstrap
             _positionPublisher.Initialize();
             _spawnTrigger.Initialize();
 
-            _hud.Initialize(CreateEnemyCountProvider());
+            if (_actionPublisher != null)
+                _actionPublisher.Initialize(_input, _positionPublisher.PlayerId);
+
+            if (_inventoryUI != null)
+                _inventoryUI.Initialize(_input, _positionPublisher.PlayerId);
+
+            // After the camera, because the presenter shakes it.
+            if (_vfxPresenter != null)
+                _vfxPresenter.Initialize(_cameraRig);
+
+            _hud.Initialize(CreateEnemyCountProvider(), CreateStatusProvider());
+        }
+
+        /// <summary>
+        /// Generates the floor and puts the player at its entrance.
+        ///
+        /// The seed is resolved here and passed in, rather than the director
+        /// helping itself to one: in coop this call becomes "use the seed the
+        /// host sent", and it is worth having exactly one line to change.
+        /// </summary>
+        private void BeginDungeonRun()
+        {
+            if (_dungeon == null)
+                return;
+
+            _dungeon.Initialize();
+            _player.WarpToFloor(_dungeon.BeginRun(_dungeon.ResolveSeed()));
         }
 
         /// <summary>
@@ -64,16 +112,34 @@ namespace TogetherWeFall.Bootstrap
             return () => _enemyQuery.CalculateEntityCount();
         }
 
+        /// <summary>
+        /// The dungeon/loot readout for the debug overlay, or null when there is
+        /// no ECS world to read. The probe itself returns an empty string in a
+        /// scene without a run, which the HUD skips.
+        /// </summary>
+        private System.Func<string> CreateStatusProvider()
+        {
+            if (!_statusProbe.Initialize())
+                return null;
+
+            return _statusProbe.Describe;
+        }
+
         private void OnDestroy()
         {
             if (_hasEnemyQuery)
                 _enemyQuery.Dispose();
+
+            _statusProbe.Dispose();
         }
 
         private bool ValidateReferences()
         {
             // Catch a forgotten reference with one clear message instead of a
-            // NullReference somewhere in Update a frame after startup.
+            // NullReference somewhere in Update a frame after startup. The
+            // dungeon director, the action publisher, the inventory panel and
+            // the VFX presenter are not on the list: a scene without any of them
+            // still plays.
             if (_cameraRig == null || _player == null || _input == null ||
                 _positionPublisher == null || _hud == null || _spawnTrigger == null)
             {

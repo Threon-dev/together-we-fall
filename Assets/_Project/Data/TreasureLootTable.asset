@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec2821c3ae564de498dd2dd5669e5249, type: 3}
+  m_Name: TreasureLootTable
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.LootTable
+  _minRolls: 2
+  _maxRolls: 4
+  _rarityWeights:
+  - 55
+  - 25
+  - 13
+  - 5
+  - 1.8
+  - 0.2
+  _entries:
+  - _item: {fileID: 11400000, guid: b221907c50a881d4cb86ab331625f1ba, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 16942ed2ab5fd5943b9ffc85901f9057, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: d7e5949691f93c142a28abb1866d766b, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 38c6dcf56a45fe84b86094cae32eaea7, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: f87685958ebdaa64cab59569b83598ea, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 2329c0c2f6ea8ec4c9334d89611e59d7, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: ff15b7f1c18c05e4b826ab1c93748bb5, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 232b4cfbb5898f2409fa6a34ca7bbaa4, type: 2}
+    _weight: 1

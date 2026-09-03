@@ -40,6 +40,30 @@ namespace TogetherWeFall.Player
             _initialized = true;
         }
 
+        /// <summary>
+        /// Puts the player down on a floor position — the dungeon hands over the
+        /// entrance at ground level, and the capsule has to stand on it rather
+        /// than in it.
+        ///
+        /// The controller is switched off around the move on purpose: while it
+        /// is enabled it owns the transform and quietly undoes a direct write,
+        /// which looks exactly like a generator that produced the wrong
+        /// entrance.
+        /// </summary>
+        public void WarpToFloor(Vector3 floorPosition)
+        {
+            if (_controller == null)
+                _controller = GetComponent<CharacterController>();
+
+            _controller.enabled = false;
+
+            transform.position = floorPosition +
+                                 Vector3.up * (_controller.height * 0.5f + _controller.skinWidth);
+
+            _controller.enabled = true;
+            _verticalVelocity = 0f;
+        }
+
         private void Update()
         {
             if (!_initialized)

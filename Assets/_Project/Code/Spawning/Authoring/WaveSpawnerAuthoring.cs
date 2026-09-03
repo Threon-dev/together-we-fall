@@ -46,7 +46,7 @@ namespace TogetherWeFall.Spawning.Authoring
                     JitterRadius = authoring.Config.SpawnJitterRadius
                 });
 
-                AddComponent(entity, new WaveSpawnRequest { PendingWaves = 0 });
+                AddBuffer<WaveSpawnOrder>(entity);
 
                 AddComponent(entity, new WaveSpawnerState
                 {

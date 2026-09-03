@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cde31160c1d5bd647a51e9baba1a6168, type: 3}
+  m_Name: VfxConfig
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.VfxConfig
+  _chainLinkSeconds: 0.12
+  _chainLinkWidth: 0.16
+  _boltStrikeWidth: 0.3
+  _boltStrikeSeconds: 0.18
+  _explosionSeconds: 0.22
+  _explosionWidth: 0.22
+  _damageNumberSeconds: 0.75
+  _damageNumberRise: 1.6
+  _damageNumberFontSize: 18
+  _damageNumberKillScale: 1.5
+  _damageNumberPoolSize: 64
+  _hitStopSeconds: 0.045
+  _hitStopScale: 0.05
+  _hitStopRecoverySeconds: 0.18
+  _hitStopRecoveryCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  _hitStopCooldownSeconds: 0.4
+  _explosionShake: 0
+  _shakeIntervalSeconds: 0.25
+  _deathShake: 0
+  _massKillThreshold: 50
+  _massKillWindowSeconds: 0.1
+  _massKillZoomPunch: 0
+  _massKillCooldownSeconds: 0.1
+  _poolSize: 96

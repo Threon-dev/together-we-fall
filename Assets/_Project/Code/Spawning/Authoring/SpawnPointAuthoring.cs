@@ -20,7 +20,10 @@ namespace TogetherWeFall.Spawning.Authoring
                 // Renderable is enough — a spawn point draws nothing, it only
                 // needs a position.
                 Entity entity = GetEntity(TransformUsageFlags.Renderable);
-                AddComponent<SpawnPoint>(entity);
+
+                // Authored points belong to no room, so they answer any order.
+                // Dungeon points are created at runtime with a real room id.
+                AddComponent(entity, new SpawnPoint { RoomId = SpawnPoint.AnyRoom });
             }
         }
 

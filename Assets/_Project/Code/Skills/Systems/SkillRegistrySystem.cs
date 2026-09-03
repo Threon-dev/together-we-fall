@@ -1,0 +1,42 @@
+using Unity.Burst;
+using Unity.Entities;
+using TogetherWeFall.Combat;
+
+namespace TogetherWeFall.Skills.Systems
+{
+    /// <summary>
+    /// Creates the queues the combat pipeline passes work through, once, at
+    /// world startup.
+    ///
+    /// Four buffers on one entity, and they are the pipeline: cast requests come
+    /// in, hits and area effects are what the stages hand each other, and the
+    /// tally is what the overlay reads. Created by a system rather than baked so
+    /// they exist in every scene, including the arena, where no SubScene carries
+    /// a skill database at all.
+    /// </summary>
+    [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
+    public partial struct SkillRegistrySystem : ISystem
+    {
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            Entity registry = state.EntityManager.CreateEntity();
+            state.EntityManager.SetName(registry, "SkillEvents");
+
+            state.EntityManager.AddComponent<SkillEventsSingleton>(registry);
+            state.EntityManager.AddComponent<CombatTally>(registry);
+
+            state.EntityManager.AddBuffer<SkillCastRequest>(registry);
+            state.EntityManager.AddBuffer<PendingCast>(registry);
+            state.EntityManager.AddBuffer<PendingHit>(registry);
+            state.EntityManager.AddBuffer<PendingArea>(registry);
+
+            state.Enabled = false;
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+        }
+    }
+}

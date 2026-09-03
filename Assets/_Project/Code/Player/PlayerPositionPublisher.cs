@@ -24,6 +24,13 @@ namespace TogetherWeFall.Player
         private EntityQuery _registryQuery;
         private bool _hasWorld;
 
+        /// <summary>
+        /// Who this GameObject is, as far as every system is concerned. Exposed
+        /// so the other player-side bridges use the same answer rather than each
+        /// serialising an id of their own that can silently drift.
+        /// </summary>
+        public int PlayerId => _playerId;
+
         public void Initialize()
         {
             World world = World.DefaultGameObjectInjectionWorld;

@@ -13,8 +13,16 @@ namespace TogetherWeFall.Enemies
     // glance, not reconstructed from memory.
     // ─────────────────────────────────────────────────────────────────────
 
-    /// <summary>Enemy marker. Needed for queries and the HUD counter.</summary>
-    public struct EnemyTag : IComponentData
+    /// <summary>
+    /// Enemy marker. Needed for queries and the HUD counter.
+    ///
+    /// Enableable, and that carries weight: a body that is playing out its death
+    /// is still an entity, but it is no longer an enemy. Switching this off is
+    /// what stops it being chased, counted, targeted by a projectile or holding
+    /// a room open — without a single query anywhere having to learn what a
+    /// corpse is, because queries filter by enabled state already.
+    /// </summary>
+    public struct EnemyTag : IComponentData, IEnableableComponent
     {
     }
 

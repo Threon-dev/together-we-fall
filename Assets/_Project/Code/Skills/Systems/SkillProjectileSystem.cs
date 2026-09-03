@@ -1,0 +1,358 @@
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Entities;
+using Unity.Mathematics;
+using Unity.Transforms;
+using TogetherWeFall.Enemies;
+
+namespace TogetherWeFall.Skills.Systems
+{
+    /// <summary>
+    /// Moves projectiles, finds what they touch, and retires them.
+    ///
+    /// The flight and the impact test are one Burst job; forking and destruction
+    /// happen afterwards on the main thread, because both are structural. That
+    /// split is the same one the wave spawner makes and for the same reason —
+    /// the per-frame work is data, the rare work is structure.
+    ///
+    /// A projectile carries everything it needs to resolve its own impact, so
+    /// this system never looks up the skill that fired it. It also means a fork
+    /// is nothing special: two more projectiles with one fewer fork left.
+    /// </summary>
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [UpdateAfter(typeof(SkillCastSystem))]
+    public partial struct SkillProjectileSystem : ISystem
+    {
+        /// <summary>How far to either side a fork leaves the line of flight.</summary>
+        private const float ForkAngleDegrees = 22f;
+
+        /// <summary>
+        /// No skill to trigger. Not zero, because zero is the first skill in the
+        /// database and a default-constructed field would silently cast it.
+        /// </summary>
+        private const int NoTrigger = -1;
+
+        private EntityQuery _projectileQuery;
+        private EntityQuery _spentQuery;
+        private EntityQuery _freeProjectileQuery;
+        private EntityQuery _enemyQuery;
+
+        public void OnCreate(ref SystemState state)
+        {
+            // Both flags are enableable, and between them they say everything:
+            // Active means in the air, Spent means finished this frame. A pooled
+            // projectile waiting to be fired matches neither query.
+            _projectileQuery = SystemAPI.QueryBuilder()
+                .WithAll<SkillProjectile, ProjectileActive, LocalTransform>()
+                .Build();
+
+            _spentQuery = SystemAPI.QueryBuilder()
+                .WithAll<SkillProjectile, ProjectileSpent, ProjectileActive, LocalTransform>()
+                .Build();
+
+            _freeProjectileQuery = SystemAPI.QueryBuilder()
+                .WithAll<SkillProjectile>()
+                .WithDisabled<ProjectileActive>()
+                .Build();
+
+            _enemyQuery = SystemAPI.QueryBuilder()
+                .WithAll<EnemyTag, LocalTransform>()
+                .Build();
+
+            state.RequireForUpdate<SkillEventsSingleton>();
+            state.RequireForUpdate<SkillPrefabs>();
+            state.RequireForUpdate(_projectileQuery);
+        }
+
+        public void OnUpdate(ref SystemState state)
+        {
+            // TempJob, not Temp, for everything the job below touches. Run still
+            // goes through the job scheduler, and the scheduler rejects Temp
+            // containers in job fields outright — Temp memory is not guaranteed
+            // to outlive the call that made it. They are disposed at the end of
+            // this update either way, because Run finishes before it returns.
+            using NativeArray<Entity> enemies = _enemyQuery.ToEntityArray(Allocator.TempJob);
+            using NativeArray<LocalTransform> enemyTransforms =
+                _enemyQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+
+            using var hits = new NativeList<PendingHit>(8, Allocator.TempJob);
+            using var areas = new NativeList<PendingArea>(4, Allocator.TempJob);
+            using var casts = new NativeList<PendingCast>(4, Allocator.TempJob);
+
+            // Run rather than Schedule: the results are needed in this same
+            // update, before the structural changes below. Burst still compiles
+            // it, it simply runs on this thread.
+            //
+            // But Run schedules with NO dependency at all — it passes a default
+            // handle — so anything already reading what this job writes has to
+            // be finished first. LocalTransform is exactly that: the transform
+            // systems read it, and this job moves projectiles through it. The
+            // same call PathfindingSystem makes before touching entity data
+            // from the main thread.
+            state.CompleteDependency();
+
+            new MoveProjectilesJob
+            {
+                DeltaTime = SystemAPI.Time.DeltaTime,
+                Enemies = enemies,
+                EnemyTransforms = enemyTransforms,
+                Hits = hits,
+                Areas = areas,
+                Casts = casts
+            }.Run();
+
+            AppendEvents(ref state, hits, areas, casts);
+            RetireSpentProjectiles(ref state);
+        }
+
+        private void AppendEvents(
+            ref SystemState state,
+            NativeList<PendingHit> hits,
+            NativeList<PendingArea> areas,
+            NativeList<PendingCast> casts)
+        {
+            if (hits.Length > 0)
+            {
+                DynamicBuffer<PendingHit> buffer = SystemAPI.GetSingletonBuffer<PendingHit>();
+                for (int i = 0; i < hits.Length; i++)
+                    buffer.Add(hits[i]);
+            }
+
+            if (areas.Length > 0)
+            {
+                DynamicBuffer<PendingArea> areaBuffer = SystemAPI.GetSingletonBuffer<PendingArea>();
+                for (int i = 0; i < areas.Length; i++)
+                    areaBuffer.Add(areas[i]);
+            }
+
+            if (casts.Length == 0)
+                return;
+
+            // Drained by SkillCastSystem, which runs before this one — so a
+            // triggered skill goes off on the next frame. Sixteen milliseconds
+            // after the impact that caused it, which nobody can see, and the
+            // alternative is a cast system that runs twice.
+            DynamicBuffer<PendingCast> castBuffer = SystemAPI.GetSingletonBuffer<PendingCast>();
+            for (int i = 0; i < casts.Length; i++)
+                castBuffer.Add(casts[i]);
+        }
+
+        /// <summary>
+        /// Puts whatever the finished projectiles split into back in the air,
+        /// and returns the finished ones to the pool.
+        ///
+        /// Neither half is a structural change any more, so the arrays gathered
+        /// at the top stay valid throughout — which is what lets the release
+        /// happen before the forks are handed out.
+        /// </summary>
+        private void RetireSpentProjectiles(ref SystemState state)
+        {
+            using NativeArray<Entity> finished = _spentQuery.ToEntityArray(Allocator.Temp);
+            if (finished.Length == 0)
+                return;
+
+            using NativeArray<SkillProjectile> projectiles =
+                _spentQuery.ToComponentDataArray<SkillProjectile>(Allocator.Temp);
+            using NativeArray<LocalTransform> transforms =
+                _spentQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+
+            using var forks = new NativeList<ProjectileSpawn>(4, Allocator.Temp);
+
+            for (int i = 0; i < finished.Length; i++)
+            {
+                // A projectile that timed out splits into nothing: forking is
+                // what happens when it lands, not when it gives up.
+                if (!projectiles[i].HitSomething || projectiles[i].ForksRemaining <= 0)
+                    continue;
+
+                AddForks(projectiles[i], transforms[i].Position, forks);
+            }
+
+            // Released first, so a fork can be given the very projectile that
+            // just landed. Nothing here is destroyed and nothing is created.
+            ProjectileSpawn.Release(state.EntityManager, finished);
+
+            if (forks.Length == 0)
+                return;
+
+            using NativeArray<Entity> free = _freeProjectileQuery.ToEntityArray(Allocator.Temp);
+            ProjectileSpawn.ActivateAll(state.EntityManager, free, forks);
+        }
+
+        private static void AddForks(
+            SkillProjectile projectile, float3 position, NativeList<ProjectileSpawn> forks)
+        {
+            float speed = math.length(projectile.Velocity);
+            float3 direction = speed > 1e-4f
+                ? projectile.Velocity / speed
+                : new float3(0f, 0f, 1f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                SkillProjectile fork = projectile;
+                fork.ForksRemaining = projectile.ForksRemaining - 1;
+                fork.Velocity = Rotate(direction, side * math.radians(ForkAngleDegrees)) * speed;
+
+                // Cleared, because the copy inherited it from a projectile that
+                // just landed. A fork that is born having already hit something
+                // would fork again the moment it timed out.
+                fork.HitSomething = false;
+
+                forks.Add(new ProjectileSpawn
+                {
+                    Position = position,
+                    Projectile = fork
+                });
+            }
+        }
+
+        private static float3 Rotate(float3 direction, float angle)
+        {
+            math.sincos(angle, out float sin, out float cos);
+
+            return new float3(
+                direction.x * cos - direction.z * sin,
+                0f,
+                direction.x * sin + direction.z * cos);
+        }
+
+        /// <summary>
+        /// WithPresent is required, not decoration: ProjectileSpent is disabled
+        /// on every projectile still in flight, which is precisely the set this
+        /// job exists to move.
+        /// </summary>
+        [BurstCompile]
+        [WithAll(typeof(ProjectileActive))]
+        [WithPresent(typeof(ProjectileSpent))]
+        private partial struct MoveProjectilesJob : IJobEntity
+        {
+            public float DeltaTime;
+
+            [ReadOnly] public NativeArray<Entity> Enemies;
+            [ReadOnly] public NativeArray<LocalTransform> EnemyTransforms;
+
+            public NativeList<PendingHit> Hits;
+            public NativeList<PendingArea> Areas;
+            public NativeList<PendingCast> Casts;
+
+            private void Execute(
+                ref LocalTransform transform,
+                ref SkillProjectile projectile,
+                EnabledRefRW<ProjectileSpent> isSpent)
+            {
+                // Already finished earlier this frame and waiting to be cleaned
+                // up. Moving it again would drag the impact point along with it.
+                if (isSpent.ValueRO)
+                    return;
+
+                transform.Position += projectile.Velocity * DeltaTime;
+                projectile.Lifetime -= DeltaTime;
+
+                var targets = new EnemyTargets
+                {
+                    Entities = Enemies,
+                    Transforms = EnemyTransforms
+                };
+
+                int index = targets.FindNearest(transform.Position, projectile.HitRadius);
+
+                if (index >= 0)
+                {
+                    Impact(Enemies[index], transform.Position, projectile);
+                    Retire(ref projectile, isSpent, hitSomething: true);
+                    return;
+                }
+
+                if (projectile.Lifetime > 0f)
+                    return;
+
+                Retire(ref projectile, isSpent, hitSomething: false);
+            }
+
+            private static void Retire(
+                ref SkillProjectile projectile,
+                EnabledRefRW<ProjectileSpent> isSpent,
+                bool hitSomething)
+            {
+                projectile.HitSomething = hitSomething;
+                isSpent.ValueRW = true;
+            }
+
+            /// <summary>
+            /// A projectile with an impact radius bursts; one without hits the
+            /// single target it touched. Both go through the same queues as
+            /// everything else, so neither needs its own path into damage.
+            /// </summary>
+            private void Impact(Entity target, float3 position, in SkillProjectile projectile)
+            {
+                // Once per impact, whatever else this projectile does. A trigger
+                // fires per effect instance, never per body — the same rule that
+                // keeps a burst catching forty enemies from triggering forty
+                // times.
+                if (projectile.TriggerSkillIndex >= 0)
+                {
+                    Casts.Add(new PendingCast
+                    {
+                        SkillIndex = projectile.TriggerSkillIndex,
+                        PlayerId = projectile.SourcePlayerId,
+                        Origin = position,
+                        Direction = math.normalizesafe(projectile.Velocity, new float3(0f, 0f, 1f)),
+                        DamageScale = projectile.TriggerDamageScale,
+                        Depth = projectile.TriggerDepth + 1,
+
+                        // The body this projectile actually touched, not
+                        // whatever happens to be nearest to where it stopped.
+                        PreferredTarget = target
+                    });
+                }
+
+                if (projectile.ImpactRadius > 0f)
+                {
+                    Areas.Add(new PendingArea
+                    {
+                        Position = position,
+                        Direction = math.normalizesafe(projectile.Velocity, new float3(0f, 0f, 1f)),
+                        Radius = projectile.ImpactRadius,
+                        ArcCosine = -1f,
+                        Damage = projectile.Damage,
+                        Type = projectile.Type,
+                        SourcePlayerId = projectile.SourcePlayerId,
+                        Delay = 0f,
+                        ExplosionRadius = projectile.ExplosionRadius,
+                        ExplosionDamage = projectile.ExplosionDamage,
+
+                        // Explicitly nothing. The trigger already fired above,
+                        // for this same impact, and zero is a real skill index —
+                        // leaving the field at its default would make every
+                        // impact burst cast the first skill in the database.
+                        TriggerSkillIndex = NoTrigger
+                    });
+
+                    return;
+                }
+
+                var hit = new PendingHit
+                {
+                    Target = target,
+
+                    // The impact point, and therefore where a chain jump looks
+                    // from. Left at the default it would be the world origin.
+                    Origin = position,
+
+                    Damage = projectile.Damage,
+                    Type = projectile.Type,
+                    SourcePlayerId = projectile.SourcePlayerId,
+                    ChainsRemaining = projectile.ChainsRemaining,
+                    ChainRange = projectile.ChainRange,
+                    ChainDelay = projectile.ChainDelay,
+                    Delay = 0f,
+                    ExplosionRadius = projectile.ExplosionRadius,
+                    ExplosionDamage = projectile.ExplosionDamage
+                };
+
+                hit.Visited.Add(target);
+                Hits.Add(hit);
+            }
+        }
+    }
+}

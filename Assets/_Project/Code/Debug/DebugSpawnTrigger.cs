@@ -39,7 +39,7 @@ namespace TogetherWeFall.DebugTools
 
             _entityManager = world.EntityManager;
             _spawnerQuery = _entityManager.CreateEntityQuery(
-                ComponentType.ReadWrite<WaveSpawnRequest>());
+                ComponentType.ReadWrite<WaveSpawnOrder>());
             _hasWorld = true;
         }
 
@@ -57,9 +57,15 @@ namespace TogetherWeFall.DebugTools
             }
 
             Entity spawner = _spawnerQuery.GetSingletonEntity();
-            WaveSpawnRequest request = _entityManager.GetComponentData<WaveSpawnRequest>(spawner);
-            request.PendingWaves++;
-            _entityManager.SetComponentData(spawner, request);
+
+            // Aimed at no room and sized by the spawner default: in the arena
+            // that is the only kind of order there is, and in a dungeon it means
+            // "wherever, however many you normally would".
+            _entityManager.GetBuffer<WaveSpawnOrder>(spawner).Add(new WaveSpawnOrder
+            {
+                RoomId = SpawnPoint.AnyRoom,
+                Count = 0
+            });
         }
 
         private void OnDestroy()

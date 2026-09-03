@@ -4,14 +4,13 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using TogetherWeFall.Bootstrap;
+using UnityEngine.UIElements;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.Config;
-using TogetherWeFall.DebugTools;
-using TogetherWeFall.Enemies.Authoring;
+using TogetherWeFall.DebugTools.Authoring;
 using TogetherWeFall.Player;
-using TogetherWeFall.Shared.Authoring;
 using TogetherWeFall.Spawning.Authoring;
+using TogetherWeFall.Vfx;
 
 namespace TogetherWeFall.EditorTools
 {
@@ -23,18 +22,34 @@ namespace TogetherWeFall.EditorTools
     /// on another machine. A generator gives one button that says "rebuild the
     /// arena", which matters while the arena layout still changes from stage to
     /// stage.
+    ///
+    /// This scene is the performance rig and stays authored on purpose: an
+    /// unchanging floor is what makes two FPS measurements comparable. The
+    /// generated dungeon lives in its own scene, built by DungeonSceneBuilder.
+    ///
+    /// It carries the character sheet and the skills but no loot: measuring what
+    /// three hundred enemies cost while a chain reaction goes off through them
+    /// is exactly what this scene is for, and chests on the floor would only be
+    /// something else in the frame time.
     /// </summary>
     public static class ArenaSceneBuilder
     {
         private const string ScenePath = "Assets/_Project/Scenes/Arena.unity";
-        private const string ArtFolder = "Assets/_Project/Art";
-        private const string DataFolder = "Assets/_Project/Data";
-        private const string PrefabFolder = "Assets/_Project/Prefabs";
         private const string NavMeshFolder = "Assets/_Project/Scenes";
 
         private const float GroundSize = 60f;
         private const float SpawnRingRadius = 26f;
         private const int SpawnPointCount = 5;
+
+        private const int TrainingDummyCount = 3;
+        private const float TrainingDummySpacing = 4f;
+
+        /// <summary>
+        /// How far in front of the player start the dummies stand. Inside the
+        /// range of every skill except the melee swing, which is meant to be
+        /// walked up to.
+        /// </summary>
+        private const float TrainingDummyDistance = 9f;
 
         [MenuItem("Tools/Together We Fall/Build Arena Scene")]
         public static void BuildArenaScene()
@@ -44,35 +59,71 @@ namespace TogetherWeFall.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            Material groundMaterial = CreateMaterial("ArenaGround", new Color(0.22f, 0.24f, 0.28f));
-            Material obstacleMaterial = CreateMaterial("ArenaObstacle", new Color(0.40f, 0.34f, 0.30f));
-            Material playerMaterial = CreateMaterial("PlayerBody", new Color(0.25f, 0.65f, 0.95f));
-            Material enemyMaterial = CreateMaterial("EnemyBody", new Color(0.85f, 0.25f, 0.22f));
+            Material groundMaterial =
+                SceneBuildUtility.CreateMaterial("ArenaGround", new Color(0.22f, 0.24f, 0.28f));
+            Material obstacleMaterial =
+                SceneBuildUtility.CreateMaterial("ArenaObstacle", new Color(0.40f, 0.34f, 0.30f));
+            Material playerMaterial =
+                SceneBuildUtility.CreateMaterial("PlayerBody", new Color(0.25f, 0.65f, 0.95f));
+            Material enemyMaterial =
+                SceneBuildUtility.CreateMaterial("EnemyBody", new Color(0.85f, 0.25f, 0.22f));
+            Material dummyMaterial =
+                SceneBuildUtility.CreateMaterial("TrainingDummy", new Color(0.72f, 0.62f, 0.35f));
 
-            var enemyConfig = CreateOrLoadConfig<EnemyConfig>("EnemyConfig");
-            var spawnConfig = CreateOrLoadConfig<SpawnConfig>("SpawnConfig");
-            var pathfindingConfig = CreateOrLoadConfig<PathfindingConfig>("PathfindingConfig");
-            var separationConfig = CreateOrLoadConfig<SeparationConfig>("SeparationConfig");
-            GameObject enemyPrefab = CreateEnemyPrefab(enemyConfig, enemyMaterial);
+            var enemyConfig = SceneBuildUtility.CreateOrLoadConfig<EnemyConfig>("EnemyConfig");
+            var spawnConfig = SceneBuildUtility.CreateOrLoadConfig<SpawnConfig>("SpawnConfig");
+            var pathfindingConfig =
+                SceneBuildUtility.CreateOrLoadConfig<PathfindingConfig>("PathfindingConfig");
+            var separationConfig =
+                SceneBuildUtility.CreateOrLoadConfig<SeparationConfig>("SeparationConfig");
+            var characterConfig =
+                SceneBuildUtility.CreateOrLoadConfig<CharacterConfig>("CharacterConfig");
+            var vfxConfig = SceneBuildUtility.CreateOrLoadConfig<VfxConfig>("VfxConfig");
 
-            CreateLighting();
+            Material projectileMaterial =
+                SceneBuildUtility.CreateMaterial("SkillProjectile", Color.white);
+
+            GameObject enemyPrefab = SceneBuildUtility.CreateEnemyPrefab(enemyConfig, enemyMaterial);
+            GameObject projectilePrefab =
+                SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
+            SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
+
+            SceneBuildUtility.CreateLighting();
             GameObject ground = CreateGround(groundMaterial);
             CreateObstacles(obstacleMaterial);
 
             GameObject spawnPoints = CreateSpawnPoints();
-            GameObject waveSpawner = CreateWaveSpawner(enemyPrefab, spawnConfig);
-            GameObject simulationSettings = CreateSimulationSettings(pathfindingConfig, separationConfig);
+            GameObject trainingDummies = CreateTrainingDummies(dummyMaterial);
+            GameObject waveSpawner = SceneBuildUtility.CreateWaveSpawner(enemyPrefab, spawnConfig);
+            GameObject simulationSettings =
+                SceneBuildUtility.CreateSimulationSettings(pathfindingConfig, separationConfig);
+            GameObject characterStats = SceneBuildUtility.CreateCharacterStats(characterConfig);
+            GameObject skillDatabase =
+                SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab);
 
-            PlayerMotor player = CreatePlayer(playerMaterial);
-            TopDownCameraRig cameraRig = CreateCameraRig();
-            GameObject debugTools = CreateDebugTools();
-            CreateBootstrap(cameraRig, player, debugTools);
+            PlayerMotor player =
+                SceneBuildUtility.CreatePlayer(playerMaterial, new Vector3(0f, 1f, 0f));
+            TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
+            GameObject debugTools = SceneBuildUtility.CreateDebugTools();
+
+            // The arena has no inventory, but it does have damage numbers, and
+            // those are drawn into a runtime panel like any other UI.
+            PanelSettings panelSettings =
+                SceneBuildUtility.CreateOrLoadPanelSettings("RuntimePanelSettings");
+
+            Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
+            VfxPresenter vfxPresenter =
+                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial, panelSettings);
+
+            SceneBuildUtility.CreateBootstrap(
+                cameraRig, player, debugTools, dungeon: null, inventoryUI: null,
+                vfxPresenter: vfxPresenter);
 
             BuildNavMesh(ground);
 
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath)!);
             EditorSceneManager.SaveScene(scene, ScenePath);
-            RegisterInBuildSettings();
+            SceneBuildUtility.RegisterInBuildSettings(ScenePath);
 
             AssetDatabase.SaveAssets();
 
@@ -81,27 +132,21 @@ namespace TogetherWeFall.EditorTools
             // here, while through the menu it is two clicks — so leaving that
             // step to a human is more honest than shipping code that might not
             // build.
-            Selection.objects = new Object[] { spawnPoints, waveSpawner, simulationSettings };
+            Selection.objects = new Object[]
+            {
+                spawnPoints, waveSpawner, simulationSettings, characterStats, skillDatabase,
+                trainingDummies
+            };
 
             Debug.Log(
                 $"[ArenaSceneBuilder] Arena built: {ScenePath}\n" +
-                "ONE STEP LEFT: SpawnPoints, WaveSpawner and SimulationSettings are already " +
-                "selected in the hierarchy — right-click them, then New Sub Scene > From " +
-                "Selection. Without a SubScene they are never baked into entities: no waves " +
-                "spawn and enemies receive no pathfinding settings.");
-        }
-
-        private static void CreateLighting()
-        {
-            var lightObject = new GameObject("Directional Light");
-            Light light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.intensity = 1.1f;
-            light.shadows = LightShadows.Soft;
-            lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
-
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.32f, 0.34f, 0.40f);
+                "ONE STEP LEFT: SpawnPoints, WaveSpawner, SimulationSettings, CharacterStats, " +
+                "SkillDatabase and TrainingDummies are already selected in the hierarchy — " +
+                "right-click them, then New Sub Scene > From Selection. Without a SubScene they " +
+                "are never baked into entities: no waves spawn, enemies receive no pathfinding " +
+                "settings, nothing is castable and the dummies are scenery.\n" +
+                "In play mode: Space spawns a wave; left mouse, right mouse, Q and R cast. The " +
+                "three dummies ahead of the start take damage, flash and never fall over.");
         }
 
         private static GameObject CreateGround(Material material)
@@ -167,64 +212,38 @@ namespace TogetherWeFall.EditorTools
             return root;
         }
 
-        private static GameObject CreateWaveSpawner(GameObject enemyPrefab, SpawnConfig config)
-        {
-            var spawnerObject = new GameObject("WaveSpawner");
-            WaveSpawnerAuthoring spawner = spawnerObject.AddComponent<WaveSpawnerAuthoring>();
-
-            var serialized = new SerializedObject(spawner);
-            serialized.FindProperty("_enemyPrefab").objectReferenceValue = enemyPrefab;
-            serialized.FindProperty("_config").objectReferenceValue = config;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-
-            return spawnerObject;
-        }
-
         /// <summary>
-        /// Creates the enemy prefab as an asset. Done here rather than by hand
-        /// so the prefab and EnemyConfig are guaranteed to be wired together —
-        /// an unassigned reference in the baker yields silent, motionless
-        /// enemies, and that cause takes a long time to track down.
+        /// Three targets that stand still and never die.
+        ///
+        /// Only in the arena, deliberately. They carry EnemyTag so that every
+        /// targeting query finds them, and in the dungeon that would mean a
+        /// combat room containing one could never be counted as cleared.
         /// </summary>
-        private static GameObject CreateEnemyPrefab(EnemyConfig config, Material material)
+        private static GameObject CreateTrainingDummies(Material material)
         {
-            Directory.CreateDirectory(PrefabFolder);
-            string path = $"{PrefabFolder}/EnemyPrefab.prefab";
+            var root = new GameObject("TrainingDummies");
 
-            GameObject source = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            source.name = "EnemyPrefab";
-            source.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
-            source.GetComponent<MeshRenderer>().sharedMaterial = material;
+            for (int i = 0; i < TrainingDummyCount; i++)
+            {
+                GameObject dummy = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                dummy.name = $"TrainingDummy_{i}";
+                dummy.transform.SetParent(root.transform);
 
-            // No collider needed: enemies do not use physics, and pushing apart
-            // is handled by SeparationSystem in stage 4. A redundant collider
-            // across 500 entities is pure loss in both memory and time.
-            Object.DestroyImmediate(source.GetComponent<CapsuleCollider>());
+                float offset = (i - (TrainingDummyCount - 1) * 0.5f) * TrainingDummySpacing;
+                dummy.transform.position = new Vector3(offset, 0f, TrainingDummyDistance);
 
-            EnemyAuthoring authoring = source.AddComponent<EnemyAuthoring>();
-            var serialized = new SerializedObject(authoring);
-            serialized.FindProperty("_config").objectReferenceValue = config;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+                dummy.GetComponent<MeshRenderer>().sharedMaterial = material;
 
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(source, path);
-            Object.DestroyImmediate(source);
+                // The collider has to go, and not only because nothing uses
+                // physics: the arena navmesh is baked from colliders further
+                // down this method, and three capsules standing in front of the
+                // player would each punch a hole in it.
+                Object.DestroyImmediate(dummy.GetComponent<CapsuleCollider>());
 
-            return prefab;
-        }
+                dummy.AddComponent<TrainingDummyAuthoring>();
+            }
 
-        private static GameObject CreateSimulationSettings(
-            PathfindingConfig pathfinding, SeparationConfig separation)
-        {
-            var settingsObject = new GameObject("SimulationSettings");
-            SimulationSettingsAuthoring settings =
-                settingsObject.AddComponent<SimulationSettingsAuthoring>();
-
-            var serialized = new SerializedObject(settings);
-            serialized.FindProperty("_pathfinding").objectReferenceValue = pathfinding;
-            serialized.FindProperty("_separation").objectReferenceValue = separation;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-
-            return settingsObject;
+            return root;
         }
 
         /// <summary>
@@ -233,6 +252,9 @@ namespace TogetherWeFall.EditorTools
         /// The asset step is not optional: BuildNavMesh alone produces runtime
         /// data that lives only in memory, so saving the scene would store a
         /// reference to nothing and enemies would find no paths after a reload.
+        /// The dungeon scene does not do this — it bakes at load time instead,
+        /// because a floor that does not exist until the seed is rolled has
+        /// nothing to save.
         /// </summary>
         private static void BuildNavMesh(GameObject ground)
         {
@@ -254,118 +276,6 @@ namespace TogetherWeFall.EditorTools
 
             AssetDatabase.DeleteAsset(dataPath);
             AssetDatabase.CreateAsset(surface.navMeshData, dataPath);
-        }
-
-        private static T CreateOrLoadConfig<T>(string assetName) where T : ScriptableObject
-        {
-            Directory.CreateDirectory(DataFolder);
-            string path = $"{DataFolder}/{assetName}.asset";
-
-            var existing = AssetDatabase.LoadAssetAtPath<T>(path);
-            if (existing != null)
-                return existing;
-
-            var asset = ScriptableObject.CreateInstance<T>();
-            AssetDatabase.CreateAsset(asset, path);
-            return asset;
-        }
-
-        private static PlayerMotor CreatePlayer(Material material)
-        {
-            GameObject player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            player.name = "Player";
-            player.transform.position = new Vector3(0f, 1f, 0f);
-            player.GetComponent<MeshRenderer>().sharedMaterial = material;
-
-            // CharacterController carries its own capsule collision — the
-            // primitive's collider would only duplicate it and cause odd
-            // contacts.
-            Object.DestroyImmediate(player.GetComponent<CapsuleCollider>());
-
-            CharacterController controller = player.AddComponent<CharacterController>();
-            controller.height = 2f;
-            controller.radius = 0.5f;
-            controller.center = Vector3.zero;
-
-            player.AddComponent<PlayerInputReader>();
-            player.AddComponent<PlayerPositionPublisher>();
-            return player.AddComponent<PlayerMotor>();
-        }
-
-        private static TopDownCameraRig CreateCameraRig()
-        {
-            var rigObject = new GameObject("CameraRig");
-            Camera camera = rigObject.AddComponent<Camera>();
-            camera.tag = "MainCamera";
-            camera.nearClipPlane = 0.3f;
-            camera.farClipPlane = 200f;
-
-            rigObject.AddComponent<AudioListener>();
-
-            TopDownCameraRig rig = rigObject.AddComponent<TopDownCameraRig>();
-            SetPrivateReference(rig, "_camera", camera);
-            return rig;
-        }
-
-        private static GameObject CreateDebugTools()
-        {
-            var debugObject = new GameObject("DebugTools");
-            debugObject.AddComponent<DebugHud>();
-            debugObject.AddComponent<DebugSpawnTrigger>();
-            return debugObject;
-        }
-
-        private static void CreateBootstrap(
-            TopDownCameraRig cameraRig, PlayerMotor player, GameObject debugTools)
-        {
-            var bootstrapObject = new GameObject("GameBootstrap");
-            GameBootstrap bootstrap = bootstrapObject.AddComponent<GameBootstrap>();
-
-            var serialized = new SerializedObject(bootstrap);
-            serialized.FindProperty("_cameraRig").objectReferenceValue = cameraRig;
-            serialized.FindProperty("_player").objectReferenceValue = player;
-            serialized.FindProperty("_input").objectReferenceValue =
-                player.GetComponent<PlayerInputReader>();
-            serialized.FindProperty("_positionPublisher").objectReferenceValue =
-                player.GetComponent<PlayerPositionPublisher>();
-            serialized.FindProperty("_hud").objectReferenceValue =
-                debugTools.GetComponent<DebugHud>();
-            serialized.FindProperty("_spawnTrigger").objectReferenceValue =
-                debugTools.GetComponent<DebugSpawnTrigger>();
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static Material CreateMaterial(string name, Color color)
-        {
-            Directory.CreateDirectory(ArtFolder);
-            string path = $"{ArtFolder}/{name}.mat";
-
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null)
-                return existing;
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            var material = new Material(shader) { name = name };
-            material.SetColor("_BaseColor", color);
-            material.color = color;
-
-            AssetDatabase.CreateAsset(material, path);
-            return material;
-        }
-
-        private static void SetPrivateReference(Object target, string fieldName, Object value)
-        {
-            var serialized = new SerializedObject(target);
-            serialized.FindProperty(fieldName).objectReferenceValue = value;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void RegisterInBuildSettings()
-        {
-            EditorBuildSettings.scenes = new[]
-            {
-                new EditorBuildSettingsScene(ScenePath, true)
-            };
         }
     }
 }
