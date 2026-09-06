@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ffb4fefb0131f7842b57ce61080aa413, type: 3}
-  m_Name: CrackedDagger
+  m_Name: BandofEmbers
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
-  _displayName: Cracked Dagger
-  _rarity: 0
-  _slot: 0
+  _displayName: Band of Embers
+  _rarity: 1
+  _slot: 6
   _isTwoHanded: 0
   _gridWidth: 1
-  _gridHeight: 2
+  _gridHeight: 1
   _canRotate: 0

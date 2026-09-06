@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Frostbite Blade
   _rarity: 2
+  _slot: 0
+  _isTwoHanded: 0
   _gridWidth: 1
   _gridHeight: 3
   _canRotate: 1

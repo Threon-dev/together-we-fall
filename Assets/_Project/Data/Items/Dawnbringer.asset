@@ -15,6 +15,7 @@ MonoBehaviour:
   _displayName: Dawnbringer
   _rarity: 4
   _slot: 0
+  _isTwoHanded: 1
   _baseStats:
   - _stat: 0
     _value: 0

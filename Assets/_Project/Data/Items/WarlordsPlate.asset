@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Warlords Plate
   _rarity: 3
+  _slot: 3
+  _isTwoHanded: 0
   _gridWidth: 2
   _gridHeight: 3
   _canRotate: 0

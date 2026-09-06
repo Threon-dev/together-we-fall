@@ -22,7 +22,9 @@ namespace TogetherWeFall.Player.Systems
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct PlayerCharacterRegistrySystem : ISystem
     {
-        private const int SlotCount = (int)EquipmentSlot.Accessory + 1;
+        // Not a copy of the number: EquipmentSlots.Count is derived from the
+        // enum, so adding a slot is one line there and nothing here.
+        private const int SlotCount = EquipmentSlots.Count;
 
         /// <summary>
         /// Used when no CharacterConfig has been baked. Twelve by five is the
@@ -115,6 +117,7 @@ namespace TogetherWeFall.Player.Systems
                 typeof(StatsDirty),
                 typeof(EquippedItem),
                 typeof(EquipRequest),
+                typeof(EquipResult),
                 typeof(CarriedBag),
                 typeof(InventoryPlacementRequest),
                 typeof(InventoryPlacementResult),

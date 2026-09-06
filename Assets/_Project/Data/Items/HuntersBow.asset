@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Hunters Bow
   _rarity: 1
+  _slot: 0
+  _isTwoHanded: 1
   _gridWidth: 2
   _gridHeight: 3
   _canRotate: 1

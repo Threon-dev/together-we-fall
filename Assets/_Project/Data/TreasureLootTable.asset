@@ -38,3 +38,9 @@ MonoBehaviour:
     _weight: 1
   - _item: {fileID: 11400000, guid: 232b4cfbb5898f2409fa6a34ca7bbaa4, type: 2}
     _weight: 1
+  - _item: {fileID: 11400000, guid: ae231eb5eac8ecde098beb733d09bfd5, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 7581dbe86933b3774ee392fca57b5221, type: 2}
+    _weight: 1
+  - _item: {fileID: 11400000, guid: 8183258aa31a5ca66247cbd80f3bcce0, type: 2}
+    _weight: 1

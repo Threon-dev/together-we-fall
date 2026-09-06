@@ -24,7 +24,23 @@ namespace TogetherWeFall.Equipment
     {
         public int ItemId;
         public ItemRarity Rarity;
+
+        /// <summary>The slot the item was authored for. What it is, not where it may go.</summary>
         public EquipmentSlot Slot;
+
+        /// <summary>
+        /// Every slot it may actually go in, as a bitmask.
+        ///
+        /// Separate from Slot because they answer different questions and only
+        /// coincide for nine kinds of item out of ten. A ring is authored as
+        /// Ring1 and accepted by both ring slots, and the host checks the mask
+        /// rather than comparing to Slot — which is what lets a client name a
+        /// slot without being able to name any slot it likes.
+        /// </summary>
+        public ushort AllowedSlots;
+
+        /// <summary>Needs both hands: blocks the off hand while worn.</summary>
+        public bool IsTwoHanded;
 
         /// <summary>
         /// How many cells the item covers in a container, unrotated. Rotating

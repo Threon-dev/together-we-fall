@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Heart of the Fall
   _rarity: 5
+  _slot: 8
+  _isTwoHanded: 0
   _gridWidth: 1
   _gridHeight: 1
   _canRotate: 0

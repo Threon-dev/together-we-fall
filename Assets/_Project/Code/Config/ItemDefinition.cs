@@ -79,7 +79,11 @@ namespace TogetherWeFall.Config
         [SerializeField] private string _displayName;
 
         [SerializeField] private ItemRarity _rarity = ItemRarity.Common;
-        [SerializeField] private EquipmentSlot _slot = EquipmentSlot.Weapon;
+        [SerializeField] private EquipmentSlot _slot = EquipmentSlot.MainHand;
+
+        [Tooltip("Needs both hands. Equipping it clears the off hand back into " +
+                 "the bag and keeps it empty for as long as this is worn.")]
+        [SerializeField] private bool _isTwoHanded;
 
         [Header("Base stats")]
         [Tooltip("Added flat to the character before modifiers. What the item is " +
@@ -120,6 +124,22 @@ namespace TogetherWeFall.Config
         /// would mean the UI offers a rotation that does not move anything.
         /// </summary>
         public bool CanRotate => _canRotate && GridWidth != GridHeight;
+
+        /// <summary>
+        /// Only a main-hand weapon can need both hands. Anywhere else the flag
+        /// has nothing to block, and letting it be true there would mean an
+        /// amulet that quietly empties the off hand.
+        /// </summary>
+        public bool IsTwoHanded => _isTwoHanded && _slot == EquipmentSlot.MainHand;
+
+        /// <summary>
+        /// Every slot this item may go in, as a bitmask.
+        ///
+        /// Derived from the one authored slot rather than authored as a list:
+        /// the only item that fits in more than one place is a ring, and that
+        /// rule belongs in one method instead of in every ring asset.
+        /// </summary>
+        public ushort AllowedSlots => EquipmentSlots.AllowedMask(_slot);
 
         /// <summary>The id systems, save data and the network refer to this item by.</summary>
         public int ItemId => ComputeId(DisplayName);

@@ -220,6 +220,12 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.Slot = item.Slot;
                 blob.Name = ToFixedString(item.DisplayName);
 
+                // Read through the properties: they derive the ring pairing and
+                // refuse two-handedness anywhere but the main hand, and the blob
+                // is the only copy the host ever sees.
+                blob.AllowedSlots = item.AllowedSlots;
+                blob.IsTwoHanded = item.IsTwoHanded;
+
                 // Read through the properties rather than the fields: they clamp
                 // the size and refuse rotation on square items, and the blob is
                 // the only copy the host ever sees.

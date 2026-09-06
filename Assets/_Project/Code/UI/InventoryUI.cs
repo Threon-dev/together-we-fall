@@ -71,6 +71,27 @@ namespace TogetherWeFall.UI
         private const float ColumnGap = 16f;
 
         /// <summary>
+        /// How tall one equipment slot box may be, and how short it may get.
+        ///
+        /// Adaptive for the same reason the cells are: ten slots two to a line
+        /// is five rows, and five rows at a fixed height is the tallest thing in
+        /// the panel. On an ultrawide, where the whole screen is 338 logical
+        /// pixels tall, a fixed 46 would put the belt slot past the bottom edge
+        /// — which is exactly the failure the grid already had to stop having.
+        /// </summary>
+        private const float MaxSlotBoxHeight = 46f;
+        private const float MinSlotBoxHeight = 24f;
+
+        /// <summary>
+        /// Everything in the sidebar that is not a slot box: panel padding, two
+        /// headings, the section margins and the four rows of stats.
+        /// </summary>
+        private const float SidebarChrome = 160f;
+
+        /// <summary>Ten slots, two to a line.</summary>
+        private const int SlotRows = (EquipmentSlots.Count + 1) / 2;
+
+        /// <summary>
         /// How much of the screen the panel may take. Not all of it: a panel
         /// flush against the edges reads as a broken full-screen mode rather
         /// than as a window.
@@ -97,6 +118,7 @@ namespace TogetherWeFall.UI
         private int _builtHeight;
         private float _builtCellSize;
         private float _cellSize = MaxCellSize;
+        private float _slotBoxHeight = MaxSlotBoxHeight;
         private Vector2 _lastRootSize;
 
         private VisualElement _screen;
@@ -109,6 +131,8 @@ namespace TogetherWeFall.UI
         private VisualElement _cellLayer;
         private VisualElement _itemLayer;
         private VisualElement _highlight;
+        private VisualElement _ghost;
+        private Label _ghostLabel;
         private Label _message;
 
         private readonly List<SlotTarget> _slotTargets = new List<SlotTarget>();
@@ -287,6 +311,35 @@ namespace TogetherWeFall.UI
             _itemLayer.style.top = 0f;
             _gridRoot.Add(_itemLayer);
 
+            // What follows the cursor during a drag.
+            //
+            // A separate element rather than moving the item itself, because a
+            // drag can start in either column: an equipment slot lives inside
+            // the sidebar and moving it would clip against that column's bounds,
+            // while reparenting it mid-drag would take the pointer capture with
+            // it. One ghost serves both, and the thing being dragged just dims
+            // in place.
+            _ghost = new VisualElement();
+            _ghost.style.position = Position.Absolute;
+            _ghost.style.display = DisplayStyle.None;
+            _ghost.style.justifyContent = Justify.Center;
+            _ghost.style.alignItems = Align.Center;
+            _ghost.style.borderTopWidth = 1f;
+            _ghost.style.borderBottomWidth = 1f;
+            _ghost.style.borderLeftWidth = 1f;
+            _ghost.style.borderRightWidth = 1f;
+            _ghost.style.opacity = 0.85f;
+            _ghost.pickingMode = PickingMode.Ignore;
+
+            _ghostLabel = new Label(string.Empty);
+            _ghostLabel.style.fontSize = 11;
+            _ghostLabel.style.whiteSpace = WhiteSpace.Normal;
+            _ghostLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _ghostLabel.pickingMode = PickingMode.Ignore;
+            _ghost.Add(_ghostLabel);
+
+            _panel.Add(_ghost);
+
             _message = new Label(string.Empty);
             _message.style.color = new Color(0.72f, 0.55f, 0.45f);
             _message.style.fontSize = 12;
@@ -420,6 +473,14 @@ namespace TogetherWeFall.UI
                 rootWidth * ScreenFraction - _sidebarWidth - ColumnGap - HorizontalChrome;
             float availableHeight = rootHeight * ScreenFraction - VerticalChrome;
 
+            // The sidebar has its own budget and its own scarce direction. The
+            // bag column shrinking does not help it: they sit side by side, and
+            // the panel is as tall as the taller of the two.
+            _slotBoxHeight = Mathf.Clamp(
+                Mathf.Floor((rootHeight * ScreenFraction - SidebarChrome) / SlotRows) - 4f,
+                MinSlotBoxHeight,
+                MaxSlotBoxHeight);
+
             float byWidth = availableWidth / grid.Width;
             float byHeight = availableHeight / grid.Height;
 
@@ -467,6 +528,7 @@ namespace TogetherWeFall.UI
                 _entityManager.GetBuffer<InventoryCell>(bag, isReadOnly: true);
 
             ReportRefusals(character);
+            ReportEquipRefusals(character);
 
             int signature = Signature(stats, slots, cells);
             if (signature == _lastSignature)
@@ -515,6 +577,51 @@ namespace TogetherWeFall.UI
             results.Clear();
         }
 
+        /// <summary>
+        /// The same, for equipment. Two queues because two systems answer, and
+        /// a shared one would make "who said no" a question again.
+        /// </summary>
+        private void ReportEquipRefusals(Entity character)
+        {
+            DynamicBuffer<EquipResult> results =
+                _entityManager.GetBuffer<EquipResult>(character);
+
+            if (results.Length == 0)
+                return;
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i].Succeeded)
+                    continue;
+
+                ShowMessage(DescribeEquipRefusal(results[i].Status));
+                break;
+            }
+
+            results.Clear();
+        }
+
+        private static string DescribeEquipRefusal(EquipStatus status)
+        {
+            switch (status)
+            {
+                case EquipStatus.RejectedNotCarried:
+                    return "That item is not in your bag.";
+                case EquipStatus.RejectedWrongSlot:
+                    return "That does not go in that slot.";
+                case EquipStatus.RejectedOffHandBlocked:
+                    return "Your weapon needs both hands.";
+                case EquipStatus.RejectedBagFull:
+                    return "No room in the bag for what that would take off.";
+                case EquipStatus.RejectedEmptySlot:
+                    return "That slot is empty.";
+                case EquipStatus.RejectedNoBag:
+                    return "You have no bag.";
+                default:
+                    return "The change was refused.";
+            }
+        }
+
         private static string DescribeRefusal(InventoryPlacementStatus status)
         {
             switch (status)
@@ -552,32 +659,124 @@ namespace TogetherWeFall.UI
             }
         }
 
+        /// <summary>
+        /// Draws the equipment slots as boxes rather than rows.
+        ///
+        /// A box is a target you can drop onto and a handle you can drag from,
+        /// which a row of text with a button beside it is not. They are laid out
+        /// two to a line for the same reason the stats are: height is the scarce
+        /// direction on a landscape screen.
+        /// </summary>
         private void RebuildSlots(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
         {
             _slotList.Clear();
             _slotTargets.Clear();
 
+            _slotList.style.flexDirection = FlexDirection.Row;
+            _slotList.style.flexWrap = Wrap.Wrap;
+
+            // Asked once for the whole rebuild. It is a property of the main
+            // hand, not of the off hand, so asking per slot would be asking the
+            // same question ten times.
+            bool offHandBlocked = EquipmentSlots.IsOffHandBlocked(slots, items);
+
             for (int i = 0; i < slots.Length; i++)
             {
                 EquippedItem slot = slots[i];
-                EquipmentSlot capturedSlot = slot.Slot;
+                bool blocked = slot.Slot == EquipmentSlot.OffHand && offHandBlocked;
 
-                if (!slot.HasItem)
+                VisualElement box = MakeSlotBox(slot, items, blocked, out Color border);
+                _slotList.Add(box);
+
+                _slotTargets.Add(new SlotTarget
                 {
-                    VisualElement empty = MakeRow(slot.Slot.ToString(), "empty", null);
-                    _slotList.Add(empty);
-                    _slotTargets.Add(new SlotTarget { Element = empty, Slot = capturedSlot });
-                    continue;
-                }
-
-                Button unequip = MakeButton("Unequip", () => SendUnequip(capturedSlot));
-
-                VisualElement row = MakeRow(
-                    slot.Slot.ToString(), NameOf(items, slot.ItemId), unequip);
-
-                _slotList.Add(row);
-                _slotTargets.Add(new SlotTarget { Element = row, Slot = capturedSlot });
+                    Element = box,
+                    Slot = slot.Slot,
+                    Blocked = blocked,
+                    DefaultBorder = border
+                });
             }
+        }
+
+        private VisualElement MakeSlotBox(
+            in EquippedItem slot, ItemDatabase items, bool blocked, out Color border)
+        {
+            var box = new VisualElement();
+            box.style.width = Length.Percent(48f);
+            box.style.marginRight = Length.Percent(2f);
+            box.style.marginBottom = 4f;
+            box.style.height = _slotBoxHeight;
+            box.style.paddingLeft = 4f;
+            box.style.paddingRight = 4f;
+            box.style.justifyContent = Justify.Center;
+            box.style.borderTopWidth = 1f;
+            box.style.borderBottomWidth = 1f;
+            box.style.borderLeftWidth = 1f;
+            box.style.borderRightWidth = 1f;
+
+            var name = new Label(slot.Slot.ToString());
+            name.style.fontSize = 10;
+            name.style.color = new Color(0.50f, 0.55f, 0.62f);
+            name.pickingMode = PickingMode.Ignore;
+            box.Add(name);
+
+            var value = new Label(blocked ? "two-handed" : slot.HasItem
+                ? NameOf(items, slot.ItemId)
+                : "empty");
+            value.style.fontSize = 11;
+            value.style.whiteSpace = WhiteSpace.Normal;
+            value.pickingMode = PickingMode.Ignore;
+            box.Add(value);
+
+            if (blocked)
+            {
+                border = new Color(0.32f, 0.24f, 0.24f);
+                box.style.backgroundColor = new Color(0.10f, 0.09f, 0.09f, 1f);
+                SetBorder(box, border);
+                value.style.color = new Color(0.55f, 0.45f, 0.42f);
+                return box;
+            }
+
+            if (!slot.HasItem)
+            {
+                border = new Color(0.20f, 0.22f, 0.27f);
+                box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);
+                SetBorder(box, border);
+                value.style.color = new Color(0.45f, 0.47f, 0.52f);
+                return box;
+            }
+
+            ItemRarity rarity = RarityOf(items, slot.ItemId);
+            border = RarityColour(rarity);
+
+            box.style.backgroundColor = Tint(rarity);
+            SetBorder(box, border);
+            value.style.color = border;
+
+            EquippedItem captured = slot;
+
+            box.RegisterCallback<PointerDownEvent>(evt => BeginSlotDrag(evt, box, captured, items));
+            box.RegisterCallback<PointerDownEvent>(OnDragRotate);
+            box.RegisterCallback<PointerMoveEvent>(OnDragMove);
+            box.RegisterCallback<PointerUpEvent>(OnDragEnd);
+
+            // Double click takes it off, mirroring the double click that puts it
+            // on. No target, so the host finds the room.
+            box.RegisterCallback<ClickEvent>(evt =>
+            {
+                if (evt.clickCount >= 2)
+                    SendUnequip(captured.Slot, false, 0, 0, false);
+            });
+
+            return box;
+        }
+
+        private static void SetBorder(VisualElement element, Color colour)
+        {
+            element.style.borderTopColor = colour;
+            element.style.borderBottomColor = colour;
+            element.style.borderLeftColor = colour;
+            element.style.borderRightColor = colour;
         }
 
         /// <summary>
@@ -622,7 +821,8 @@ namespace TogetherWeFall.UI
                 }
 
                 _itemLayer.Add(MakeItem(
-                    bag, item, instance, placement, width, height, NameOf(items, instance.ItemId)));
+                    bag, item, instance, placement, width, height,
+                    NameOf(items, instance.ItemId), items));
             }
         }
 
@@ -633,7 +833,8 @@ namespace TogetherWeFall.UI
             in ItemGridPlacement placement,
             int width,
             int height,
-            string label)
+            string label,
+            ItemDatabase items)
         {
             var element = new VisualElement();
             element.style.position = Position.Absolute;
@@ -669,20 +870,24 @@ namespace TogetherWeFall.UI
             int capturedId = instance.ItemId;
             ItemGridPlacement capturedPlacement = placement;
 
-            element.RegisterCallback<PointerDownEvent>(evt =>
-                BeginDrag(evt, element, capturedBag, capturedItem, capturedId, capturedPlacement));
+            ItemDatabase capturedItems = items;
+
+            element.RegisterCallback<PointerDownEvent>(evt => BeginDrag(
+                evt, element, capturedBag, capturedItem, capturedId,
+                capturedItems, capturedPlacement));
 
             element.RegisterCallback<PointerDownEvent>(OnDragRotate);
             element.RegisterCallback<PointerMoveEvent>(OnDragMove);
             element.RegisterCallback<PointerUpEvent>(OnDragEnd);
 
             // Double click equips, the way it does in every game this one is
-            // trying to feel like. The drag is the interesting path; this is the
-            // one people reach for without thinking.
+            // trying to feel like. No slot travels with it, so the host picks —
+            // an empty allowed slot first, which is what makes double-clicking
+            // a second ring fill the other hand instead of replacing the first.
             element.RegisterCallback<ClickEvent>(evt =>
             {
                 if (evt.clickCount >= 2)
-                    SendEquip(capturedItem);
+                    SendEquipAuto(capturedItem);
             });
 
             return element;
@@ -692,46 +897,120 @@ namespace TogetherWeFall.UI
         // Drag and drop
         // ─────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Starts a drag from an item lying in the bag.
+        /// </summary>
         private void BeginDrag(
             PointerDownEvent evt,
             VisualElement element,
             Entity bag,
             Entity item,
             int itemId,
+            ItemDatabase items,
             in ItemGridPlacement placement)
         {
-            // Right button is rotation, handled while a drag is already running.
             if (evt.button != 0 || _drag.Active)
                 return;
 
+            StartDrag(evt, element, items, itemId, item, bag, placement.IsRotated);
+
+            _drag.Corner = new Vector2(
+                placement.OriginX * _cellSize, placement.OriginY * _cellSize);
+            _drag.TargetX = placement.OriginX;
+            _drag.TargetY = placement.OriginY;
+
+            // Grabbed where the player actually took hold of it, so the square
+            // it lands on is the one they are looking at.
+            _drag.GrabOffset = evt.localPosition;
+
+            evt.StopPropagation();
+        }
+
+        /// <summary>
+        /// Starts a drag from an equipment slot.
+        ///
+        /// The same drag, with a source that is a slot rather than a square. The
+        /// ghost is centred on the cursor because a slot box is not the shape of
+        /// the item inside it, so there is no meaningful place on the item to
+        /// have grabbed.
+        /// </summary>
+        private void BeginSlotDrag(
+            PointerDownEvent evt, VisualElement box, EquippedItem slot, ItemDatabase items)
+        {
+            if (evt.button != 0 || _drag.Active || !slot.HasItem)
+                return;
+
+            if (!TryGetCharacter(out _, out Entity bag))
+                return;
+
+            StartDrag(evt, box, items, slot.ItemId, slot.Item, bag, false);
+
+            _drag.FromSlot = true;
+            _drag.SourceSlot = slot.Slot;
+
+            if (GridFit.TryGetFootprint(items, slot.ItemId, false, out int width, out int height))
+                _drag.GrabOffset = new Vector2(width * _cellSize, height * _cellSize) * 0.5f;
+
+            evt.StopPropagation();
+        }
+
+        /// <summary>
+        /// Everything the two entry points share: what is being dragged, the
+        /// ghost that shows it, and the pointer capture that keeps the events
+        /// coming to one element.
+        /// </summary>
+        private void StartDrag(
+            PointerDownEvent evt,
+            VisualElement source,
+            ItemDatabase items,
+            int itemId,
+            Entity item,
+            Entity bag,
+            bool rotated)
+        {
             _drag = new Drag
             {
                 Active = true,
-                Element = element,
+                Source = source,
                 Bag = bag,
                 Item = item,
                 ItemId = itemId,
-                Rotated = placement.IsRotated,
-                PointerId = evt.pointerId,
-                GrabOffset = evt.localPosition,
-
-                // Seeded with where the item already is, not with zero. A press
-                // and release with no movement in between never reaches
-                // UpdateHighlight, and an unseeded target would quietly ask the
-                // host to move the item to the top-left corner on every click.
-                TargetX = placement.OriginX,
-                TargetY = placement.OriginY,
-                Corner = new Vector2(placement.OriginX * _cellSize, placement.OriginY * _cellSize)
+                AllowedSlots = AllowedSlotsOf(items, itemId),
+                Rotated = rotated,
+                PointerId = evt.pointerId
             };
 
-            element.CapturePointer(evt.pointerId);
-            element.BringToFront();
-            element.style.opacity = 0.75f;
+            source.CapturePointer(evt.pointerId);
+            source.style.opacity = 0.35f;
+
+            ShapeGhost(items);
+
+            _ghost.style.display = DisplayStyle.Flex;
+            _ghost.BringToFront();
 
             _highlight.style.display = DisplayStyle.Flex;
             _highlight.BringToFront();
+        }
 
-            evt.StopPropagation();
+        /// <summary>Sizes and colours the ghost for what is currently being dragged.</summary>
+        private void ShapeGhost(ItemDatabase items)
+        {
+            if (!GridFit.TryGetFootprint(
+                    items, _drag.ItemId, _drag.Rotated, out int width, out int height))
+            {
+                return;
+            }
+
+            ItemRarity rarity = RarityOf(items, _drag.ItemId);
+            Color border = RarityColour(rarity);
+
+            _ghost.style.width = width * _cellSize - CellGap;
+            _ghost.style.height = height * _cellSize - CellGap;
+            _ghost.style.backgroundColor = Tint(rarity);
+            SetBorder(_ghost, border);
+
+            _ghostLabel.text = NameOf(items, _drag.ItemId);
+            _ghostLabel.style.color = border;
         }
 
         private void OnDragMove(PointerMoveEvent evt)
@@ -739,20 +1018,18 @@ namespace TogetherWeFall.UI
             if (!_drag.Active)
                 return;
 
-            Vector2 local = _gridRoot.WorldToLocal(evt.position);
-
-            // The grab offset keeps the item under the same part of itself it
-            // was picked up by, so the square it lands on is the one the player
-            // is looking at rather than the one under the cursor.
-            Vector2 corner = local - (Vector2)_drag.GrabOffset;
-
-            _drag.Corner = corner;
-            _drag.Element.style.left = corner.x;
-            _drag.Element.style.top = corner.y;
-
-            UpdateHighlight(corner);
+            MoveGhost(evt.position);
+            UpdateTargets(evt.position);
 
             evt.StopPropagation();
+        }
+
+        private void MoveGhost(Vector2 pointer)
+        {
+            Vector2 corner = (Vector2)_panel.WorldToLocal(pointer) - _drag.GrabOffset;
+
+            _ghost.style.left = corner.x;
+            _ghost.style.top = corner.y;
         }
 
         /// <summary>
@@ -779,24 +1056,62 @@ namespace TogetherWeFall.UI
 
             _drag.Rotated = !_drag.Rotated;
 
-            if (GridFit.TryGetFootprint(
-                    items, _drag.ItemId, _drag.Rotated, out int width, out int height))
-            {
-                _drag.Element.style.width = width * _cellSize - CellGap;
-                _drag.Element.style.height = height * _cellSize - CellGap;
-            }
-
+            ShapeGhost(items);
             UpdateHighlight(_drag.Corner);
         }
 
         /// <summary>
-        /// Colours the square the item would land on.
+        /// Colours everything the drop could land on: the square in the grid,
+        /// and the equipment slot under the cursor.
         ///
-        /// The same GridFit the host runs, with nothing written. That is the
-        /// only way a prediction is worth showing: a second implementation would
-        /// eventually disagree with the answer, and a green square followed by a
-        /// refusal is worse than no square at all.
+        /// Both are predictions and neither is acted on. The grid one calls the
+        /// same GridFit the host calls; the slot one reads the same allowed mask
+        /// the host checks. A prediction computed a second way would eventually
+        /// disagree with the answer, and a green box followed by a refusal is
+        /// worse than no box at all.
         /// </summary>
+        private void UpdateTargets(Vector2 pointer)
+        {
+            Vector2 corner = (Vector2)_gridRoot.WorldToLocal(pointer) - _drag.GrabOffset;
+
+            _drag.Corner = corner;
+            UpdateHighlight(corner);
+
+            for (int i = 0; i < _slotTargets.Count; i++)
+            {
+                SlotTarget target = _slotTargets[i];
+                Color colour = target.DefaultBorder;
+
+                if (target.Element.worldBound.Contains(pointer))
+                {
+                    colour = SlotAccepts(target)
+                        ? new Color(0.35f, 0.80f, 0.40f)
+                        : new Color(0.85f, 0.30f, 0.30f);
+                }
+
+                SetBorder(target.Element, colour);
+            }
+        }
+
+        /// <summary>
+        /// Whether dropping what is being dragged onto this slot could work.
+        ///
+        /// Could, not will: the host still decides, and it knows things this
+        /// does not — whether the bag has room for what the slot would give up,
+        /// most of all. This answers the question the player can see the answer
+        /// to, which is whether the item belongs there at all.
+        /// </summary>
+        private bool SlotAccepts(in SlotTarget target)
+        {
+            if (target.Blocked)
+                return false;
+
+            if (_drag.FromSlot && target.Slot == _drag.SourceSlot)
+                return false;
+
+            return EquipmentSlots.Accepts(_drag.AllowedSlots, target.Slot);
+        }
+
         private void UpdateHighlight(Vector2 corner)
         {
             if (!TryGetCharacter(out _, out Entity bag) ||
@@ -837,6 +1152,14 @@ namespace TogetherWeFall.UI
                 : new Color(0.85f, 0.25f, 0.25f, 0.35f);
         }
 
+        /// <summary>
+        /// Four possible drops, and the source decides which two are on offer.
+        ///
+        /// From the bag onto a slot is an equip; from a slot onto another slot
+        /// is a move that never touches the bag; from a slot onto the grid is an
+        /// unequip that lands where the player pointed; and from the bag onto
+        /// the grid is an ordinary placement.
+        /// </summary>
         private void OnDragEnd(PointerUpEvent evt)
         {
             if (!_drag.Active || evt.button != 0)
@@ -846,9 +1169,12 @@ namespace TogetherWeFall.UI
 
             Entity item = _drag.Item;
             Entity bag = _drag.Bag;
+            bool fromSlot = _drag.FromSlot;
+            EquipmentSlot sourceSlot = _drag.SourceSlot;
             bool rotated = _drag.Rotated;
             int targetX = _drag.TargetX;
             int targetY = _drag.TargetY;
+
             bool overGrid = _gridRoot.worldBound.Contains(evt.position);
             EquipmentSlot slot = default;
             bool overSlot = TryFindSlotUnder(evt.position, ref slot);
@@ -857,38 +1183,58 @@ namespace TogetherWeFall.UI
 
             if (overSlot)
             {
-                // Which slot the row was does not matter — the host reads the
-                // slot off the item definition. Landing on any of them means
-                // "wear this".
-                SendEquip(item);
+                if (fromSlot)
+                {
+                    if (slot != sourceSlot)
+                        SendSwapSlots(sourceSlot, slot);
+
+                    return;
+                }
+
+                // The slot the player dropped on is the slot they meant. The
+                // host checks it against the item's allowed mask rather than
+                // ignoring it, which is what makes a ring in either hand
+                // possible without making any item in any slot possible.
+                SendEquipToSlot(item, slot);
                 return;
             }
 
             if (!overGrid)
                 return;
 
+            if (fromSlot)
+            {
+                SendUnequip(sourceSlot, true, targetX, targetY, rotated);
+                return;
+            }
+
             SendPlacement(bag, item, targetX, targetY, rotated);
         }
 
         /// <summary>
-        /// Ends the drag and puts the element back where the data says it is.
+        /// Ends the drag and lets the next refresh redraw from ECS.
         ///
-        /// The position is not restored by hand: dropping the signature forces a
-        /// rebuild from ECS on the next frame, so what the player sees comes
-        /// from the host either way — whether the move was accepted or not.
+        /// Nothing is restored by hand: dropping the signature forces a rebuild,
+        /// so what the player sees comes from the host either way — whether the
+        /// move was accepted or not.
         /// </summary>
         private void CancelDrag()
         {
             if (!_drag.Active)
                 return;
 
-            if (_drag.Element != null)
+            if (_drag.Source != null)
             {
-                _drag.Element.ReleasePointer(_drag.PointerId);
-                _drag.Element.style.opacity = 1f;
+                _drag.Source.ReleasePointer(_drag.PointerId);
+                _drag.Source.style.opacity = 1f;
             }
 
+            for (int i = 0; i < _slotTargets.Count; i++)
+                SetBorder(_slotTargets[i].Element, _slotTargets[i].DefaultBorder);
+
+            _ghost.style.display = DisplayStyle.None;
             _highlight.style.display = DisplayStyle.None;
+
             _drag = default;
             _lastSignature = int.MinValue;
         }
@@ -930,32 +1276,59 @@ namespace TogetherWeFall.UI
             _lastSignature = int.MinValue;
         }
 
-        private void SendEquip(Entity item)
+        private void SendEquip(EquipRequest request)
         {
             if (!TryGetCharacter(out Entity character, out _))
                 return;
 
-            _entityManager.GetBuffer<EquipRequest>(character).Add(new EquipRequest
-            {
-                Item = item,
-                Equip = true
-            });
+            _entityManager.GetBuffer<EquipRequest>(character).Add(request);
 
+            // Nothing is drawn differently yet. The next refresh shows whatever
+            // the host decided, which may be nothing at all.
             _lastSignature = int.MinValue;
         }
 
-        private void SendUnequip(EquipmentSlot slot)
+        private void SendEquipToSlot(Entity item, EquipmentSlot slot)
         {
-            if (!TryGetCharacter(out Entity character, out _))
-                return;
-
-            _entityManager.GetBuffer<EquipRequest>(character).Add(new EquipRequest
+            SendEquip(new EquipRequest
             {
-                Slot = slot,
-                Equip = false
+                Kind = EquipRequestKind.ToSlot,
+                Item = item,
+                Slot = slot
             });
+        }
 
-            _lastSignature = int.MinValue;
+        private void SendEquipAuto(Entity item)
+        {
+            SendEquip(new EquipRequest
+            {
+                Kind = EquipRequestKind.Auto,
+                Item = item
+            });
+        }
+
+        private void SendUnequip(
+            EquipmentSlot slot, bool useTarget, int x, int y, bool rotated)
+        {
+            SendEquip(new EquipRequest
+            {
+                Kind = EquipRequestKind.Unequip,
+                Slot = slot,
+                UseTarget = useTarget,
+                TargetX = x,
+                TargetY = y,
+                Rotated = rotated
+            });
+        }
+
+        private void SendSwapSlots(EquipmentSlot from, EquipmentSlot to)
+        {
+            SendEquip(new EquipRequest
+            {
+                Kind = EquipRequestKind.SwapSlots,
+                Slot = from,
+                OtherSlot = to
+            });
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1000,6 +1373,40 @@ namespace TogetherWeFall.UI
             return true;
         }
 
+        /// <summary>
+        /// Which slots this item may go in.
+        ///
+        /// The same mask the host checks a request against, read straight off
+        /// the blob. The panel colours a slot with it; it never decides with it.
+        /// </summary>
+        private static ushort AllowedSlotsOf(ItemDatabase items, int itemId)
+        {
+            int index = items.IndexOf(itemId);
+            if (index < 0)
+                return EquipmentSlots.None;
+
+            // By reference: ItemBlob carries a BlobArray, and copying it would
+            // leave the affixes pointing at nothing.
+            ref ItemBlob item = ref items.Value.Value.Items[index];
+            return item.AllowedSlots;
+        }
+
+        /// <summary>
+        /// What quality an item is, by id.
+        ///
+        /// Items in the bag carry an ItemInstance to read this from; items in a
+        /// slot are known only by id, so this asks the database instead.
+        /// </summary>
+        private static ItemRarity RarityOf(ItemDatabase items, int itemId)
+        {
+            int index = items.IndexOf(itemId);
+            if (index < 0)
+                return ItemRarity.Common;
+
+            ref ItemBlob item = ref items.Value.Value.Items[index];
+            return item.Rarity;
+        }
+
         private static string NameOf(ItemDatabase items, int itemId)
         {
             int index = items.IndexOf(itemId);
@@ -1029,7 +1436,7 @@ namespace TogetherWeFall.UI
                 int hash = stats.Version * 31 + cells.Length;
 
                 for (int i = 0; i < slots.Length; i++)
-                    hash = hash * 31 + slots[i].ItemId;
+                    hash = hash * 31 + slots[i].ItemId + slots[i].Item.Index * 7;
 
                 for (int i = 0; i < cells.Length; i++)
                     hash = hash * 31 + cells[i].OccupyingItem.Index;
@@ -1096,17 +1503,6 @@ namespace TogetherWeFall.UI
             return row;
         }
 
-        private static Button MakeButton(string text, System.Action onClick)
-        {
-            var button = new Button(onClick) { text = text };
-            button.style.fontSize = 12;
-            button.style.paddingLeft = 6f;
-            button.style.paddingRight = 6f;
-            button.style.marginLeft = 0f;
-            button.style.marginRight = 0f;
-            return button;
-        }
-
         private static Color RarityColour(ItemRarity rarity)
         {
             switch (rarity)
@@ -1141,6 +1537,18 @@ namespace TogetherWeFall.UI
         {
             public VisualElement Element;
             public EquipmentSlot Slot;
+
+            /// <summary>Unusable because the main hand needs both hands.</summary>
+            public bool Blocked;
+
+            /// <summary>
+            /// The border it wears when nothing is hovering it.
+            ///
+            /// Remembered rather than recomputed, so that clearing a hover is a
+            /// copy instead of a second place that has to agree with
+            /// MakeSlotBox about what an empty slot looks like.
+            /// </summary>
+            public Color DefaultBorder;
         }
 
         /// <summary>
@@ -1153,15 +1561,34 @@ namespace TogetherWeFall.UI
         private struct Drag
         {
             public bool Active;
-            public VisualElement Element;
+
+            /// <summary>
+            /// The element holding the pointer capture. Not the thing that
+            /// moves — the ghost does that — but the thing every pointer event
+            /// is routed to until the button comes up.
+            /// </summary>
+            public VisualElement Source;
+
+            /// <summary>
+            /// Whether this started in an equipment slot rather than in the bag.
+            /// It decides what a drop means on both possible targets, which is
+            /// why it is remembered rather than worked out at the end.
+            /// </summary>
+            public bool FromSlot;
+            public EquipmentSlot SourceSlot;
+
             public Entity Bag;
             public Entity Item;
             public int ItemId;
+
+            /// <summary>Read once at the start, so the hover check is a mask test.</summary>
+            public ushort AllowedSlots;
+
             public bool Rotated;
             public int PointerId;
             public Vector2 GrabOffset;
 
-            /// <summary>Top-left of the dragged element, in grid-local pixels.</summary>
+            /// <summary>Top-left of the ghost, in grid-local pixels.</summary>
             public Vector2 Corner;
 
             public int TargetX;

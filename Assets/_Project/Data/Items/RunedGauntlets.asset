@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Runed Gauntlets
   _rarity: 1
+  _slot: 4
+  _isTwoHanded: 0
   _gridWidth: 2
   _gridHeight: 2
   _canRotate: 0
