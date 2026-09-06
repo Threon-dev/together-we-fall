@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Entities;
 using TogetherWeFall.Equipment;
+using TogetherWeFall.Inventory;
 using TogetherWeFall.Shared;
 using TogetherWeFall.Skills;
 
@@ -23,12 +24,28 @@ namespace TogetherWeFall.Player.Systems
     {
         private const int SlotCount = (int)EquipmentSlot.Accessory + 1;
 
+        /// <summary>
+        /// Used when no CharacterConfig has been baked. Twelve by five is the
+        /// PoE bag, and a scene without the SubScene should still be playable
+        /// rather than leave the player with nowhere to put anything.
+        /// </summary>
+        private const int DefaultBagWidth = 12;
+        private const int DefaultBagHeight = 5;
+
         private EntityQuery _characterQuery;
+        private EntityQuery _bagSizeQuery;
 
         public void OnCreate(ref SystemState state)
         {
             _characterQuery = SystemAPI.QueryBuilder()
                 .WithAll<PlayerCharacter>()
+                .Build();
+
+            // A query rather than SystemAPI.TryGetSingleton, because this is
+            // read from a helper method rather than from OnUpdate, and a plain
+            // query needs no source generation to get there.
+            _bagSizeQuery = SystemAPI.QueryBuilder()
+                .WithAll<CharacterInventorySize>()
                 .Build();
 
             state.RequireForUpdate<PlayerPositionsSingleton>();
@@ -86,13 +103,21 @@ namespace TogetherWeFall.Player.Systems
         /// </summary>
         private void CreateCharacter(ref SystemState state, int playerId)
         {
+            // The bag first, because creating an entity is a structural change
+            // and the character's buffers are taken further down. Doing it the
+            // other way round would invalidate them between the taking and the
+            // filling.
+            Entity bag = CreateBag(ref state, playerId);
+
             EntityArchetype archetype = state.EntityManager.CreateArchetype(
                 typeof(PlayerCharacter),
                 typeof(PlayerStats),
                 typeof(StatsDirty),
                 typeof(EquippedItem),
-                typeof(InventoryItem),
                 typeof(EquipRequest),
+                typeof(CarriedBag),
+                typeof(InventoryPlacementRequest),
+                typeof(InventoryPlacementResult),
 
                 // Left empty here and filled by SkillLoadoutSystem: the skill
                 // database rides in a SubScene, which may not have loaded yet.
@@ -100,6 +125,8 @@ namespace TogetherWeFall.Player.Systems
 
             Entity entity = state.EntityManager.CreateEntity(archetype);
             state.EntityManager.SetName(entity, "PlayerCharacter");
+
+            state.EntityManager.SetComponentData(entity, new CarriedBag { Container = bag });
 
             state.EntityManager.SetComponentData(entity, new PlayerCharacter
             {
@@ -125,12 +152,62 @@ namespace TogetherWeFall.Player.Systems
                 slots.Add(new EquippedItem
                 {
                     Slot = (EquipmentSlot)slot,
+                    Item = Entity.Null,
                     ItemId = EquippedItem.Empty
                 });
             }
 
             UnityEngine.Debug.Log(
                 $"[PlayerCharacterRegistrySystem] Character created for player {playerId}.");
+        }
+
+        /// <summary>
+        /// Creates the container a character carries things in.
+        ///
+        /// Its own entity rather than cells on the character, so that the bag,
+        /// a stash and a chest on the floor are one kind of thing described
+        /// once. The owner is written here and checked on every request: a
+        /// container without one is a shared container, and there are none yet.
+        /// </summary>
+        private Entity CreateBag(ref SystemState state, int playerId)
+        {
+            int width = DefaultBagWidth;
+            int height = DefaultBagHeight;
+
+            if (!_bagSizeQuery.IsEmptyIgnoreFilter)
+            {
+                CharacterInventorySize authored =
+                    _bagSizeQuery.GetSingleton<CharacterInventorySize>();
+
+                if (authored.Width > 0 && authored.Height > 0)
+                {
+                    width = authored.Width;
+                    height = authored.Height;
+                }
+            }
+
+            EntityArchetype archetype = state.EntityManager.CreateArchetype(
+                typeof(InventoryGridComponent),
+                typeof(InventoryCell),
+                typeof(ContainerOwner));
+
+            Entity bag = state.EntityManager.CreateEntity(archetype);
+            state.EntityManager.SetName(bag, "PlayerBag");
+
+            var grid = new InventoryGridComponent { Width = width, Height = height };
+
+            state.EntityManager.SetComponentData(bag, grid);
+            state.EntityManager.SetComponentData(bag, new ContainerOwner { PlayerId = playerId });
+
+            // Filled with empty cells up front: a buffer shorter than
+            // Width x Height would index out of bounds on the first placement.
+            GridFit.Reset(state.EntityManager.GetBuffer<InventoryCell>(bag), grid);
+
+            UnityEngine.Debug.Log(
+                $"[PlayerCharacterRegistrySystem] Bag created for player {playerId} " +
+                $"({width}x{height}).");
+
+            return bag;
         }
     }
 }

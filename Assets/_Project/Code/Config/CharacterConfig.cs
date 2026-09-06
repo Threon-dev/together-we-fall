@@ -29,6 +29,18 @@ namespace TogetherWeFall.Config
             new ItemStatValue(StatKind.MoveSpeed, 6f)
         };
 
+        [Header("Bag")]
+        [Tooltip("How many cells wide the carried bag is. Twelve by five is the " +
+                 "Path of Exile bag; it is here rather than in the simulation " +
+                 "settings because how much a player may carry is balance, not " +
+                 "a performance knob.")]
+        [SerializeField, Range(4, 16)] private int _bagWidth = 12;
+
+        [SerializeField, Range(3, 12)] private int _bagHeight = 5;
+
         public ItemStatValue[] BaseStats => _baseStats;
+
+        public int BagWidth => _bagWidth;
+        public int BagHeight => _bagHeight;
     }
 }

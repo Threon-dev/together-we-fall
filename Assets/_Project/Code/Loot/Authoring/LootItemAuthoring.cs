@@ -4,6 +4,7 @@ using Unity.Rendering;
 using UnityEngine;
 using TogetherWeFall.Config;
 using TogetherWeFall.Interaction;
+using TogetherWeFall.Inventory;
 
 namespace TogetherWeFall.Loot.Authoring
 {
@@ -61,6 +62,17 @@ namespace TogetherWeFall.Loot.Authoring
 
                 AddComponent<InteractionTriggered>(entity);
                 SetComponentEnabled<InteractionTriggered>(entity, false);
+
+                // Down for the same reason as InteractableTag: an item in the
+                // pool is neither on the floor nor owned by anybody, and the two
+                // flags together are what "free" means to the pool query.
+                AddComponent<ItemStored>(entity);
+                SetComponentEnabled<ItemStored>(entity, false);
+
+                AddComponent(entity, new ItemGridPlacement
+                {
+                    ContainerEntity = Entity.Null
+                });
 
                 AddComponent(entity, new URPMaterialPropertyBaseColor
                 {

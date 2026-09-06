@@ -89,6 +89,19 @@ namespace TogetherWeFall.Config
         [Header("Affixes")]
         [SerializeField] private ItemAffix[] _affixes = Array.Empty<ItemAffix>();
 
+        [Header("Inventory footprint")]
+        [Tooltip("How many cells wide the item is in the bag. A sword is 1x3, " +
+                 "a breastplate 2x3, a ring 1x1.")]
+        [SerializeField, Range(1, 4)] private int _gridWidth = 1;
+
+        [SerializeField, Range(1, 4)] private int _gridHeight = 1;
+
+        [Tooltip("Whether the player may turn this item on its side to make it " +
+                 "fit. Off by default: rotation is a property of a specific " +
+                 "item, like a two-handed weapon in PoE, not a default that " +
+                 "every item quietly inherits.")]
+        [SerializeField] private bool _canRotate;
+
         public string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? name : _displayName;
 
         public ItemRarity Rarity => _rarity;
@@ -96,6 +109,17 @@ namespace TogetherWeFall.Config
 
         public ItemStatValue[] BaseStats => _baseStats;
         public ItemAffix[] Affixes => _affixes;
+
+        /// <summary>Clamped, because a zero-cell item would fit anywhere and nowhere.</summary>
+        public int GridWidth => Mathf.Max(1, _gridWidth);
+        public int GridHeight => Mathf.Max(1, _gridHeight);
+
+        /// <summary>
+        /// Square items are never rotatable whatever the asset says: turning a
+        /// 1x1 or a 2x2 changes nothing, and letting the flag be true there
+        /// would mean the UI offers a rotation that does not move anything.
+        /// </summary>
+        public bool CanRotate => _canRotate && GridWidth != GridHeight;
 
         /// <summary>The id systems, save data and the network refer to this item by.</summary>
         public int ItemId => ComputeId(DisplayName);

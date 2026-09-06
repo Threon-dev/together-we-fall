@@ -248,27 +248,33 @@ namespace TogetherWeFall.EditorTools
         /// </summary>
         private static ItemDefinition[] CreateSampleItems()
         {
+            // The three numbers after the slot are the inventory footprint:
+            // width, height, and whether the player may turn it on its side.
+            // They differ on purpose — eight one-by-one items in a twelve-by-five
+            // bag is a list with extra steps, and nothing about a grid would be
+            // visible.
             var definitions =
                 new (string name, ItemRarity rarity, EquipmentSlot slot,
+                     int width, int height, bool canRotate,
                      ItemStatValue[] baseStats, ItemAffix[] affixes)[]
                 {
-                    ("Cracked Dagger", ItemRarity.Common, EquipmentSlot.Weapon,
+                    ("Cracked Dagger", ItemRarity.Common, EquipmentSlot.Weapon, 1, 2, false,
                         new[] { new ItemStatValue(StatKind.Damage, 8f) },
                         new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 10f) }),
 
-                    ("Rusted Helm", ItemRarity.Common, EquipmentSlot.Helmet,
+                    ("Rusted Helm", ItemRarity.Common, EquipmentSlot.Helmet, 2, 2, false,
                         new[] { new ItemStatValue(StatKind.Armour, 8f) },
                         new[] { new ItemAffix(StatKind.MaxHealth, ModifierKind.Flat, 10f) }),
 
-                    ("Hunters Bow", ItemRarity.Uncommon, EquipmentSlot.Weapon,
+                    ("Hunters Bow", ItemRarity.Uncommon, EquipmentSlot.Weapon, 2, 3, true,
                         new[] { new ItemStatValue(StatKind.Damage, 14f) },
                         new[] { new ItemAffix(StatKind.AttackSpeed, ModifierKind.Increased, 15f) }),
 
-                    ("Runed Gauntlets", ItemRarity.Uncommon, EquipmentSlot.Accessory,
+                    ("Runed Gauntlets", ItemRarity.Uncommon, EquipmentSlot.Accessory, 2, 2, false,
                         new[] { new ItemStatValue(StatKind.Damage, 3f) },
                         new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 12f) }),
 
-                    ("Frostbite Blade", ItemRarity.Rare, EquipmentSlot.Weapon,
+                    ("Frostbite Blade", ItemRarity.Rare, EquipmentSlot.Weapon, 1, 3, true,
                         new[] { new ItemStatValue(StatKind.Damage, 22f) },
                         new[]
                         {
@@ -276,7 +282,7 @@ namespace TogetherWeFall.EditorTools
                             new ItemAffix(StatKind.ColdResistance, ModifierKind.Flat, 15f)
                         }),
 
-                    ("Warlords Plate", ItemRarity.Epic, EquipmentSlot.Armour,
+                    ("Warlords Plate", ItemRarity.Epic, EquipmentSlot.Armour, 2, 3, false,
                         new[]
                         {
                             new ItemStatValue(StatKind.Armour, 40f),
@@ -284,7 +290,7 @@ namespace TogetherWeFall.EditorTools
                         },
                         new[] { new ItemAffix(StatKind.MaxHealth, ModifierKind.Increased, 18f) }),
 
-                    ("Dawnbringer", ItemRarity.Legendary, EquipmentSlot.Weapon,
+                    ("Dawnbringer", ItemRarity.Legendary, EquipmentSlot.Weapon, 1, 4, true,
                         new[] { new ItemStatValue(StatKind.Damage, 45f) },
                         new[]
                         {
@@ -292,7 +298,7 @@ namespace TogetherWeFall.EditorTools
                             new ItemAffix(StatKind.AttackSpeed, ModifierKind.Increased, 25f)
                         }),
 
-                    ("Heart of the Fall", ItemRarity.Mythic, EquipmentSlot.Accessory,
+                    ("Heart of the Fall", ItemRarity.Mythic, EquipmentSlot.Accessory, 1, 1, false,
                         new[] { new ItemStatValue(StatKind.MaxHealth, 50f) },
                         new[]
                         {
@@ -316,6 +322,10 @@ namespace TogetherWeFall.EditorTools
                     serialized.FindProperty("_displayName").stringValue = definitions[i].name;
                     serialized.FindProperty("_rarity").enumValueIndex = (int)definitions[i].rarity;
                     serialized.FindProperty("_slot").enumValueIndex = (int)definitions[i].slot;
+
+                    serialized.FindProperty("_gridWidth").intValue = definitions[i].width;
+                    serialized.FindProperty("_gridHeight").intValue = definitions[i].height;
+                    serialized.FindProperty("_canRotate").boolValue = definitions[i].canRotate;
 
                     WriteStats(serialized.FindProperty("_baseStats"), definitions[i].baseStats);
                     WriteAffixes(serialized.FindProperty("_affixes"), definitions[i].affixes);

@@ -26,6 +26,18 @@ namespace TogetherWeFall.Equipment
         public ItemRarity Rarity;
         public EquipmentSlot Slot;
 
+        /// <summary>
+        /// How many cells the item covers in a container, unrotated. Rotating
+        /// swaps the two, and nothing else about the item changes — which is
+        /// exactly why non-rectangular shapes are deferred rather than nearly
+        /// free.
+        /// </summary>
+        public int GridWidth;
+        public int GridHeight;
+
+        /// <summary>Whether the player may turn it on its side.</summary>
+        public bool CanRotate;
+
         /// <summary>Flat values the item contributes before any modifier.</summary>
         public StatBlock BaseStats;
 

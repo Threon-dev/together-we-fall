@@ -1,5 +1,4 @@
 using Unity.Entities;
-using TogetherWeFall.Loot;
 
 namespace TogetherWeFall.Equipment
 {
@@ -29,7 +28,19 @@ namespace TogetherWeFall.Equipment
     {
         public EquipmentSlot Slot;
 
-        /// <summary>The equipped item, or Empty.</summary>
+        /// <summary>
+        /// The exact item worn here, or Entity.Null.
+        ///
+        /// Both this and the id, because they answer different questions. The
+        /// entity is which instance — the one that has to come back to the bag
+        /// when it is taken off, and the one rolled affixes will eventually hang
+        /// on. The id is what it is, which is all the stat maths needs, and
+        /// keeping it here means PlayerStatsSystem never has to chase a
+        /// reference to add up a number.
+        /// </summary>
+        public Entity Item;
+
+        /// <summary>What the equipped item is, or Empty.</summary>
         public int ItemId;
 
         /// <summary>
@@ -38,29 +49,14 @@ namespace TogetherWeFall.Equipment
         /// </summary>
         public const int Empty = 0;
 
-        public bool HasItem => ItemId != Empty;
+        public bool HasItem => ItemId != Empty && Item != Entity.Null;
     }
 
-    /// <summary>
-    /// One item a player is carrying.
-    ///
-    /// This is the buffer that replaced the flat CollectedItem list from the
-    /// loot step, exactly where that was expected to give way. It carries an id
-    /// and the state that belongs to the instance — everything else about the
-    /// item (name, slot, stats, affixes) is looked up in ItemDatabase, so an
-    /// item is described in one place.
-    ///
-    /// Rolled affixes will need an instance id here: today two copies of the
-    /// same item are genuinely interchangeable, because the affixes come from
-    /// the definition rather than from a roll.
-    /// </summary>
-    [InternalBufferCapacity(16)]
-    public struct InventoryItem : IBufferElementData
-    {
-        public int ItemId;
-        public ItemRarity Rarity;
-        public ItemRiskState RiskState;
-    }
+    // What a player is carrying used to be an InventoryItem buffer here. The
+    // grid inventory replaced it: a carried item is now the same entity that lay
+    // on the floor, holding ItemInstance and ItemGridPlacement, and the bag is a
+    // container entity whose cells point at those entities. The instance
+    // identity that rolled affixes were always going to need arrived with it.
 
     /// <summary>
     /// A client asking to equip or unequip something.
@@ -78,7 +74,14 @@ namespace TogetherWeFall.Equipment
     [InternalBufferCapacity(2)]
     public struct EquipRequest : IBufferElementData
     {
-        public int ItemId;
+        /// <summary>
+        /// Which item to put on. Only read when Equip is true.
+        ///
+        /// An entity rather than an id, because two copies of the same item are
+        /// two different things to a grid: taking one off has to put that one
+        /// back, in the space that one came out of.
+        /// </summary>
+        public Entity Item;
 
         /// <summary>Which slot to clear. Only read when Equip is false.</summary>
         public EquipmentSlot Slot;

@@ -1,36 +1,88 @@
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 using UnityEngine.UIElements;
 using TogetherWeFall.Equipment;
+using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
 
 namespace TogetherWeFall.UI
 {
     /// <summary>
-    /// The inventory and character sheet panel.
+    /// The inventory and character sheet panel: a grid of cells, items that
+    /// cover several of them, and drag and drop between the grid and the
+    /// equipment slots.
     ///
     /// It owns no game state whatsoever. Every time it draws, it reads the
-    /// player character out of ECS — stats, slots, inventory — and renders what
-    /// it found. Clicking a button does not equip anything either; it appends an
-    /// EquipRequest and waits to be told what happened, exactly like a client
-    /// would across a wire. The panel cannot show you wearing something the host
-    /// refused, because it has nowhere to remember such a thing.
+    /// player character out of ECS — stats, slots, the bag container and its
+    /// cells — and renders what it found. Dropping an item does not move
+    /// anything either; it appends an InventoryPlacementRequest and waits to be
+    /// told what happened, exactly like a client would across a wire. The panel
+    /// cannot show an item somewhere the host refused to put it, because it has
+    /// nowhere to remember such a thing.
+    ///
+    /// The green and red squares under a dragged item are the one place this
+    /// file duplicates a rule, and it does not: the prediction calls the same
+    /// GridFit the host calls, read-only. A prediction that disagreed with the
+    /// answer would be worse than no prediction at all.
     ///
     /// Rebuilt only when the data behind it changes, tracked by the stat version
-    /// and the shape of the inventory. A UI that rebuilds its element tree every
-    /// frame is the cheapest way to make a profile unreadable.
-    ///
-    /// The visual tree is built in code rather than from a UXML asset. For a
-    /// panel whose contents are entirely generated from a buffer, a layout file
-    /// would describe nothing but an empty container.
+    /// and the contents of the cell buffer — and never while a drag is in
+    /// flight, because rebuilding would destroy the element under the cursor.
     /// </summary>
     public sealed class InventoryUI : MonoBehaviour
     {
+        private const float CellGap = 2f;
+
+        /// <summary>
+        /// The smallest cell that is still comfortable to read and click.
+        ///
+        /// A target, not a floor. A floor that wins over fitting on screen is
+        /// the bug it was meant to prevent, wearing a different hat: the cells
+        /// stay a comfortable size and the bottom rows go past the bottom of the
+        /// monitor. So when both cannot be had, fitting wins and this becomes a
+        /// warning instead.
+        /// </summary>
+        private const float ComfortableCellSize = 22f;
+
+        /// <summary>
+        /// The hard floor. Below this the grid is not a grid any more, and the
+        /// answer is a smaller bag rather than a smaller cell.
+        /// </summary>
+        private const float MinCellSize = 12f;
+
+        /// <summary>
+        /// Above this a small bag on a large screen turns into a wall of tiles.
+        /// </summary>
+        private const float MaxCellSize = 52f;
+
+        /// <summary>Panel padding, left plus right.</summary>
+        private const float HorizontalChrome = 24f;
+
+        /// <summary>
+        /// Everything above and below the grid inside the panel: padding, the
+        /// "Bag" heading and the message line. Measured rather than derived
+        /// because the alternative is asking the layout engine mid-layout.
+        /// </summary>
+        private const float VerticalChrome = 76f;
+
+        private const float ColumnGap = 16f;
+
+        /// <summary>
+        /// How much of the screen the panel may take. Not all of it: a panel
+        /// flush against the edges reads as a broken full-screen mode rather
+        /// than as a window.
+        /// </summary>
+        private const float ScreenFraction = 0.9f;
+
         [SerializeField] private UIDocument _document;
 
-        [SerializeField] private int _panelWidth = 420;
+        [Tooltip("Width of the character column beside the bag. The bag takes " +
+                 "whatever is left, so this is the one number that decides how " +
+                 "the two share a landscape screen.")]
+        [SerializeField, Range(180, 420)] private int _sidebarWidth = 280;
 
         private PlayerInputReader _input;
         private EntityManager _entityManager;
@@ -41,11 +93,44 @@ namespace TogetherWeFall.UI
         private bool _hasWorld;
         private bool _visible;
         private int _lastSignature;
+        private int _builtWidth;
+        private int _builtHeight;
+        private float _builtCellSize;
+        private float _cellSize = MaxCellSize;
+        private Vector2 _lastRootSize;
 
+        private VisualElement _screen;
         private VisualElement _panel;
+        private VisualElement _sidebar;
+        private VisualElement _bagColumn;
         private VisualElement _statsList;
         private VisualElement _slotList;
-        private VisualElement _inventoryList;
+        private VisualElement _gridRoot;
+        private VisualElement _cellLayer;
+        private VisualElement _itemLayer;
+        private VisualElement _highlight;
+        private Label _message;
+
+        private readonly List<SlotTarget> _slotTargets = new List<SlotTarget>();
+
+        /// <summary>
+        /// Reused across rebuilds. A multi-cell item appears in the cell buffer
+        /// once per cell it covers, and this is what turns those back into one
+        /// element each.
+        /// </summary>
+        private readonly HashSet<Entity> _seen = new HashSet<Entity>();
+
+        private Drag _drag;
+
+        /// <summary>
+        /// Whether the panel is currently taking the player's clicks.
+        ///
+        /// Read by the bootstrap and handed to PlayerActionPublisher, so that
+        /// dragging an item does not also fire the skill bound to the same
+        /// button. The panel does not reach into the publisher itself — one
+        /// direction, one wiring point, no new bridge.
+        /// </summary>
+        public bool IsCapturingInput => _visible;
 
         public void Initialize(PlayerInputReader input, int playerId)
         {
@@ -66,7 +151,8 @@ namespace TogetherWeFall.UI
 
             _characterQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<PlayerCharacter>(),
-                ComponentType.ReadOnly<PlayerStats>());
+                ComponentType.ReadOnly<PlayerStats>(),
+                ComponentType.ReadOnly<CarriedBag>());
 
             _itemDatabaseQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<ItemDatabase>());
@@ -80,18 +166,30 @@ namespace TogetherWeFall.UI
                 return;
 
             if (_input.WasInventoryTogglePressed())
-            {
-                _visible = !_visible;
-                _panel.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
+                Toggle();
 
-                // Force a rebuild on the next visible frame: the data may well
-                // have moved on while the panel was closed.
-                _lastSignature = int.MinValue;
-            }
-
-            if (_visible)
+            // Never while a drag is in flight: a rebuild destroys the element
+            // the pointer is holding, and the capture goes with it.
+            if (_visible && !_drag.Active)
                 RefreshIfChanged();
         }
+
+        private void Toggle()
+        {
+            _visible = !_visible;
+            _screen.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (!_visible)
+                CancelDrag();
+
+            // Force a rebuild on the next visible frame: the data may well have
+            // moved on while the panel was closed.
+            _lastSignature = int.MinValue;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Tree
+        // ─────────────────────────────────────────────────────────────────
 
         /// <summary>
         /// Builds the panel the first time it is needed.
@@ -112,46 +210,265 @@ namespace TogetherWeFall.UI
             if (root == null)
                 return false;
 
+            // A full-screen wrapper that centres the panel with flexbox rather
+            // than with a percentage translate. Flexbox centring is the same in
+            // every Unity version; percentage transforms are not.
+            _screen = new VisualElement();
+            _screen.style.position = Position.Absolute;
+            _screen.style.left = 0f;
+            _screen.style.top = 0f;
+            _screen.style.right = 0f;
+            _screen.style.bottom = 0f;
+            _screen.style.justifyContent = Justify.Center;
+            _screen.style.alignItems = Align.Center;
+            _screen.style.display = DisplayStyle.None;
+
+            // The wrapper covers the screen, so it must not be what the pointer
+            // finds. Only the panel inside it picks.
+            _screen.pickingMode = PickingMode.Ignore;
+
             _panel = new VisualElement();
-            _panel.style.position = Position.Absolute;
-            _panel.style.top = 16f;
-            _panel.style.right = 16f;
-            _panel.style.width = _panelWidth;
+            _panel.style.flexDirection = FlexDirection.Row;
             _panel.style.paddingLeft = 12f;
             _panel.style.paddingRight = 12f;
             _panel.style.paddingTop = 10f;
             _panel.style.paddingBottom = 12f;
-            _panel.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 0.92f);
-            _panel.style.display = DisplayStyle.None;
+            _panel.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 0.95f);
 
-            _panel.Add(MakeHeading("Character"));
-            _statsList = MakeSection(_panel);
+            // Two columns, because the screen is wider than it is tall. Stacked
+            // vertically the panel is the sum of its parts; side by side it is
+            // the taller of them, and that is the difference between fitting on
+            // a 16:9 screen and not.
+            _sidebar = new VisualElement();
+            _sidebar.style.width = _sidebarWidth;
+            _sidebar.style.flexShrink = 0f;
+            _sidebar.style.marginRight = ColumnGap;
+            _panel.Add(_sidebar);
 
-            _panel.Add(MakeHeading("Equipped"));
-            _slotList = MakeSection(_panel);
+            _bagColumn = new VisualElement();
+            _panel.Add(_bagColumn);
 
-            _panel.Add(MakeHeading("Inventory"));
-            _inventoryList = MakeSection(_panel);
+            _sidebar.Add(MakeHeading("Character"));
+            _statsList = MakeSection(_sidebar);
 
-            root.Add(_panel);
+            // Two stats per line. Eight of them in a single column is the
+            // tallest thing in the panel, and height is the scarce direction.
+            _statsList.style.flexDirection = FlexDirection.Row;
+            _statsList.style.flexWrap = Wrap.Wrap;
+
+            _sidebar.Add(MakeHeading("Equipped"));
+            _slotList = MakeSection(_sidebar);
+
+            _bagColumn.Add(MakeHeading("Bag"));
+
+            _gridRoot = new VisualElement();
+            _gridRoot.style.position = Position.Relative;
+            _bagColumn.Add(_gridRoot);
+
+            _cellLayer = new VisualElement();
+            _cellLayer.style.position = Position.Absolute;
+            _cellLayer.style.left = 0f;
+            _cellLayer.style.top = 0f;
+
+            // The background must not swallow pointer events: the item layer
+            // above it is what a drag talks to.
+            _cellLayer.pickingMode = PickingMode.Ignore;
+            _gridRoot.Add(_cellLayer);
+
+            _highlight = new VisualElement();
+            _highlight.style.position = Position.Absolute;
+            _highlight.style.display = DisplayStyle.None;
+            _highlight.pickingMode = PickingMode.Ignore;
+            _cellLayer.Add(_highlight);
+
+            _itemLayer = new VisualElement();
+            _itemLayer.style.position = Position.Absolute;
+            _itemLayer.style.left = 0f;
+            _itemLayer.style.top = 0f;
+            _gridRoot.Add(_itemLayer);
+
+            _message = new Label(string.Empty);
+            _message.style.color = new Color(0.72f, 0.55f, 0.45f);
+            _message.style.fontSize = 12;
+            _message.style.marginTop = 6f;
+            _message.style.whiteSpace = WhiteSpace.Normal;
+            _bagColumn.Add(_message);
+
+            _screen.Add(_panel);
+            root.Add(_screen);
+
+            // The panel is sized from the screen, so it has to be told when the
+            // screen changes. A resolution change mid-session is rare; a first
+            // layout that arrives after this method is not.
+            root.RegisterCallback<GeometryChangedEvent>(OnRootResized);
+
             return true;
         }
 
+        /// <summary>
+        /// Forces a re-layout when the window changes size.
+        ///
+        /// Guarded on the size actually differing, so that geometry events
+        /// caused by the panel's own contents cannot start a rebuild that
+        /// causes another one.
+        /// </summary>
+        private void OnRootResized(GeometryChangedEvent evt)
+        {
+            var size = new Vector2(evt.newRect.width, evt.newRect.height);
+
+            if (size == _lastRootSize)
+                return;
+
+            _lastRootSize = size;
+
+            // Not just the signature: the cells themselves have to be redrawn at
+            // the new size, and BuildGrid only does that when it sees a change.
+            _builtCellSize = 0f;
+            _lastSignature = int.MinValue;
+        }
+
+        /// <summary>
+        /// Draws the empty grid. Only when its shape changes — the cells behind
+        /// the items never move, and rebuilding sixty elements every time
+        /// something is picked up is the cheapest way to make a profile
+        /// unreadable.
+        /// </summary>
+        private void BuildGrid(in InventoryGridComponent grid)
+        {
+            RecomputeCellSize(grid);
+
+            if (_builtWidth == grid.Width &&
+                _builtHeight == grid.Height &&
+                Mathf.Approximately(_builtCellSize, _cellSize))
+            {
+                return;
+            }
+
+            _builtWidth = grid.Width;
+            _builtHeight = grid.Height;
+            _builtCellSize = _cellSize;
+
+            _cellLayer.Clear();
+            _cellLayer.Add(_highlight);
+
+            float width = grid.Width * _cellSize;
+            float height = grid.Height * _cellSize;
+
+            // No width is set on the panel at all any more. It is a row of two
+            // columns and flexbox already knows how wide that is; a number here
+            // could only ever disagree with the grid it is supposed to contain.
+            _gridRoot.style.width = width;
+            _gridRoot.style.height = height;
+            _cellLayer.style.width = width;
+            _cellLayer.style.height = height;
+            _itemLayer.style.width = width;
+            _itemLayer.style.height = height;
+
+            for (int y = 0; y < grid.Height; y++)
+            {
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    var cell = new VisualElement();
+                    cell.style.position = Position.Absolute;
+                    cell.style.left = x * _cellSize;
+                    cell.style.top = y * _cellSize;
+                    cell.style.width = _cellSize - CellGap;
+                    cell.style.height = _cellSize - CellGap;
+                    cell.style.backgroundColor = new Color(0.12f, 0.13f, 0.16f, 1f);
+                    cell.pickingMode = PickingMode.Ignore;
+
+                    _cellLayer.Add(cell);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Picks a cell size that fits the bag into what is left of the screen.
+        ///
+        /// The panel settings scale the whole UI to a 1200x800 reference and
+        /// match on width, which means the height a 16:9 screen actually offers
+        /// is 1200 / (16/9) = 675, not 800 — and on an ultrawide it is 514. A
+        /// fixed cell size is a bet that the bag is small enough for whatever
+        /// the player's aspect ratio turns out to be, and it is a bet that loses
+        /// quietly, by drawing the bottom row off the screen.
+        ///
+        /// So it is measured instead: whichever of width and height runs out
+        /// first decides, clamped so the cells stay clickable at one end and
+        /// stop growing at the other.
+        /// </summary>
+        private void RecomputeCellSize(in InventoryGridComponent grid)
+        {
+            if (grid.Width <= 0 || grid.Height <= 0)
+                return;
+
+            VisualElement root = _document != null ? _document.rootVisualElement : null;
+
+            float rootWidth = root != null ? root.resolvedStyle.width : float.NaN;
+            float rootHeight = root != null ? root.resolvedStyle.height : float.NaN;
+
+            // Before the first layout the root has no size yet. Start at the
+            // largest cell; the geometry callback will correct it on the frame
+            // the real size arrives.
+            if (float.IsNaN(rootWidth) || float.IsNaN(rootHeight) ||
+                rootWidth < 1f || rootHeight < 1f)
+            {
+                _cellSize = MaxCellSize;
+                return;
+            }
+
+            float availableWidth =
+                rootWidth * ScreenFraction - _sidebarWidth - ColumnGap - HorizontalChrome;
+            float availableHeight = rootHeight * ScreenFraction - VerticalChrome;
+
+            float byWidth = availableWidth / grid.Width;
+            float byHeight = availableHeight / grid.Height;
+
+            // Floored, so a row of cells is never a fraction wider than the box
+            // that is supposed to hold it.
+            _cellSize = Mathf.Clamp(
+                Mathf.Floor(Mathf.Min(byWidth, byHeight)), MinCellSize, MaxCellSize);
+
+            // Said once per size change rather than per frame, because this is
+            // a configuration problem — a bag too big for the screen it is being
+            // played on — and the fix is a smaller bag, not a smaller cell.
+            if (_cellSize < ComfortableCellSize && !Mathf.Approximately(_builtCellSize, _cellSize))
+            {
+                Debug.LogWarning(
+                    $"[{nameof(InventoryUI)}] A {grid.Width}x{grid.Height} bag only fits this " +
+                    $"screen at {_cellSize:0} pixels per cell. Lower the bag size in " +
+                    "CharacterConfig, or the items will be hard to read.", this);
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Reading ECS
+        // ─────────────────────────────────────────────────────────────────
+
         private void RefreshIfChanged()
         {
-            if (!TryGetCharacter(out Entity character))
+            if (!TryGetCharacter(out Entity character, out Entity bag))
             {
                 ShowMessage("No character yet.");
                 return;
             }
 
+            if (bag == Entity.Null || !_entityManager.HasComponent<InventoryCell>(bag))
+            {
+                ShowMessage("No bag yet.");
+                return;
+            }
+
             PlayerStats stats = _entityManager.GetComponentData<PlayerStats>(character);
+            InventoryGridComponent grid =
+                _entityManager.GetComponentData<InventoryGridComponent>(bag);
             DynamicBuffer<EquippedItem> slots =
                 _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true);
-            DynamicBuffer<InventoryItem> inventory =
-                _entityManager.GetBuffer<InventoryItem>(character, isReadOnly: true);
+            DynamicBuffer<InventoryCell> cells =
+                _entityManager.GetBuffer<InventoryCell>(bag, isReadOnly: true);
 
-            int signature = Signature(stats, slots, inventory);
+            ReportRefusals(character);
+
+            int signature = Signature(stats, slots, cells);
             if (signature == _lastSignature)
                 return;
 
@@ -165,9 +482,54 @@ namespace TogetherWeFall.UI
 
             ItemDatabase items = _itemDatabaseQuery.GetSingleton<ItemDatabase>();
 
+            BuildGrid(grid);
             RebuildStats(stats);
             RebuildSlots(slots, items);
-            RebuildInventory(inventory, slots, items);
+            RebuildItems(bag, cells, items);
+        }
+
+        /// <summary>
+        /// Drains the result queue and says why the last move did not happen.
+        ///
+        /// The results are the whole point of the request being a request. A
+        /// refused placement leaves the world untouched, so without this the
+        /// player would see an item spring back and be told nothing about why.
+        /// </summary>
+        private void ReportRefusals(Entity character)
+        {
+            DynamicBuffer<InventoryPlacementResult> results =
+                _entityManager.GetBuffer<InventoryPlacementResult>(character);
+
+            if (results.Length == 0)
+                return;
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i].Succeeded)
+                    continue;
+
+                ShowMessage(DescribeRefusal(results[i].Status));
+                break;
+            }
+
+            results.Clear();
+        }
+
+        private static string DescribeRefusal(InventoryPlacementStatus status)
+        {
+            switch (status)
+            {
+                case InventoryPlacementStatus.RejectedOccupied:
+                    return "Something is already there.";
+                case InventoryPlacementStatus.RejectedOutOfBounds:
+                    return "That does not fit inside the bag.";
+                case InventoryPlacementStatus.RejectedNoRoom:
+                    return "No room in the bag.";
+                case InventoryPlacementStatus.RejectedCannotRotate:
+                    return "That item cannot be turned.";
+                default:
+                    return "The move was refused.";
+            }
         }
 
         private void RebuildStats(in PlayerStats stats)
@@ -177,90 +539,433 @@ namespace TogetherWeFall.UI
             for (int s = 0; s < StatBlock.StatCount; s++)
             {
                 var stat = (StatKind)s;
-                _statsList.Add(MakeRow(stat.ToString(), $"{stats.Final.Get(stat):0.##}", null));
+
+                VisualElement row =
+                    MakeRow(stat.ToString(), $"{stats.Final.Get(stat):0.##}", null);
+
+                // Just under half, so two sit on a line with the wrap having
+                // somewhere to round to.
+                row.style.width = Length.Percent(48f);
+                row.style.marginRight = Length.Percent(2f);
+
+                _statsList.Add(row);
             }
         }
 
         private void RebuildSlots(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
         {
             _slotList.Clear();
+            _slotTargets.Clear();
 
             for (int i = 0; i < slots.Length; i++)
             {
                 EquippedItem slot = slots[i];
+                EquipmentSlot capturedSlot = slot.Slot;
 
                 if (!slot.HasItem)
                 {
-                    _slotList.Add(MakeRow(slot.Slot.ToString(), "empty", null));
+                    VisualElement empty = MakeRow(slot.Slot.ToString(), "empty", null);
+                    _slotList.Add(empty);
+                    _slotTargets.Add(new SlotTarget { Element = empty, Slot = capturedSlot });
                     continue;
                 }
 
-                EquipmentSlot capturedSlot = slot.Slot;
-                Button unequip = MakeButton("Unequip",
-                    () => SendRequest(EquippedItem.Empty, capturedSlot, equip: false));
+                Button unequip = MakeButton("Unequip", () => SendUnequip(capturedSlot));
 
-                _slotList.Add(MakeRow(slot.Slot.ToString(), NameOf(items, slot.ItemId), unequip));
-            }
-        }
+                VisualElement row = MakeRow(
+                    slot.Slot.ToString(), NameOf(items, slot.ItemId), unequip);
 
-        private void RebuildInventory(
-            DynamicBuffer<InventoryItem> inventory,
-            DynamicBuffer<EquippedItem> slots,
-            ItemDatabase items)
-        {
-            _inventoryList.Clear();
-
-            if (inventory.Length == 0)
-            {
-                _inventoryList.Add(MakeRow("Nothing carried", string.Empty, null));
-                return;
-            }
-
-            for (int i = 0; i < inventory.Length; i++)
-            {
-                InventoryItem entry = inventory[i];
-                int capturedId = entry.ItemId;
-
-                bool equipped = IsEquipped(slots, capturedId);
-                Button action = equipped
-                    ? null
-                    : MakeButton("Equip", () => SendRequest(capturedId, EquipmentSlot.Weapon, equip: true));
-
-                string label = NameOf(items, capturedId);
-                string detail = equipped ? $"{entry.Rarity} · equipped" : entry.Rarity.ToString();
-
-                VisualElement row = MakeRow(label, detail, action);
-                row.Q<Label>().style.color = RarityColour(entry.Rarity);
-
-                _inventoryList.Add(row);
+                _slotList.Add(row);
+                _slotTargets.Add(new SlotTarget { Element = row, Slot = capturedSlot });
             }
         }
 
         /// <summary>
-        /// Appends a request and returns. The slot travels with it only so an
-        /// unequip knows what to clear — for an equip the host reads the slot off
-        /// the item definition and ignores whatever is passed here.
+        /// Draws one element per item, sized to the cells it covers.
+        ///
+        /// The distinct items are found by walking the cell buffer rather than
+        /// with a query, because a multi-cell item appears in the buffer several
+        /// times and the buffer is sixty entries. A query per frame to learn
+        /// what is in one bag would cost more than the whole panel.
         /// </summary>
-        private void SendRequest(int itemId, EquipmentSlot slot, bool equip)
+        private void RebuildItems(
+            Entity bag,
+            DynamicBuffer<InventoryCell> cells,
+            ItemDatabase items)
         {
-            if (!TryGetCharacter(out Entity character))
+            _itemLayer.Clear();
+
+            _seen.Clear();
+
+            for (int i = 0; i < cells.Length; i++)
+            {
+                Entity item = cells[i].OccupyingItem;
+
+                if (item == Entity.Null || !_seen.Add(item))
+                    continue;
+
+                if (!_entityManager.Exists(item) ||
+                    !_entityManager.HasComponent<ItemGridPlacement>(item))
+                {
+                    continue;
+                }
+
+                ItemGridPlacement placement =
+                    _entityManager.GetComponentData<ItemGridPlacement>(item);
+                ItemInstance instance = _entityManager.GetComponentData<ItemInstance>(item);
+
+                if (!GridFit.TryGetFootprint(
+                        items, instance.ItemId, placement.IsRotated,
+                        out int width, out int height))
+                {
+                    continue;
+                }
+
+                _itemLayer.Add(MakeItem(
+                    bag, item, instance, placement, width, height, NameOf(items, instance.ItemId)));
+            }
+        }
+
+        private VisualElement MakeItem(
+            Entity bag,
+            Entity item,
+            in ItemInstance instance,
+            in ItemGridPlacement placement,
+            int width,
+            int height,
+            string label)
+        {
+            var element = new VisualElement();
+            element.style.position = Position.Absolute;
+            element.style.left = placement.OriginX * _cellSize;
+            element.style.top = placement.OriginY * _cellSize;
+            element.style.width = width * _cellSize - CellGap;
+            element.style.height = height * _cellSize - CellGap;
+            element.style.backgroundColor = Tint(instance.Rarity);
+            element.style.borderTopWidth = 1f;
+            element.style.borderBottomWidth = 1f;
+            element.style.borderLeftWidth = 1f;
+            element.style.borderRightWidth = 1f;
+
+            Color border = RarityColour(instance.Rarity);
+            element.style.borderTopColor = border;
+            element.style.borderBottomColor = border;
+            element.style.borderLeftColor = border;
+            element.style.borderRightColor = border;
+
+            element.style.justifyContent = Justify.Center;
+            element.style.alignItems = Align.Center;
+
+            var text = new Label(label);
+            text.style.color = border;
+            text.style.fontSize = 11;
+            text.style.whiteSpace = WhiteSpace.Normal;
+            text.style.unityTextAlign = TextAnchor.MiddleCenter;
+            text.pickingMode = PickingMode.Ignore;
+            element.Add(text);
+
+            Entity capturedBag = bag;
+            Entity capturedItem = item;
+            int capturedId = instance.ItemId;
+            ItemGridPlacement capturedPlacement = placement;
+
+            element.RegisterCallback<PointerDownEvent>(evt =>
+                BeginDrag(evt, element, capturedBag, capturedItem, capturedId, capturedPlacement));
+
+            element.RegisterCallback<PointerDownEvent>(OnDragRotate);
+            element.RegisterCallback<PointerMoveEvent>(OnDragMove);
+            element.RegisterCallback<PointerUpEvent>(OnDragEnd);
+
+            // Double click equips, the way it does in every game this one is
+            // trying to feel like. The drag is the interesting path; this is the
+            // one people reach for without thinking.
+            element.RegisterCallback<ClickEvent>(evt =>
+            {
+                if (evt.clickCount >= 2)
+                    SendEquip(capturedItem);
+            });
+
+            return element;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Drag and drop
+        // ─────────────────────────────────────────────────────────────────
+
+        private void BeginDrag(
+            PointerDownEvent evt,
+            VisualElement element,
+            Entity bag,
+            Entity item,
+            int itemId,
+            in ItemGridPlacement placement)
+        {
+            // Right button is rotation, handled while a drag is already running.
+            if (evt.button != 0 || _drag.Active)
+                return;
+
+            _drag = new Drag
+            {
+                Active = true,
+                Element = element,
+                Bag = bag,
+                Item = item,
+                ItemId = itemId,
+                Rotated = placement.IsRotated,
+                PointerId = evt.pointerId,
+                GrabOffset = evt.localPosition,
+
+                // Seeded with where the item already is, not with zero. A press
+                // and release with no movement in between never reaches
+                // UpdateHighlight, and an unseeded target would quietly ask the
+                // host to move the item to the top-left corner on every click.
+                TargetX = placement.OriginX,
+                TargetY = placement.OriginY,
+                Corner = new Vector2(placement.OriginX * _cellSize, placement.OriginY * _cellSize)
+            };
+
+            element.CapturePointer(evt.pointerId);
+            element.BringToFront();
+            element.style.opacity = 0.75f;
+
+            _highlight.style.display = DisplayStyle.Flex;
+            _highlight.BringToFront();
+
+            evt.StopPropagation();
+        }
+
+        private void OnDragMove(PointerMoveEvent evt)
+        {
+            if (!_drag.Active)
+                return;
+
+            Vector2 local = _gridRoot.WorldToLocal(evt.position);
+
+            // The grab offset keeps the item under the same part of itself it
+            // was picked up by, so the square it lands on is the one the player
+            // is looking at rather than the one under the cursor.
+            Vector2 corner = local - (Vector2)_drag.GrabOffset;
+
+            _drag.Corner = corner;
+            _drag.Element.style.left = corner.x;
+            _drag.Element.style.top = corner.y;
+
+            UpdateHighlight(corner);
+
+            evt.StopPropagation();
+        }
+
+        /// <summary>
+        /// Right button while dragging turns the item on its side.
+        ///
+        /// Not a key, deliberately. Pointer capture guarantees this event
+        /// reaches the element being dragged; a keyboard shortcut in a runtime
+        /// UI Toolkit panel depends on that panel holding focus, which is one
+        /// more thing that can quietly not be true. Casting is suppressed while
+        /// the panel is open, so the button is free.
+        /// </summary>
+        private void OnDragRotate(PointerDownEvent evt)
+        {
+            if (!_drag.Active || evt.button != 1)
+                return;
+
+            evt.StopPropagation();
+
+            if (!TryGetItems(out ItemDatabase items) || !GridFit.CanRotate(items, _drag.ItemId))
+            {
+                ShowMessage("That item cannot be turned.");
+                return;
+            }
+
+            _drag.Rotated = !_drag.Rotated;
+
+            if (GridFit.TryGetFootprint(
+                    items, _drag.ItemId, _drag.Rotated, out int width, out int height))
+            {
+                _drag.Element.style.width = width * _cellSize - CellGap;
+                _drag.Element.style.height = height * _cellSize - CellGap;
+            }
+
+            UpdateHighlight(_drag.Corner);
+        }
+
+        /// <summary>
+        /// Colours the square the item would land on.
+        ///
+        /// The same GridFit the host runs, with nothing written. That is the
+        /// only way a prediction is worth showing: a second implementation would
+        /// eventually disagree with the answer, and a green square followed by a
+        /// refusal is worse than no square at all.
+        /// </summary>
+        private void UpdateHighlight(Vector2 corner)
+        {
+            if (!TryGetCharacter(out _, out Entity bag) ||
+                bag == Entity.Null ||
+                !TryGetItems(out ItemDatabase items))
+            {
+                return;
+            }
+
+            InventoryGridComponent grid =
+                _entityManager.GetComponentData<InventoryGridComponent>(bag);
+            DynamicBuffer<InventoryCell> cells =
+                _entityManager.GetBuffer<InventoryCell>(bag, isReadOnly: true);
+
+            if (!GridFit.TryGetFootprint(
+                    items, _drag.ItemId, _drag.Rotated, out int width, out int height))
+            {
+                return;
+            }
+
+            int x = Mathf.RoundToInt(corner.x / _cellSize);
+            int y = Mathf.RoundToInt(corner.y / _cellSize);
+
+            _drag.TargetX = x;
+            _drag.TargetY = y;
+
+            // Shown, never acted on. The request goes out whatever colour this
+            // is: a client that refused to ask because it predicted a no would
+            // be a client whose bugs look like the host's.
+            bool fits = GridFit.Fits(cells, grid, x, y, width, height, _drag.Item);
+
+            _highlight.style.left = Mathf.Clamp(x, 0, Mathf.Max(0, grid.Width - 1)) * _cellSize;
+            _highlight.style.top = Mathf.Clamp(y, 0, Mathf.Max(0, grid.Height - 1)) * _cellSize;
+            _highlight.style.width = width * _cellSize - CellGap;
+            _highlight.style.height = height * _cellSize - CellGap;
+            _highlight.style.backgroundColor = fits
+                ? new Color(0.30f, 0.75f, 0.35f, 0.35f)
+                : new Color(0.85f, 0.25f, 0.25f, 0.35f);
+        }
+
+        private void OnDragEnd(PointerUpEvent evt)
+        {
+            if (!_drag.Active || evt.button != 0)
+                return;
+
+            evt.StopPropagation();
+
+            Entity item = _drag.Item;
+            Entity bag = _drag.Bag;
+            bool rotated = _drag.Rotated;
+            int targetX = _drag.TargetX;
+            int targetY = _drag.TargetY;
+            bool overGrid = _gridRoot.worldBound.Contains(evt.position);
+            EquipmentSlot slot = default;
+            bool overSlot = TryFindSlotUnder(evt.position, ref slot);
+
+            CancelDrag();
+
+            if (overSlot)
+            {
+                // Which slot the row was does not matter — the host reads the
+                // slot off the item definition. Landing on any of them means
+                // "wear this".
+                SendEquip(item);
+                return;
+            }
+
+            if (!overGrid)
+                return;
+
+            SendPlacement(bag, item, targetX, targetY, rotated);
+        }
+
+        /// <summary>
+        /// Ends the drag and puts the element back where the data says it is.
+        ///
+        /// The position is not restored by hand: dropping the signature forces a
+        /// rebuild from ECS on the next frame, so what the player sees comes
+        /// from the host either way — whether the move was accepted or not.
+        /// </summary>
+        private void CancelDrag()
+        {
+            if (!_drag.Active)
+                return;
+
+            if (_drag.Element != null)
+            {
+                _drag.Element.ReleasePointer(_drag.PointerId);
+                _drag.Element.style.opacity = 1f;
+            }
+
+            _highlight.style.display = DisplayStyle.None;
+            _drag = default;
+            _lastSignature = int.MinValue;
+        }
+
+        private bool TryFindSlotUnder(Vector2 position, ref EquipmentSlot slot)
+        {
+            for (int i = 0; i < _slotTargets.Count; i++)
+            {
+                if (!_slotTargets[i].Element.worldBound.Contains(position))
+                    continue;
+
+                slot = _slotTargets[i].Slot;
+                return true;
+            }
+
+            return false;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Requests. Nothing below this line changes anything — it asks.
+        // ─────────────────────────────────────────────────────────────────
+
+        private void SendPlacement(Entity bag, Entity item, int x, int y, bool rotated)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
+                return;
+
+            _entityManager.GetBuffer<InventoryPlacementRequest>(character).Add(
+                new InventoryPlacementRequest
+                {
+                    Container = bag,
+                    Item = item,
+                    Mode = InventoryPlacementMode.Exact,
+                    OriginX = x,
+                    OriginY = y,
+                    Rotated = rotated
+                });
+
+            _lastSignature = int.MinValue;
+        }
+
+        private void SendEquip(Entity item)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
                 return;
 
             _entityManager.GetBuffer<EquipRequest>(character).Add(new EquipRequest
             {
-                ItemId = itemId,
-                Slot = slot,
-                Equip = equip
+                Item = item,
+                Equip = true
             });
 
-            // Nothing is drawn differently yet. The next refresh will show
-            // whatever the host decided, which may be nothing at all.
             _lastSignature = int.MinValue;
         }
 
-        private bool TryGetCharacter(out Entity character)
+        private void SendUnequip(EquipmentSlot slot)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
+                return;
+
+            _entityManager.GetBuffer<EquipRequest>(character).Add(new EquipRequest
+            {
+                Slot = slot,
+                Equip = false
+            });
+
+            _lastSignature = int.MinValue;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Lookups
+        // ─────────────────────────────────────────────────────────────────
+
+        private bool TryGetCharacter(out Entity character, out Entity bag)
         {
             character = Entity.Null;
+            bag = Entity.Null;
 
             if (_characterQuery.IsEmptyIgnoreFilter)
                 return false;
@@ -268,6 +973,8 @@ namespace TogetherWeFall.UI
             using NativeArray<Entity> entities = _characterQuery.ToEntityArray(Allocator.Temp);
             using NativeArray<PlayerCharacter> characters =
                 _characterQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
+            using NativeArray<CarriedBag> bags =
+                _characterQuery.ToComponentDataArray<CarriedBag>(Allocator.Temp);
 
             for (int i = 0; i < characters.Length; i++)
             {
@@ -275,10 +982,22 @@ namespace TogetherWeFall.UI
                     continue;
 
                 character = entities[i];
+                bag = bags[i].Container;
                 return true;
             }
 
             return false;
+        }
+
+        private bool TryGetItems(out ItemDatabase items)
+        {
+            items = default;
+
+            if (_itemDatabaseQuery.IsEmptyIgnoreFilter)
+                return false;
+
+            items = _itemDatabaseQuery.GetSingleton<ItemDatabase>();
+            return true;
         }
 
         private static string NameOf(ItemDatabase items, int itemId)
@@ -293,36 +1012,27 @@ namespace TogetherWeFall.UI
             return item.Name.ToString();
         }
 
-        private static bool IsEquipped(DynamicBuffer<EquippedItem> slots, int itemId)
-        {
-            for (int i = 0; i < slots.Length; i++)
-            {
-                if (slots[i].ItemId == itemId)
-                    return true;
-            }
-
-            return false;
-        }
-
         /// <summary>
-        /// What the panel is showing, in one number. Version covers every stat
-        /// and slot change, because equipping is the only thing that moves them;
-        /// the inventory count and the ids cover pickups.
+        /// What the panel is showing, in one number.
+        ///
+        /// The cell buffer rather than a list of items: it covers where things
+        /// are as well as what they are, which is the whole point of a grid.
+        /// Version covers every stat and slot change.
         /// </summary>
         private static int Signature(
             in PlayerStats stats,
             DynamicBuffer<EquippedItem> slots,
-            DynamicBuffer<InventoryItem> inventory)
+            DynamicBuffer<InventoryCell> cells)
         {
             unchecked
             {
-                int hash = stats.Version * 31 + inventory.Length;
+                int hash = stats.Version * 31 + cells.Length;
 
                 for (int i = 0; i < slots.Length; i++)
                     hash = hash * 31 + slots[i].ItemId;
 
-                for (int i = 0; i < inventory.Length; i++)
-                    hash = hash * 31 + inventory[i].ItemId;
+                for (int i = 0; i < cells.Length; i++)
+                    hash = hash * 31 + cells[i].OccupyingItem.Index;
 
                 return hash;
             }
@@ -330,10 +1040,8 @@ namespace TogetherWeFall.UI
 
         private void ShowMessage(string message)
         {
-            _statsList.Clear();
-            _slotList.Clear();
-            _inventoryList.Clear();
-            _statsList.Add(MakeRow(message, string.Empty, null));
+            if (_message != null)
+                _message.text = message;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -412,6 +1120,13 @@ namespace TogetherWeFall.UI
             }
         }
 
+        /// <summary>The same colour, dimmed, so the label on top stays readable.</summary>
+        private static Color Tint(ItemRarity rarity)
+        {
+            Color colour = RarityColour(rarity);
+            return new Color(colour.r * 0.28f, colour.g * 0.28f, colour.b * 0.28f, 0.95f);
+        }
+
         private void OnDestroy()
         {
             if (!_hasWorld)
@@ -419,6 +1134,38 @@ namespace TogetherWeFall.UI
 
             _characterQuery.Dispose();
             _itemDatabaseQuery.Dispose();
+        }
+
+        /// <summary>One equipment row, and which slot dropping on it means.</summary>
+        private struct SlotTarget
+        {
+            public VisualElement Element;
+            public EquipmentSlot Slot;
+        }
+
+        /// <summary>
+        /// Everything about a drag in flight.
+        ///
+        /// A struct rather than half a dozen fields on the panel, so that ending
+        /// a drag is one assignment and there is no way to leave three of six
+        /// pieces of state behind.
+        /// </summary>
+        private struct Drag
+        {
+            public bool Active;
+            public VisualElement Element;
+            public Entity Bag;
+            public Entity Item;
+            public int ItemId;
+            public bool Rotated;
+            public int PointerId;
+            public Vector2 GrabOffset;
+
+            /// <summary>Top-left of the dragged element, in grid-local pixels.</summary>
+            public Vector2 Corner;
+
+            public int TargetX;
+            public int TargetY;
         }
     }
 }

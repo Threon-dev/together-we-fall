@@ -220,6 +220,13 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.Slot = item.Slot;
                 blob.Name = ToFixedString(item.DisplayName);
 
+                // Read through the properties rather than the fields: they clamp
+                // the size and refuse rotation on square items, and the blob is
+                // the only copy the host ever sees.
+                blob.GridWidth = item.GridWidth;
+                blob.GridHeight = item.GridHeight;
+                blob.CanRotate = item.CanRotate;
+
                 blob.BaseStats = StatBlock.Zero();
 
                 ItemStatValue[] baseStats = item.BaseStats;

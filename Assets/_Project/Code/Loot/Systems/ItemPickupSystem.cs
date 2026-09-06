@@ -1,24 +1,31 @@
 using Unity.Collections;
 using Unity.Entities;
-using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Interaction.Systems;
+using TogetherWeFall.Inventory;
 using TogetherWeFall.Player;
 
 namespace TogetherWeFall.Loot.Systems
 {
     /// <summary>
-    /// Takes an item off the floor and puts it in the inventory of whoever
-    /// picked it up.
+    /// Turns "this player reached that item" into a request to put it in their
+    /// bag.
     ///
-    /// That inventory is a buffer on the player entity — the place the flat
-    /// collected-loot list was always going to give way to. What this system
-    /// does has not changed: it writes "this player now owns this item" and
-    /// destroys what was lying on the ground. Where it writes it has.
+    /// It no longer stores anything itself. With a grid inventory there is a
+    /// question this system is in no position to answer — whether the item
+    /// actually fits — and answering it here would mean a second copy of the
+    /// placement rules. So it asks, exactly the way the UI asks when a player
+    /// drags something, and InventoryPlacementSystem gives the same answer to
+    /// both.
+    ///
+    /// The item is deliberately left lying on the floor. Taking it off the floor
+    /// is what a successful placement means, and doing it here would produce the
+    /// one outcome nobody wants: an item that vanished because the bag was full.
+    /// A full bag leaves it where it is, which is what Diablo and PoE both do,
+    /// and the player can press the key again after making room.
     ///
     /// Picking up is not a special case of interaction, it is the same case. The
-    /// resolver already decided who reached what and settled any race over it;
-    /// all that is left here is what it means for an item.
+    /// resolver already decided who reached what and settled any race over it.
     /// </summary>
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InteractionResolveSystem))]
@@ -29,7 +36,7 @@ namespace TogetherWeFall.Loot.Systems
         public void OnCreate(ref SystemState state)
         {
             _playerQuery = SystemAPI.QueryBuilder()
-                .WithAll<PlayerCharacter, InventoryItem>()
+                .WithAll<PlayerCharacter, CarriedBag, InventoryPlacementRequest>()
                 .Build();
 
             state.RequireForUpdate<ItemInstance>();
@@ -40,17 +47,16 @@ namespace TogetherWeFall.Loot.Systems
         {
             using var picked = new NativeList<PickedItem>(4, Allocator.Temp);
 
-            foreach ((RefRO<ItemInstance> item, RefRO<ItemDisplayName> name,
-                      RefRO<InteractionTriggered> trigger, Entity entity) in
-                     SystemAPI.Query<RefRO<ItemInstance>, RefRO<ItemDisplayName>,
-                         RefRO<InteractionTriggered>>()
+            foreach ((RefRO<ItemDisplayName> name, RefRO<InteractionTriggered> trigger,
+                      Entity entity) in
+                     SystemAPI.Query<RefRO<ItemDisplayName>, RefRO<InteractionTriggered>>()
+                         .WithAll<ItemInstance>()
                          .WithEntityAccess())
             {
                 picked.Add(new PickedItem
                 {
                     Entity = entity,
                     PlayerId = trigger.ValueRO.ByPlayerId,
-                    Item = item.ValueRO,
                     Name = name.ValueRO.Value
                 });
             }
@@ -58,60 +64,49 @@ namespace TogetherWeFall.Loot.Systems
             if (picked.Length == 0)
                 return;
 
-            using var taken = new NativeList<Entity>(picked.Length, Allocator.Temp);
-
-            Store(ref state, picked, taken);
-
-            // Returned to the pool rather than destroyed. Not a structural
-            // change any more, but still done last: the item is only free once
-            // it is certainly recorded.
-            if (taken.Length > 0)
-                LootItemPool.Release(state.EntityManager, taken.AsArray());
+            Request(ref state, picked);
         }
 
-        private void Store(
-            ref SystemState state, NativeList<PickedItem> picked, NativeList<Entity> taken)
+        private void Request(ref SystemState state, NativeList<PickedItem> picked)
         {
             using NativeArray<Entity> playerEntities = _playerQuery.ToEntityArray(Allocator.Temp);
             using NativeArray<PlayerCharacter> players =
                 _playerQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
+            using NativeArray<CarriedBag> bags =
+                _playerQuery.ToComponentDataArray<CarriedBag>(Allocator.Temp);
 
             for (int i = 0; i < picked.Length; i++)
             {
                 PickedItem entry = picked[i];
+
+                // The claim is consumed either way. Leaving it raised would have
+                // the resolver hand the same item over again next frame, and a
+                // refused placement would retry forever.
+                state.EntityManager.SetComponentEnabled<InteractionTriggered>(
+                    entry.Entity, false);
+
                 int player = IndexOfPlayer(players, entry.PlayerId);
 
                 if (player < 0)
                 {
-                    // No character to put it in. Release the claim so the item
-                    // stays on the floor and can be picked up again, rather than
-                    // disappearing into nothing.
-                    state.EntityManager.SetComponentEnabled<InteractionTriggered>(
-                        entry.Entity, false);
-
                     UnityEngine.Debug.LogWarning(
                         $"[ItemPickupSystem] No character for player {entry.PlayerId} — " +
                         $"{entry.Name} was left on the floor.");
                     continue;
                 }
 
-                state.EntityManager.GetBuffer<InventoryItem>(playerEntities[player])
-                    .Add(new InventoryItem
+                state.EntityManager
+                    .GetBuffer<InventoryPlacementRequest>(playerEntities[player])
+                    .Add(new InventoryPlacementRequest
                     {
-                        ItemId = entry.Item.ItemId,
-                        Rarity = entry.Item.Rarity,
+                        Container = bags[player].Container,
+                        Item = entry.Entity,
 
-                        // Carried through unchanged: an item does not become safe
-                        // by being picked up, it becomes safe by being extracted
-                        // with.
-                        RiskState = entry.Item.RiskState
+                        // Auto rather than a coordinate: the player pressed a key
+                        // next to something on the ground, they did not point at
+                        // a square.
+                        Mode = InventoryPlacementMode.Auto
                     });
-
-                taken.Add(entry.Entity);
-
-                UnityEngine.Debug.Log(
-                    $"[ItemPickupSystem] Player {entry.PlayerId} picked up " +
-                    $"{entry.Name} ({entry.Item.Rarity}).");
             }
         }
 
@@ -130,7 +125,6 @@ namespace TogetherWeFall.Loot.Systems
         {
             public Entity Entity;
             public int PlayerId;
-            public ItemInstance Item;
             public FixedString64Bytes Name;
         }
     }

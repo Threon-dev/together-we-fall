@@ -4,6 +4,7 @@ using TogetherWeFall.Combat;
 using TogetherWeFall.Dungeon;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
+using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
 using TogetherWeFall.Skills;
@@ -52,9 +53,11 @@ namespace TogetherWeFall.DebugTools
             _droppedItemQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<ItemInstance>(),
                 ComponentType.ReadOnly<InteractableTag>());
+            // Counted as items rather than summed out of a buffer: since the
+            // grid inventory a carried item is an entity, and ItemStored is
+            // exactly the flag that says somebody owns it — in a bag or worn.
             _inventoryQuery = _entityManager.CreateEntityQuery(
-                ComponentType.ReadOnly<PlayerCharacter>(),
-                ComponentType.ReadOnly<InventoryItem>());
+                ComponentType.ReadOnly<ItemStored>());
             _tallyQuery = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<CombatTally>());
             _projectileQuery =
                 _entityManager.CreateEntityQuery(ComponentType.ReadOnly<SkillProjectile>());
@@ -163,22 +166,15 @@ namespace TogetherWeFall.DebugTools
         }
 
         /// <summary>
-        /// Everything every player is carrying. Summed across characters rather
-        /// than read from one place, because the inventory lives where it
-        /// belongs — on the player it belongs to.
+        /// Everything every player owns, in a bag or worn.
+        ///
+        /// The query filters on the enabled state of ItemStored by itself, so
+        /// this is a count of items that are somebody's — the rest of the pool
+        /// is invisible to it without anybody having to subtract.
         /// </summary>
         private int CountCarried()
         {
-            if (_inventoryQuery.IsEmptyIgnoreFilter)
-                return 0;
-
-            using NativeArray<Entity> characters = _inventoryQuery.ToEntityArray(Allocator.Temp);
-
-            int total = 0;
-            for (int i = 0; i < characters.Length; i++)
-                total += _entityManager.GetBuffer<InventoryItem>(characters[i], isReadOnly: true).Length;
-
-            return total;
+            return _inventoryQuery.CalculateEntityCount();
         }
 
         private static int Signature(

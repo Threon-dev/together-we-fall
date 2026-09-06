@@ -4,6 +4,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using TogetherWeFall.Interaction;
+using TogetherWeFall.Inventory;
 
 namespace TogetherWeFall.Loot
 {
@@ -29,6 +30,14 @@ namespace TogetherWeFall.Loot
     /// InteractableTag being enableable is what makes an idle item free: it
     /// already meant "this can be picked up right now", so a pooled item is a
     /// state the interaction resolver was written to ignore.
+    ///
+    /// Since the grid inventory, a carried item is the same entity as the drop
+    /// it came from — picking something up no longer returns it here. So free
+    /// now means two flags down rather than one: not on the floor
+    /// (InteractableTag) and not owned by anybody (ItemStored). The pool size is
+    /// therefore the ceiling on every item that exists at once, in the world and
+    /// in every bag, which is the same bargain the enemy pool makes with
+    /// MaxAlive.
     /// </summary>
     public struct LootItemPool
     {
@@ -69,6 +78,11 @@ namespace TogetherWeFall.Loot
 
                 entityManager.SetComponentEnabled<InteractionTriggered>(item, false);
 
+                entityManager.SetComponentData(item, new ItemGridPlacement
+                {
+                    ContainerEntity = Entity.Null
+                });
+
                 // Last, for the same reason as everywhere else: the moment this
                 // goes up the resolver can hand it to somebody.
                 entityManager.SetComponentEnabled<InteractableTag>(item, true);
@@ -77,19 +91,55 @@ namespace TogetherWeFall.Loot
             return count;
         }
 
+        /// <summary>
+        /// Takes an item off the floor and into somebody's keeping.
+        ///
+        /// Not a release: the entity is still very much in use, it just has no
+        /// presence in the world any more. Parked rather than scaled away for
+        /// the same reason as everything else in a pool — a degenerate mesh is
+        /// still submitted, and a kilometre below the floor is culled.
+        ///
+        /// Deliberately does NOT write the placement. Where an item sits in a
+        /// grid is GridFit's business, and this is called after that has already
+        /// been decided.
+        /// </summary>
+        public static void Store(EntityManager entityManager, Entity item)
+        {
+            Park(entityManager, item);
+
+            entityManager.SetComponentEnabled<InteractableTag>(item, false);
+            entityManager.SetComponentEnabled<InteractionTriggered>(item, false);
+            entityManager.SetComponentEnabled<ItemStored>(item, true);
+        }
+
         public static void Release(EntityManager entityManager, in NativeArray<Entity> taken)
         {
             for (int i = 0; i < taken.Length; i++)
             {
-                LocalTransform transform =
-                    entityManager.GetComponentData<LocalTransform>(taken[i]);
-
-                transform.Position = new float3(0f, ParkDepth, 0f);
-                entityManager.SetComponentData(taken[i], transform);
+                Park(entityManager, taken[i]);
 
                 entityManager.SetComponentEnabled<InteractableTag>(taken[i], false);
                 entityManager.SetComponentEnabled<InteractionTriggered>(taken[i], false);
+
+                // Both flags, or the pool query would never see it again and the
+                // item would leak out of a fixed pool one drop at a time.
+                entityManager.SetComponentEnabled<ItemStored>(taken[i], false);
+
+                entityManager.SetComponentData(taken[i], new ItemGridPlacement
+                {
+                    ContainerEntity = Entity.Null
+                });
             }
+        }
+
+        private static void Park(EntityManager entityManager, Entity item)
+        {
+            // Read, move, write: the scale was baked and is none of this
+            // method's business.
+            LocalTransform transform = entityManager.GetComponentData<LocalTransform>(item);
+
+            transform.Position = new float3(0f, ParkDepth, 0f);
+            entityManager.SetComponentData(item, transform);
         }
     }
 }

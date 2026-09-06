@@ -14,3 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Cracked Dagger
   _rarity: 0
+  _gridWidth: 1
+  _gridHeight: 2
+  _canRotate: 0

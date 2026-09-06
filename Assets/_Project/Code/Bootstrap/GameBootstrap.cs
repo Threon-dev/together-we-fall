@@ -64,11 +64,19 @@ namespace TogetherWeFall.Bootstrap
             _positionPublisher.Initialize();
             _spawnTrigger.Initialize();
 
-            if (_actionPublisher != null)
-                _actionPublisher.Initialize(_input, _positionPublisher.PlayerId);
-
             if (_inventoryUI != null)
                 _inventoryUI.Initialize(_input, _positionPublisher.PlayerId);
+
+            // The panel does not reach into the publisher; the publisher is
+            // handed a question to ask. Wiring in one direction from one place
+            // is the whole reason this class exists.
+            if (_actionPublisher != null)
+            {
+                _actionPublisher.Initialize(
+                    _input,
+                    _positionPublisher.PlayerId,
+                    _inventoryUI != null ? () => _inventoryUI.IsCapturingInput : (System.Func<bool>)null);
+            }
 
             // After the camera, because the presenter shakes it.
             if (_vfxPresenter != null)

@@ -25,6 +25,7 @@ namespace TogetherWeFall.Player
     public sealed class PlayerActionPublisher : MonoBehaviour
     {
         private PlayerInputReader _input;
+        private System.Func<bool> _uiCapturesInput;
         private EntityManager _entityManager;
         private EntityQuery _interactionQuery;
         private EntityQuery _skillEventsQuery;
@@ -36,10 +37,20 @@ namespace TogetherWeFall.Player
         /// one answer to "which player is this" per GameObject, not two that can
         /// drift apart.
         /// </summary>
-        public void Initialize(PlayerInputReader input, int playerId)
+        /// <param name="uiCapturesInput">
+        /// Asked every frame whether a panel is currently taking the player's
+        /// clicks. Optional, and a delegate rather than a reference to the
+        /// inventory: this file has no business knowing which panel, or that a
+        /// panel is what did it. In a networked build the answer stays local —
+        /// a client suppressing its own commands is the one kind of throttling
+        /// that is nobody else's business.
+        /// </param>
+        public void Initialize(
+            PlayerInputReader input, int playerId, System.Func<bool> uiCapturesInput = null)
         {
             _input = input;
             _playerId = playerId;
+            _uiCapturesInput = uiCapturesInput;
 
             World world = World.DefaultGameObjectInjectionWorld;
             if (world == null || !world.IsCreated)
@@ -64,6 +75,11 @@ namespace TogetherWeFall.Player
         private void Update()
         {
             if (!_hasWorld || _input == null)
+                return;
+
+            // Dragging an item is a left click, and so is the first skill.
+            // Without this, tidying the bag empties the cooldowns too.
+            if (_uiCapturesInput != null && _uiCapturesInput())
                 return;
 
             PublishInteraction();

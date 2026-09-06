@@ -3,6 +3,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using TogetherWeFall.Interaction;
+using TogetherWeFall.Inventory;
 using TogetherWeFall.Equipment;
 using Random = Unity.Mathematics.Random;
 
@@ -29,11 +30,13 @@ namespace TogetherWeFall.Loot.Systems
 
         public void OnCreate(ref SystemState state)
         {
-            // The pool, seen from the other side: every item not currently
-            // lying on the floor.
+            // The pool, seen from the other side: every item that is neither
+            // lying on the floor nor in somebody's keeping. Both conditions, or
+            // a chest would happily re-roll an item out of a player's bag.
             _freeItemQuery = SystemAPI.QueryBuilder()
                 .WithAll<ItemInstance>()
                 .WithDisabled<InteractableTag>()
+                .WithDisabled<ItemStored>()
                 .Build();
 
             state.RequireForUpdate<LootDatabase>();

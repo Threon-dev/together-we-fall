@@ -1,6 +1,7 @@
 using Unity.Entities;
 using UnityEngine;
 using TogetherWeFall.Config;
+using TogetherWeFall.Inventory;
 
 namespace TogetherWeFall.Equipment.Authoring
 {
@@ -51,6 +52,15 @@ namespace TogetherWeFall.Equipment.Authoring
                 }
 
                 AddComponent(entity, new CharacterBaseStats { Value = stats });
+
+                // On the same entity as the stats, because it is the same kind
+                // of number: what a character is, authored, rather than how fast
+                // the simulation should run.
+                AddComponent(entity, new CharacterInventorySize
+                {
+                    Width = authoring.Config.BagWidth,
+                    Height = authoring.Config.BagHeight
+                });
             }
         }
     }
