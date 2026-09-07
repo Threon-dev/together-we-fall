@@ -1573,7 +1573,8 @@ namespace TogetherWeFall.UI
 
             if (!socket.IsEmpty &&
                 GemSockets.TryDescribeGem(
-                    _entityManager, items, socket.InsertedGem, out GemKind kind, out _, out _))
+                    _entityManager, items, socket.InsertedGem,
+                    out GemKind kind, out _, out SkillModifierBlob support))
             {
                 int itemId = _entityManager.GetComponentData<ItemInstance>(socket.InsertedGem).ItemId;
                 ItemRarity rarity = RarityOf(items, itemId);
@@ -1581,10 +1582,15 @@ namespace TogetherWeFall.UI
                 border = RarityColour(rarity);
                 cell.style.backgroundColor = Tint(rarity);
 
-                // One letter, because a socket cell is twenty pixels across and
-                // the only thing worth reading at that size is whether this hole
-                // casts something or changes something.
-                mark.text = kind == GemKind.Active ? "A" : "S";
+                // One letter, because a socket cell is twenty pixels across
+                // and that is what fits. An active gem says so; a support says
+                // WHEN it acts, which is the thing a player has to know to
+                // arrange them — a fork that splits on impact and a multicast
+                // that fires three at once are both "support" and behave
+                // nothing alike.
+                mark.text = kind == GemKind.Active
+                    ? "A"
+                    : SkillModifiers.Marker(SkillModifiers.PhaseOf(support.Kind));
                 mark.style.color = border;
 
                 Entity capturedGem = socket.InsertedGem;
