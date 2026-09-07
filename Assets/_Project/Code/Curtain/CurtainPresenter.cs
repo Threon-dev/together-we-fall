@@ -49,8 +49,13 @@ namespace TogetherWeFall.Curtain
             }
 
             _entityManager = world.EntityManager;
+            // Both, and CurtainState is the one that matters: GetSingleton<T>
+            // only reaches components the query actually declares, so a query
+            // built on the marker alone finds the entity and then refuses to
+            // read anything off it.
             _curtainQuery = _entityManager.CreateEntityQuery(
-                ComponentType.ReadWrite<CurtainSingleton>());
+                ComponentType.ReadOnly<CurtainSingleton>(),
+                ComponentType.ReadOnly<CurtainState>());
 
             if (_document == null)
             {

@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Entities;
 using TogetherWeFall.Equipment;
+using TogetherWeFall.Interaction;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;

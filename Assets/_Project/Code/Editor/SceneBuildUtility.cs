@@ -322,8 +322,9 @@ namespace TogetherWeFall.EditorTools
         /// into the SubScene with the rest: without baking there is no blob, and
         /// without the blob nothing can be cast.
         ///
-        /// The whole list is also the loadout, in order — four skills, four
-        /// bindings, so every base effect is one button away.
+        /// It no longer sets a starting loadout. Skills live in gems now, so
+        /// what a character can cast is decided by what is socketed — the list
+        /// here is the catalogue of what exists, not a choice about anybody.
         /// </summary>
         public static GameObject CreateSkillDatabase(
             SkillDefinition[] skills, GameObject projectilePrefab)
@@ -335,16 +336,10 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_projectilePrefab").objectReferenceValue = projectilePrefab;
 
             SerializedProperty list = serialized.FindProperty("_skills");
-            SerializedProperty loadout = serialized.FindProperty("_defaultLoadout");
-
             list.arraySize = skills.Length;
-            loadout.arraySize = skills.Length;
 
             for (int i = 0; i < skills.Length; i++)
-            {
                 list.GetArrayElementAtIndex(i).objectReferenceValue = skills[i];
-                loadout.GetArrayElementAtIndex(i).objectReferenceValue = skills[i];
-            }
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
