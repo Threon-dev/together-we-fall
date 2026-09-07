@@ -118,6 +118,8 @@ namespace TogetherWeFall.Player.Systems
                 typeof(EquippedItem),
                 typeof(EquipRequest),
                 typeof(EquipResult),
+                typeof(SocketRequest),
+                typeof(SocketResult),
                 typeof(CarriedBag),
                 typeof(InventoryPlacementRequest),
                 typeof(InventoryPlacementResult),

@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ffb4fefb0131f7842b57ce61080aa413, type: 3}
+  m_Name: GemSplinterBolt
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
+  _displayName: Splinter Bolt Gem
+  _rarity: 1
+  _slot: 0
+  _isTwoHanded: 0
+  _gemKind: 1
+  _gemSkill: {fileID: 11400000, guid: a7c5d9db9d7e0f142a31bf9dae068cbb, type: 2}
+  _gemSupport: {fileID: 0}
+  _socketCount: 0
+  _linkGroups: []
+  _gridWidth: 1
+  _gridHeight: 1
+  _canRotate: 0

@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Entities;
 using TogetherWeFall.Loot;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Equipment
 {
@@ -41,6 +42,34 @@ namespace TogetherWeFall.Equipment
 
         /// <summary>Needs both hands: blocks the off hand while worn.</summary>
         public bool IsTwoHanded;
+
+        /// <summary>
+        /// What this item is when it goes in a hole rather than on a body.
+        ///
+        /// None for everything that is not a gem, which is almost everything.
+        /// The two fields below are only meaningful for the matching kind, and
+        /// the baker leaves them at zero otherwise rather than at something that
+        /// looks usable.
+        /// </summary>
+        public GemKind GemKind;
+
+        /// <summary>The skill an Active gem casts, by stable id. Zero for the rest.</summary>
+        public int GemSkillId;
+
+        /// <summary>What a Support gem does. Flat, so it may be copied freely.</summary>
+        public SkillModifierBlob GemSupport;
+
+        /// <summary>How many holes this gear has.</summary>
+        public int SocketCount;
+
+        /// <summary>
+        /// The link group of each socket, in order.
+        ///
+        /// A FixedList rather than a second BlobArray: six is the ceiling, the
+        /// values are bytes, and a blob array would be another pointer to get
+        /// wrong in a struct that already must never be copied.
+        /// </summary>
+        public FixedList32Bytes<byte> LinkGroups;
 
         /// <summary>
         /// How many cells the item covers in a container, unrotated. Rotating

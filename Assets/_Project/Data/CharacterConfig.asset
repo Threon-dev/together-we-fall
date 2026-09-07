@@ -23,3 +23,11 @@ MonoBehaviour:
     _value: 100
   - _stat: 4
     _value: 6
+  _starterItems:
+  - {fileID: 11400000, guid: 246e25928a6933490af8a2d5331769d7, type: 2}
+  - {fileID: 11400000, guid: 31507ac2ca2cb5e45870ca025eab317a, type: 2}
+  - {fileID: 11400000, guid: 799f4d104f5785de7c1218fcbbc66456, type: 2}
+  - {fileID: 11400000, guid: ea2fe8f703c186f6b4cf99dfe687f72c, type: 2}
+  - {fileID: 11400000, guid: b1c0c0ab67a57f5be47cd7f82d310c00, type: 2}
+  - {fileID: 11400000, guid: 754b124123d4c4e80101dba0870edad7, type: 2}
+  - {fileID: 11400000, guid: 740c2034aaee95c027cc9f4c1822d033, type: 2}

@@ -93,6 +93,28 @@ namespace TogetherWeFall.Config
         [Header("Affixes")]
         [SerializeField] private ItemAffix[] _affixes = Array.Empty<ItemAffix>();
 
+        [Header("Skill gem")]
+        [Tooltip("What this item is when socketed. None for ordinary gear.")]
+        [SerializeField] private GemKind _gemKind = GemKind.None;
+
+        [Tooltip("The skill an Active gem casts.")]
+        [SerializeField] private SkillDefinition _gemSkill;
+
+        [Tooltip("The modifier a Support gem applies to every active linked " +
+                 "to it.")]
+        [SerializeField] private SkillModifier _gemSupport;
+
+        [Header("Sockets")]
+        [Tooltip("Holes in this piece of gear. Fixed per item — rolling them " +
+                 "per drop is a feature of its own on top of this one.")]
+        [SerializeField, Range(0, 6)] private int _socketCount;
+
+        [Tooltip("Which link group each socket belongs to, one entry per " +
+                 "socket. Supports affect the actives sharing their group: " +
+                 "[0,0,1,1,1] is a pair and a triple. Left short, every socket " +
+                 "falls into group zero, which links them all.")]
+        [SerializeField] private int[] _linkGroups = Array.Empty<int>();
+
         [Header("Inventory footprint")]
         [Tooltip("How many cells wide the item is in the bag. A sword is 1x3, " +
                  "a breastplate 2x3, a ring 1x1.")]
@@ -131,6 +153,48 @@ namespace TogetherWeFall.Config
         /// amulet that quietly empties the off hand.
         /// </summary>
         public bool IsTwoHanded => _isTwoHanded && _slot == EquipmentSlot.MainHand;
+
+        /// <summary>
+        /// What kind of gem this is. Named GemType rather than GemKind so the
+        /// enum stays reachable by name inside this class.
+        /// </summary>
+        public GemKind GemType => _gemKind;
+
+        /// <summary>
+        /// The skill an Active gem casts, as a stable id rather than an index.
+        ///
+        /// An id because the item database and the skill database are baked by
+        /// two different authoring objects that share no ordering. The same
+        /// reason item ids are FNV hashes of a name and not array positions —
+        /// and the same guarantee: it survives a reorder, a re-bake and two
+        /// separate processes.
+        /// </summary>
+        public int GemSkillId =>
+            _gemKind == GemKind.Active && _gemSkill != null
+                ? ComputeId(_gemSkill.DisplayName)
+                : 0;
+
+        /// <summary>The modifier a Support gem carries, or null.</summary>
+        public SkillModifier GemSupportModifier =>
+            _gemKind == GemKind.Support ? _gemSupport : null;
+
+        public int SocketCount => Mathf.Clamp(_socketCount, 0, 6);
+
+        /// <summary>
+        /// Which link group a socket belongs to.
+        ///
+        /// Zero when the layout says nothing, which puts every socket in one
+        /// group and links them all. That is the friendly default: an author who
+        /// sets a socket count and forgets the groups gets a fully linked item
+        /// rather than one where nothing supports anything.
+        /// </summary>
+        public int LinkGroupOf(int socketIndex)
+        {
+            if (_linkGroups == null || socketIndex < 0 || socketIndex >= _linkGroups.Length)
+                return 0;
+
+            return Mathf.Max(0, _linkGroups[socketIndex]);
+        }
 
         /// <summary>
         /// Every slot this item may go in, as a bitmask.

@@ -62,6 +62,15 @@ namespace TogetherWeFall.Config
 
         public string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? name : _displayName;
 
+        /// <summary>
+        /// What an active gem refers to this skill by.
+        ///
+        /// The same FNV hash items use, for the same reason: the item database
+        /// and the skill database are baked by two authoring objects that share
+        /// no ordering, so an index would mean whichever happened to be first.
+        /// </summary>
+        public int SkillId => ItemDefinition.ComputeId(DisplayName);
+
         public SkillEffectKind Effect => _effect;
         public DamageType DamageType => _damageType;
 

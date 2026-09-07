@@ -2,6 +2,7 @@ using Unity.Entities;
 using UnityEngine;
 using TogetherWeFall.Config;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Skills.Systems;
 
 namespace TogetherWeFall.Equipment.Authoring
 {
@@ -61,6 +62,24 @@ namespace TogetherWeFall.Equipment.Authoring
                     Width = authoring.Config.BagWidth,
                     Height = authoring.Config.BagHeight
                 });
+
+                // Item ids rather than references: a system cannot hold a
+                // managed asset, and the id is the same one the item database
+                // is addressed by.
+                DynamicBuffer<StarterItem> kit = AddBuffer<StarterItem>(entity);
+                ItemDefinition[] starter = authoring.Config.StarterItems;
+
+                if (starter == null)
+                    return;
+
+                for (int i = 0; i < starter.Length; i++)
+                {
+                    if (starter[i] == null)
+                        continue;
+
+                    DependsOn(starter[i]);
+                    kit.Add(new StarterItem { ItemId = starter[i].ItemId });
+                }
             }
         }
     }

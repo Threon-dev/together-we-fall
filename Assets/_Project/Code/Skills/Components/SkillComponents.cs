@@ -2,6 +2,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using TogetherWeFall.Combat;
+using TogetherWeFall.Equipment;
 
 namespace TogetherWeFall.Skills
 {
@@ -94,22 +95,32 @@ namespace TogetherWeFall.Skills
     }
 
     /// <summary>
-    /// One skill a character can cast, and when it is next available.
+    /// One hotkey, and the socket it casts from.
     ///
-    /// Cooldown lives per slot rather than per skill definition, because two
-    /// characters casting the same skill are on their own timers.
+    /// This is the skill bar from the gem model: a slot names a piece of gear
+    /// and a hole in it, never a skill. What it casts is whatever active gem is
+    /// sitting in that hole right now, looked up at the moment of casting.
+    ///
+    /// Deliberately no cached skill index. A cached one would be a second
+    /// answer to "what does this key do", and the instant a gem is pulled out
+    /// the two would disagree until somebody remembered to invalidate it. An
+    /// emptied socket simply casts nothing, and needs no repair.
+    ///
+    /// The cooldown lives here rather than on the gem, because two characters
+    /// casting the same skill are on their own timers — and because a gem moved
+    /// to another weapon should not carry a spent cooldown with it.
     /// </summary>
     [InternalBufferCapacity(4)]
     public struct SkillSlot : IBufferElementData
     {
-        /// <summary>Index into the skill database, or Empty.</summary>
-        public int SkillIndex;
+        /// <summary>The gear holding the socket, or Entity.Null for an empty key.</summary>
+        public Entity Gear;
+
+        public int SocketIndex;
 
         public float CooldownRemaining;
 
-        public const int Empty = -1;
-
-        public bool HasSkill => SkillIndex != Empty;
+        public bool HasBinding => Gear != Entity.Null;
     }
 
     /// <summary>The loadout a character starts with, baked beside the skill database.</summary>

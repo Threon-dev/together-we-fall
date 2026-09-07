@@ -5,6 +5,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using TogetherWeFall.Config;
 using TogetherWeFall.Equipment;
+using TogetherWeFall.Skills;
 using Random = Unity.Mathematics.Random;
 
 namespace TogetherWeFall.Loot.Authoring
@@ -213,6 +214,30 @@ namespace TogetherWeFall.Loot.Authoring
                 return builder.CreateBlobAssetReference<ItemDatabaseBlob>(Allocator.Persistent);
             }
 
+            /// <summary>
+            /// What a support gem carries, as flat numbers.
+            ///
+            /// The triggered skill travels as an id for the same reason the
+            /// gem's own skill does: this baker has no idea what order the skill
+            /// database put things in, and does not need to.
+            /// </summary>
+            private static SkillModifierBlob BuildSupport(SkillModifier modifier)
+            {
+                if (modifier == null)
+                    return default;
+
+                return new SkillModifierBlob
+                {
+                    Kind = modifier.Kind,
+                    Value = modifier.Value,
+                    SecondaryValue = modifier.SecondaryValue,
+                    ConvertTo = modifier.ConvertTo,
+                    TriggeredSkillId = modifier.TriggeredSkill != null
+                        ? ItemDefinition.ComputeId(modifier.TriggeredSkill.DisplayName)
+                        : 0
+                };
+            }
+
             private static void BuildItem(BlobBuilder builder, ref ItemBlob blob, ItemDefinition item)
             {
                 blob.ItemId = item.ItemId;
@@ -225,6 +250,20 @@ namespace TogetherWeFall.Loot.Authoring
                 // is the only copy the host ever sees.
                 blob.AllowedSlots = item.AllowedSlots;
                 blob.IsTwoHanded = item.IsTwoHanded;
+
+                blob.GemKind = item.GemType;
+                blob.GemSkillId = item.GemSkillId;
+                blob.GemSupport = BuildSupport(item.GemSupportModifier);
+
+                blob.SocketCount = item.SocketCount;
+                blob.LinkGroups = new FixedList32Bytes<byte>();
+
+                for (int socket = 0; socket < item.SocketCount; socket++)
+                {
+                    // Clamped to a byte because a link group is a small label,
+                    // not a number anybody does arithmetic on.
+                    blob.LinkGroups.Add((byte)Mathf.Clamp(item.LinkGroupOf(socket), 0, 255));
+                }
 
                 // Read through the properties rather than the fields: they clamp
                 // the size and refuse rotation on square items, and the blob is

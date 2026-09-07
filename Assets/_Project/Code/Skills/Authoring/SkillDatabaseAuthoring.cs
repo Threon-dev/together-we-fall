@@ -199,7 +199,7 @@ namespace TogetherWeFall.Skills.Authoring
                 Object context)
             {
                 if (modifier.Kind != SkillModifierKind.TriggerOnHit)
-                    return -1;
+                    return 0;
 
                 SkillDefinition triggered = modifier.TriggeredSkill;
 
@@ -208,7 +208,7 @@ namespace TogetherWeFall.Skills.Authoring
                     Debug.LogWarning(
                         $"[{nameof(SkillDatabaseAuthoring)}] Support '{modifier.name}' triggers " +
                         "nothing — no skill assigned.", context);
-                    return -1;
+                    return 0;
                 }
 
                 if (triggered == host)
@@ -219,17 +219,19 @@ namespace TogetherWeFall.Skills.Authoring
                         "not what was meant.", context);
                 }
 
-                int index = IndexOf(skills, triggered);
-
-                if (index < 0)
+                if (IndexOf(skills, triggered) < 0)
                 {
                     Debug.LogError(
                         $"[{nameof(SkillDatabaseAuthoring)}] Support '{modifier.name}' triggers " +
-                        $"'{triggered.DisplayName}', which is not in the skills list — it has no " +
-                        "index to be cast by, so the trigger will do nothing.", context);
+                        $"'{triggered.DisplayName}', which is not in the skills list — nothing " +
+                        "will resolve that id at runtime, so the trigger will do nothing.",
+                        context);
                 }
 
-                return index;
+                // The id, not the index: a support can arrive from a gem baked
+                // by a different authoring object, and every consumer resolves
+                // ids the same way.
+                return triggered.SkillId;
             }
 
             private static void BuildSkill(
@@ -249,6 +251,7 @@ namespace TogetherWeFall.Skills.Authoring
                 }
 
                 blob.Name = ToFixedString(skill.DisplayName);
+                blob.SkillId = skill.SkillId;
                 blob.Effect = skill.Effect;
                 blob.Type = skill.DamageType;
                 blob.BaseDamage = skill.BaseDamage;
@@ -285,7 +288,7 @@ namespace TogetherWeFall.Skills.Authoring
                         Value = modifiers[m].Value,
                         SecondaryValue = modifiers[m].SecondaryValue,
                         ConvertTo = modifiers[m].ConvertTo,
-                        TriggeredSkillIndex = ResolveTrigger(modifiers[m], skill, skills, context)
+                        TriggeredSkillId = ResolveTrigger(modifiers[m], skill, skills, context)
                     };
 
                     cursor++;

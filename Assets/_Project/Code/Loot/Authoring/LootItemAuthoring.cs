@@ -3,6 +3,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using UnityEngine;
 using TogetherWeFall.Config;
+using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Inventory;
 
@@ -73,6 +74,12 @@ namespace TogetherWeFall.Loot.Authoring
                 {
                     ContainerEntity = Entity.Null
                 });
+
+                // Empty at bake time and filled from the item's layout when one
+                // is handed out of the pool. Every item carries the buffer even
+                // though most have no sockets: the alternative is adding it at
+                // runtime, which is a structural change per drop.
+                AddBuffer<GearSocket>(entity);
 
                 AddComponent(entity, new URPMaterialPropertyBaseColor
                 {

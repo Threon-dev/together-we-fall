@@ -29,6 +29,13 @@ namespace TogetherWeFall.Config
             new ItemStatValue(StatKind.MoveSpeed, 6f)
         };
 
+        [Header("Starting kit")]
+        [Tooltip("What a new character is handed. The first entry is the gear " +
+                 "the rest are socketed into, in order — so the layout of its " +
+                 "link groups decides which skills end up supported.")]
+        [SerializeField] private ItemDefinition[] _starterItems =
+            System.Array.Empty<ItemDefinition>();
+
         [Header("Bag")]
         [Tooltip("How many cells wide the carried bag is. Twelve by five is the " +
                  "Path of Exile bag; it is here rather than in the simulation " +
@@ -39,6 +46,8 @@ namespace TogetherWeFall.Config
         [SerializeField, Range(3, 12)] private int _bagHeight = 5;
 
         public ItemStatValue[] BaseStats => _baseStats;
+
+        public ItemDefinition[] StarterItems => _starterItems;
 
         public int BagWidth => _bagWidth;
         public int BagHeight => _bagHeight;

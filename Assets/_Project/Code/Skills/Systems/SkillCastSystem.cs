@@ -175,11 +175,28 @@ namespace TogetherWeFall.Skills.Systems
 
             // The cooldown is the host's answer, not the client's. A client that
             // spams the button gets exactly as many casts as it is owed.
-            if (!slot.HasSkill || slot.CooldownRemaining > 0f || !skills.IsValidIndex(slot.SkillIndex))
+            if (!slot.HasBinding || slot.CooldownRemaining > 0f)
                 return;
 
+            // What this key casts is whatever is in the socket right now. An
+            // empty socket, an unequipped weapon or a support gem where an
+            // active should be all come out the same way: nothing happens.
+            ItemDatabase items = SystemAPI.GetSingleton<ItemDatabase>();
+
+            if (!GemSockets.TryResolveActive(
+                    state.EntityManager, items, skills, slot.Gear, slot.SocketIndex,
+                    out int skillIndex, out int linkGroup))
+            {
+                return;
+            }
+
+            // The build, gathered fresh. The same gem beside different supports
+            // is a different skill, and this is the line where that happens.
+            FixedList128Bytes<SkillModifierBlob> supports =
+                GemSockets.GatherSupports(state.EntityManager, items, slot.Gear, linkGroup);
+
             StatBlock stats = state.EntityManager.GetComponentData<PlayerStats>(character).Final;
-            ResolvedSkill resolved = skills.Resolve(slot.SkillIndex, stats);
+            ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports);
 
             var context = new CastContext
             {
@@ -252,7 +269,13 @@ namespace TogetherWeFall.Skills.Systems
                 ? state.EntityManager.GetComponentData<PlayerStats>(character).Final
                 : StatBlock.Zero();
 
-            ResolvedSkill resolved = skills.Resolve(cast.SkillIndex, stats);
+            // Innate supports only. A triggered skill has no socket of its own
+            // to look at — the link group that caused this lives on gear that a
+            // projectile in flight deliberately does not remember. Carrying it
+            // through is the natural next step and is a change to three structs,
+            // not to this line.
+            ResolvedSkill resolved = skills.Resolve(
+                cast.SkillIndex, stats, new FixedList128Bytes<SkillModifierBlob>());
 
             resolved.Damage *= cast.DamageScale;
             resolved.ExplosionDamage *= cast.DamageScale;

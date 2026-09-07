@@ -13,11 +13,13 @@ namespace TogetherWeFall.Skills
         public float Value;
 
         /// <summary>
-        /// Skill this support triggers, or -1. An index rather than a reference
-        /// because a blob cannot hold one, and because the index is what the
-        /// cast system needs anyway.
+        /// Skill this support triggers, by stable id, or zero for none.
+        ///
+        /// An id rather than an index because a support can now arrive from a
+        /// gem, and the item baker has no idea what order the skill database
+        /// ended up in. Resolve turns it into an index once, at cast time.
         /// </summary>
-        public int TriggeredSkillIndex;
+        public int TriggeredSkillId;
 
         /// <summary>Second number, where one is not enough. See SkillModifier.</summary>
         public float SecondaryValue;
@@ -34,6 +36,9 @@ namespace TogetherWeFall.Skills
     public struct SkillBlob
     {
         public FixedString64Bytes Name;
+
+        /// <summary>What an active gem names this skill by.</summary>
+        public int SkillId;
         public SkillEffectKind Effect;
         public DamageType Type;
 
@@ -55,6 +60,15 @@ namespace TogetherWeFall.Skills
         public float ChainRange;
         public float ChainDelay;
 
+        /// <summary>
+        /// Supports authored onto the skill itself.
+        ///
+        /// These are now INNATE behaviour rather than the build: a skill that is
+        /// meant to chain by its nature says so here. Everything a player
+        /// chooses arrives from gems in the same link group and is folded on top
+        /// of these. Emptying this array on an asset is all it takes to make a
+        /// skill purely what its gems say it is.
+        /// </summary>
         public BlobArray<SkillModifierBlob> Modifiers;
     }
 
@@ -125,85 +139,161 @@ namespace TogetherWeFall.Skills
         public bool IsValidIndex(int index)
             => Value.IsCreated && index >= 0 && index < Value.Value.Skills.Length;
 
+        /// <summary>
+        /// Index of a skill by its stable id, or -1.
+        ///
+        /// A scan rather than a binary search: there are four skills, and
+        /// sorting the database by id would scramble the order the loadout and
+        /// the content factory both address it by.
+        /// </summary>
+        public int IndexOf(int skillId)
+        {
+            if (!Value.IsCreated || skillId == 0)
+                return -1;
+
+            ref SkillDatabaseBlob blob = ref Value.Value;
+
+            for (int i = 0; i < blob.Skills.Length; i++)
+            {
+                if (blob.Skills[i].SkillId == skillId)
+                    return i;
+            }
+
+            return -1;
+        }
+
         public FixedString64Bytes NameOf(int index)
             => IsValidIndex(index) ? Value.Value.Skills[index].Name : default;
 
         /// <summary>
+        /// Everything the supports of one cast add up to, before the maths.
+        ///
+        /// Its own struct so that innate supports and gem supports run through
+        /// exactly the same code. Two loops with the same body is how the two
+        /// sources start disagreeing about what Multicast means.
+        /// </summary>
+        private struct Fold
+        {
+            public float IncreasedDamage;
+            public float IncreasedArea;
+            public float IncreasedSpeed;
+
+            public int Chains;
+            public int Forks;
+            public int Casts;
+
+            public DamageType Type;
+            public float ExplosionRadius;
+            public float ExplosionShare;
+
+            public int TriggerId;
+            public float TriggerShare;
+        }
+
+        private static void Accumulate(in SkillModifierBlob modifier, ref Fold fold)
+        {
+            switch (modifier.Kind)
+            {
+                case SkillModifierKind.IncreasedDamage:
+                    fold.IncreasedDamage += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedArea:
+                    fold.IncreasedArea += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedProjectileSpeed:
+                    fold.IncreasedSpeed += modifier.Value;
+                    break;
+
+                case SkillModifierKind.AddedChains:
+                    fold.Chains += (int)modifier.Value;
+                    break;
+
+                case SkillModifierKind.Fork:
+                    fold.Forks += (int)math.max(1f, modifier.Value);
+                    break;
+
+                case SkillModifierKind.Multicast:
+                    fold.Casts += (int)math.max(1f, modifier.Value);
+                    break;
+
+                case SkillModifierKind.ElementalConversion:
+                    fold.Type = modifier.ConvertTo;
+                    break;
+
+                case SkillModifierKind.ExplodeOnKill:
+                    fold.ExplosionRadius = math.max(fold.ExplosionRadius, modifier.Value);
+                    fold.ExplosionShare = math.max(fold.ExplosionShare, modifier.SecondaryValue);
+                    break;
+
+                case SkillModifierKind.TriggerOnHit:
+                    // Two trigger supports in one group: the last one folded
+                    // wins. Firing both would double every effect downstream of
+                    // it, which is not what anyone means by socketing two.
+                    fold.TriggerId = modifier.TriggeredSkillId;
+                    fold.TriggerShare = modifier.Value;
+                    break;
+            }
+        }
+
+        /// <summary>
         /// Folds supports and the caster's stats into the numbers one cast uses.
+
+        /// <para>
+        /// The supports arrive as an argument rather than being read off the
+        /// skill, and that is the whole gem model: the same active gem folds a
+        /// different list depending on what is socketed beside it. Nothing below
+        /// this line knows the numbers came from sockets.
+        /// </para>
         ///
         /// Increases stack additively before being applied once, the same rule
         /// the equipment stats follow — two supports each adding fifty percent
         /// give double, not two and a quarter times.
         /// </summary>
-        public ResolvedSkill Resolve(int index, in StatBlock stats)
+        public ResolvedSkill Resolve(
+            int index, in StatBlock stats, in FixedList128Bytes<SkillModifierBlob> gemSupports)
         {
             ref SkillBlob skill = ref Value.Value.Skills[index];
 
-            float increasedDamage = 0f;
-            float increasedArea = 0f;
-            float increasedSpeed = 0f;
+            var fold = new Fold
+            {
+                Chains = skill.BaseChains,
+                Casts = 1,
+                Type = skill.Type,
+                TriggerShare = 100f
+            };
 
-            int chains = skill.BaseChains;
-            int forks = 0;
-            int casts = 1;
-
-            DamageType type = skill.Type;
-            float explosionRadius = 0f;
-            float explosionShare = 0f;
-
-            int triggerIndex = -1;
-            float triggerShare = 100f;
-
+            // Innate first, then whatever the player linked. The order only
+            // matters for the two modifiers that overwrite rather than add — a
+            // gem conversion beats an authored one, which is the way round
+            // anybody would expect.
             for (int m = 0; m < skill.Modifiers.Length; m++)
             {
                 // A plain struct with no blob array inside, so copying is safe
                 // here in a way that copying the skill never is.
-                SkillModifierBlob modifier = skill.Modifiers[m];
-
-                switch (modifier.Kind)
-                {
-                    case SkillModifierKind.IncreasedDamage:
-                        increasedDamage += modifier.Value;
-                        break;
-
-                    case SkillModifierKind.IncreasedArea:
-                        increasedArea += modifier.Value;
-                        break;
-
-                    case SkillModifierKind.IncreasedProjectileSpeed:
-                        increasedSpeed += modifier.Value;
-                        break;
-
-                    case SkillModifierKind.AddedChains:
-                        chains += (int)modifier.Value;
-                        break;
-
-                    case SkillModifierKind.Fork:
-                        forks += (int)math.max(1f, modifier.Value);
-                        break;
-
-                    case SkillModifierKind.Multicast:
-                        casts += (int)math.max(1f, modifier.Value);
-                        break;
-
-                    case SkillModifierKind.ElementalConversion:
-                        type = modifier.ConvertTo;
-                        break;
-
-                    case SkillModifierKind.ExplodeOnKill:
-                        explosionRadius = math.max(explosionRadius, modifier.Value);
-                        explosionShare = math.max(explosionShare, modifier.SecondaryValue);
-                        break;
-
-                    case SkillModifierKind.TriggerOnHit:
-                        // Two trigger supports in one skill: the last socketed
-                        // wins. Firing both would double every effect downstream
-                        // of it, which is not what anyone means by socketing two.
-                        triggerIndex = modifier.TriggeredSkillIndex;
-                        triggerShare = modifier.Value;
-                        break;
-                }
+                Accumulate(skill.Modifiers[m], ref fold);
             }
+
+            for (int g = 0; g < gemSupports.Length; g++)
+                Accumulate(gemSupports[g], ref fold);
+
+            float increasedDamage = fold.IncreasedDamage;
+            float increasedArea = fold.IncreasedArea;
+            float increasedSpeed = fold.IncreasedSpeed;
+
+            int chains = fold.Chains;
+            int forks = fold.Forks;
+            int casts = fold.Casts;
+
+            DamageType type = fold.Type;
+            float explosionRadius = fold.ExplosionRadius;
+            float explosionShare = fold.ExplosionShare;
+
+            // Turned into an index exactly once, here, so nothing downstream
+            // ever holds an id it would have to resolve again.
+            int triggerIndex = IndexOf(fold.TriggerId);
+            float triggerShare = fold.TriggerShare;
 
             // The character's damage stat adds flat to every skill, so a weapon
             // makes every skill hit harder without any skill knowing weapons
