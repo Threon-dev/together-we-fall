@@ -22,7 +22,17 @@ namespace TogetherWeFall.Skills
         AreaBurst = 2,
 
         /// <summary>Instant, the nearest target, then jumps onward.</summary>
-        ChainBolt = 3
+        ChainBolt = 3,
+
+        /// <summary>
+        /// Stays where it was put, for seconds rather than an instant.
+        ///
+        /// The one effect that outlives its own cast. Everything above resolves
+        /// and is gone; a wall of fire is still there when the next projectile
+        /// crosses it, which is the entire point of it — a zone is a place where
+        /// an element can be picked up as well as a place where damage happens.
+        /// </summary>
+        PersistentZone = 4
     }
 
     /// <summary>
@@ -179,6 +189,16 @@ namespace TogetherWeFall.Skills
     {
         public Entity Projectile;
 
+        /// <summary>The patch of ground a persistent zone is made of.</summary>
+        public Entity Zone;
+
+        /// <summary>
+        /// How many zones exist, ever. Far smaller than the projectile pool —
+        /// zones last seconds and nobody casts dozens — but pooled for the same
+        /// reason: nothing that happens in a fight should be a structural change.
+        /// </summary>
+        public int ZonePoolSize;
+
         /// <summary>
         /// How many projectiles exist, ever. Created once and reused; this is
         /// therefore also the hard ceiling on how many can be in the air at
@@ -281,6 +301,21 @@ namespace TogetherWeFall.Skills
 
         public float ExplosionRadius;
         public float ExplosionDamage;
+
+        /// <summary>
+        /// Elements picked up on the way here — a lightning bolt that crossed a
+        /// wall of fire is carrying fire.
+        ///
+        /// A field on the projectile rather than a buffer of tags, and the fork
+        /// is why: a fork copies this struct, so a split projectile inherits what
+        /// its parent gathered for nothing. A buffer would have to be copied by
+        /// hand at the one point on this path that has to stay cheap.
+        ///
+        /// Never cleared in flight. What a projectile picked up it carries to
+        /// whatever it lands on; the pool clears it when the projectile is fired
+        /// again, because activation writes this whole struct.
+        /// </summary>
+        public byte CarriedElements;
     }
 
     /// <summary>
@@ -336,6 +371,16 @@ namespace TogetherWeFall.Skills
 
         public float ExplosionRadius;
         public float ExplosionDamage;
+
+        /// <summary>Elements the effect that caused this hit was carrying.</summary>
+        public byte CarriedElements;
+
+        /// <summary>
+        /// Whether this hit is the work of a status or a reaction rather than a
+        /// fresh blow. Carried into the damage event, where it stops the
+        /// reaction from feeding itself.
+        /// </summary>
+        public bool FromReaction;
     }
 
     /// <summary>
@@ -376,5 +421,30 @@ namespace TogetherWeFall.Skills
 
         public float TriggerDamageScale;
         public int TriggerDepth;
+
+        /// <summary>Elements the effect that caused this blast was carrying.</summary>
+        public byte CarriedElements;
+
+        /// <summary>
+        /// Whether this blast is itself a reaction. Passed on to every hit it
+        /// produces, so a reaction cannot walk across a crowd.
+        /// </summary>
+        public bool FromReaction;
+
+        /// <summary>
+        /// Whether to skip announcing this one to the presentation layer.
+        ///
+        /// For the pulses of a persistent zone, which are the only area effects
+        /// that repeat on a timer. An explosion is announced with a ring, a
+        /// camera shake and a hit-stop, which is right for one blast and wrong
+        /// for something that happens twice a second for six seconds — the
+        /// camera would never settle and time would never come back to one. And
+        /// there is nothing to draw anyway: the zone is a disc already on the
+        /// screen, burning, for the whole of its life.
+        ///
+        /// The default is to announce, because everything that existed before
+        /// zones did should keep announcing without being told to.
+        /// </summary>
+        public bool Silent;
     }
 }

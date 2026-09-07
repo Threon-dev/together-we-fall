@@ -39,7 +39,20 @@ namespace TogetherWeFall.Vfx
         BoltStrike = 3,
 
         /// <summary>How much something was just hurt for.</summary>
-        DamageNumber = 4
+        DamageNumber = 4,
+
+        /// <summary>
+        /// Two elements met: a reaction fired, or a projectile picked one up.
+        ///
+        /// Its own kind rather than a small Explosion, and the reason is the
+        /// punctuation rather than the picture. An explosion shakes the camera
+        /// and stops time, which is right for one blast and catastrophic for
+        /// something that happens on ordinary hits — shooting a burning crowd
+        /// would leave hit-stop permanently engaged, which is precisely the
+        /// constant hum the refusal rules exist to prevent. This one draws and
+        /// nothing else.
+        /// </summary>
+        ElementBurst = 5
     }
 
     /// <summary>Marks the entity holding the presentation queue.</summary>

@@ -57,6 +57,7 @@ namespace TogetherWeFall.Skills.Systems
         private EntityQuery _enemyQuery;
         private EntityQuery _characterQuery;
         private EntityQuery _freeProjectileQuery;
+        private EntityQuery _freeZoneQuery;
 
         public void OnCreate(ref SystemState state)
         {
@@ -74,6 +75,12 @@ namespace TogetherWeFall.Skills.Systems
             _freeProjectileQuery = SystemAPI.QueryBuilder()
                 .WithAll<SkillProjectile>()
                 .WithDisabled<ProjectileActive>()
+                .Build();
+
+            // The same idea for zones: an unlit one is one whose flag is down.
+            _freeZoneQuery = SystemAPI.QueryBuilder()
+                .WithAll<ElementZone>()
+                .WithDisabled<ZoneActive>()
                 .Build();
 
             state.RequireForUpdate<SkillDatabase>();
@@ -114,22 +121,24 @@ namespace TogetherWeFall.Skills.Systems
             using var hits = new NativeList<PendingHit>(4, Allocator.Temp);
             using var areas = new NativeList<PendingArea>(4, Allocator.Temp);
             using var spawns = new NativeList<ProjectileSpawn>(8, Allocator.Temp);
+            using var zones = new NativeList<ZoneSpawn>(2, Allocator.Temp);
             using var effects = new NativeList<VfxEvent>(4, Allocator.Temp);
 
             for (int i = 0; i < pending.Length; i++)
-                Cast(ref state, pending[i], skills, targets, hits, areas, spawns, effects);
+                Cast(ref state, pending[i], skills, targets, hits, areas, spawns, zones, effects);
 
             for (int i = 0; i < pendingTriggers.Length; i++)
             {
                 CastTriggered(
                     ref state, pendingTriggers[i], skills, maxTriggerDepth,
-                    targets, hits, areas, spawns, effects);
+                    targets, hits, areas, spawns, zones, effects);
             }
 
             // Buffer writes before structural ones: instantiating below would
             // invalidate every buffer taken above.
             AppendEvents(ref state, hits, areas, effects);
             SpawnProjectiles(ref state, spawns);
+            SpawnZones(ref state, zones);
         }
 
         private void TickCooldowns(ref SystemState state, float deltaTime)
@@ -162,6 +171,7 @@ namespace TogetherWeFall.Skills.Systems
             NativeList<PendingHit> hits,
             NativeList<PendingArea> areas,
             NativeList<ProjectileSpawn> spawns,
+            NativeList<ZoneSpawn> zones,
             NativeList<VfxEvent> effects)
         {
             if (!TryGetCharacter(ref state, request.PlayerId, out Entity character))
@@ -233,7 +243,7 @@ namespace TogetherWeFall.Skills.Systems
             {
                 produced |= Emit(
                     resolved, context, Spread(direction, c, resolved.Casts),
-                    targets, hits, areas, spawns, effects);
+                    targets, hits, areas, spawns, zones, effects);
             }
 
             // A cast that found nothing to do costs nothing. Only a bolt can
@@ -269,6 +279,7 @@ namespace TogetherWeFall.Skills.Systems
             NativeList<PendingHit> hits,
             NativeList<PendingArea> areas,
             NativeList<ProjectileSpawn> spawns,
+            NativeList<ZoneSpawn> zones,
             NativeList<VfxEvent> effects)
         {
             if (cast.Depth > maxDepth || !skills.IsValidIndex(cast.SkillIndex))
@@ -310,7 +321,7 @@ namespace TogetherWeFall.Skills.Systems
             {
                 Emit(
                     resolved, context, Spread(direction, c, resolved.Casts),
-                    targets, hits, areas, spawns, effects);
+                    targets, hits, areas, spawns, zones, effects);
             }
         }
 
@@ -326,6 +337,7 @@ namespace TogetherWeFall.Skills.Systems
             NativeList<PendingHit> hits,
             NativeList<PendingArea> areas,
             NativeList<ProjectileSpawn> spawns,
+            NativeList<ZoneSpawn> zones,
             NativeList<VfxEvent> effects)
         {
             switch (skill.Effect)
@@ -373,6 +385,34 @@ namespace TogetherWeFall.Skills.Systems
 
                 case SkillEffectKind.ChainBolt:
                     return EmitBolt(skill, context, direction, targets, hits, effects);
+
+                case SkillEffectKind.PersistentZone:
+                    zones.Add(new ZoneSpawn
+                    {
+                        // On the ground rather than at the caster's height, which
+                        // is what every other effect uses. A blast is invisible
+                        // and a metre up costs nothing; a zone is a disc somebody
+                        // has to look at, and a floating one reads as a bug.
+                        Position = OnGround(
+                            ClampToRange(context.Origin, context.AimPoint, skill.Range),
+                            context.AimPoint),
+                        Zone = new ElementZone
+                        {
+                            Element = skill.Type,
+                            Radius = math.max(1f, skill.Radius),
+                            RemainingDuration = math.max(0.5f, skill.ZoneDuration),
+                            TickInterval = skill.ZoneTickInterval,
+
+                            // The first pulse is a beat after it is lit, not on
+                            // the frame it appears: a zone that hits the moment
+                            // it is cast is a burst wearing a zone as a costume.
+                            TickRemaining = skill.ZoneTickInterval,
+                            Damage = skill.Damage,
+                            SourcePlayerId = context.PlayerId
+                        }
+                    });
+
+                    return true;
 
                 default:
                     return false;
@@ -528,6 +568,15 @@ namespace TogetherWeFall.Skills.Systems
             ProjectileSpawn.ActivateAll(state.EntityManager, free, spawns);
         }
 
+        private void SpawnZones(ref SystemState state, NativeList<ZoneSpawn> zones)
+        {
+            if (zones.Length == 0)
+                return;
+
+            using NativeArray<Entity> free = _freeZoneQuery.ToEntityArray(Allocator.Temp);
+            ZoneSpawn.ActivateAll(state.EntityManager, free, zones);
+        }
+
         private bool TryGetCharacter(ref SystemState state, int playerId, out Entity character)
         {
             character = Entity.Null;
@@ -592,6 +641,14 @@ namespace TogetherWeFall.Skills.Systems
                 0f,
                 direction.x * sin + direction.z * cos);
         }
+
+        /// <summary>
+        /// Takes the height from where the player is pointing rather than from
+        /// the caster. The pointer aim is a point on the ground, which is exactly
+        /// the height a patch of burning floor wants to be at.
+        /// </summary>
+        private static float3 OnGround(float3 position, float3 aimPoint)
+            => new float3(position.x, aimPoint.y, position.z);
 
         private static float3 ClampToRange(float3 origin, float3 target, float range)
         {

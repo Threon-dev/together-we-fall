@@ -5,6 +5,7 @@ using UnityEngine.UIElements;
 using TogetherWeFall.Audio;
 using TogetherWeFall.Bootstrap;
 using TogetherWeFall.CameraRig;
+using TogetherWeFall.Combat.Authoring;
 using TogetherWeFall.Curtain;
 using TogetherWeFall.Config;
 using TogetherWeFall.DebugTools;
@@ -255,6 +256,39 @@ namespace TogetherWeFall.EditorTools
             return SaveAsPrefab(source, "SkillProjectilePrefab");
         }
 
+        /// <summary>
+        /// The persistent-zone prefab: a disc lying on the ground, tinted per
+        /// instance by whichever element lit it.
+        ///
+        /// Flattened on the GameObject rather than at spawn time, because
+        /// LocalTransform carries one uniform scale and a zone needs to be wide
+        /// and thin. A non-uniform scale here bakes into a transform matrix of
+        /// its own, which the uniform scale the pool writes then multiplies —
+        /// so setting the diameter stays one number, and the disc stays flat.
+        ///
+        /// Colliderless, like everything else here: overlap with a zone is a
+        /// distance to its centre, and there is no Unity Physics to consult.
+        /// A collider would also be baked into the dungeon navmesh as an
+        /// obstacle, which is the last thing a patch of fire should be.
+        /// </summary>
+        public static GameObject CreateZonePrefab(Material material)
+        {
+            GameObject source = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            source.name = "ElementZonePrefab";
+
+            // A cylinder primitive is one unit across and two tall, so this is a
+            // disc of diameter one — which makes the scale the pool writes the
+            // diameter, with no conversion anybody has to remember.
+            source.transform.localScale = new Vector3(1f, 0.02f, 1f);
+            source.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            Object.DestroyImmediate(source.GetComponent<CapsuleCollider>());
+
+            source.AddComponent<ElementZoneAuthoring>();
+
+            return SaveAsPrefab(source, "ElementZonePrefab");
+        }
+
         private static GameObject SaveAsPrefab(GameObject source, string assetName)
         {
             EnsureAssetFolder(PrefabFolder);
@@ -327,13 +361,14 @@ namespace TogetherWeFall.EditorTools
         /// here is the catalogue of what exists, not a choice about anybody.
         /// </summary>
         public static GameObject CreateSkillDatabase(
-            SkillDefinition[] skills, GameObject projectilePrefab)
+            SkillDefinition[] skills, GameObject projectilePrefab, GameObject zonePrefab)
         {
             var databaseObject = new GameObject("SkillDatabase");
             SkillDatabaseAuthoring authoring = databaseObject.AddComponent<SkillDatabaseAuthoring>();
 
             var serialized = new SerializedObject(authoring);
             serialized.FindProperty("_projectilePrefab").objectReferenceValue = projectilePrefab;
+            serialized.FindProperty("_zonePrefab").objectReferenceValue = zonePrefab;
 
             SerializedProperty list = serialized.FindProperty("_skills");
             list.arraySize = skills.Length;
@@ -342,6 +377,22 @@ namespace TogetherWeFall.EditorTools
                 list.GetArrayElementAtIndex(i).objectReferenceValue = skills[i];
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            return databaseObject;
+        }
+
+        /// <summary>
+        /// The object that carries the element reaction table into ECS. Goes
+        /// into the SubScene with the rest: without baking there is no database,
+        /// and both element systems require one — a scene missing this plays
+        /// exactly as it did before statuses existed.
+        /// </summary>
+        public static GameObject CreateElementReactionDatabase(ElementReactionTable table)
+        {
+            var databaseObject = new GameObject("ElementReactions");
+            var authoring = databaseObject.AddComponent<ElementReactionAuthoring>();
+
+            SetReference(authoring, "_table", table);
 
             return databaseObject;
         }

@@ -74,6 +74,12 @@ namespace TogetherWeFall.Enemies.Authoring
                 // exactly the moment a hundred of them arrive at once.
                 AddBuffer<DamageEvent>(entity);
 
+                // What is currently burning, shocking or chilling this body.
+                // Baked for the same reason as the damage buffer: adding it on
+                // the first status would be a structural change, and the first
+                // status arrives in the middle of a fight.
+                AddBuffer<ElementalStatus>(entity);
+
                 // Down until it runs out of health, so dying costs no structural
                 // change inside the parallel job that resolves damage.
                 AddComponent<Dead>(entity);

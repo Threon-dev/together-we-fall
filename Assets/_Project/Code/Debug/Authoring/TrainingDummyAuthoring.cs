@@ -50,6 +50,12 @@ namespace TogetherWeFall.DebugTools.Authoring
 
                 AddBuffer<DamageEvent>(entity);
 
+                // Dummies burn and shock like anything else. They are the one
+                // thing in the game that stands still and never dies, which
+                // makes them the only way to watch a status run its whole
+                // course and a reaction fire on a body you chose.
+                AddBuffer<ElementalStatus>(entity);
+
                 // Present so the damage pipeline can raise it in its parallel
                 // job, and lowered again the same frame by TrainingDummySystem.
                 // A dummy that could not be marked dead would need a special

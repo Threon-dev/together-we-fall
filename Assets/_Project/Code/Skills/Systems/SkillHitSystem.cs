@@ -117,7 +117,15 @@ namespace TogetherWeFall.Skills.Systems
                     Type = hit.Type,
                     SourcePlayerId = hit.SourcePlayerId,
                     ExplosionRadius = hit.ExplosionRadius,
-                    ExplosionDamage = hit.ExplosionDamage
+                    ExplosionDamage = hit.ExplosionDamage,
+
+                    // The last leg of the journey the elements made: gathered by
+                    // a projectile in flight, handed to the hit, and written here
+                    // beside the damage they arrived with. What they are worth is
+                    // decided one stage later, on the target, by the same system
+                    // that answers for statuses.
+                    CarriedElements = hit.CarriedElements,
+                    FromReaction = hit.FromReaction
                 });
 
                 dealt = hit.Damage;

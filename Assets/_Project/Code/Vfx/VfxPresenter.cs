@@ -161,6 +161,10 @@ namespace TogetherWeFall.Vfx
                 case VfxEventKind.DamageNumber:
                     HandleDamageNumber(effect);
                     break;
+
+                case VfxEventKind.ElementBurst:
+                    HandleElementBurst(effect);
+                    break;
             }
         }
 
@@ -193,6 +197,30 @@ namespace TogetherWeFall.Vfx
                 ToColor(effect.Color),
                 Mathf.Max(_config.BoltStrikeSeconds, effect.Magnitude),
                 _config.BoltStrikeWidth);
+        }
+
+        /// <summary>
+        /// A ring in the colour of whatever just combined, and nothing else.
+        ///
+        /// Deliberately no shake and no freeze. A reaction can fire on every hit
+        /// that lands in a burning crowd, and punctuating each one would mean
+        /// punctuating none of them — the camera never settling and time never
+        /// coming back to one. The same reasoning that gives the shake and the
+        /// hit-stop the right to refuse, applied one step earlier: some things
+        /// simply do not ask.
+        ///
+        /// It borrows the explosion's timing and width because it is the same
+        /// shape drawn smaller, and a pair of numbers of its own on the config
+        /// would be two more things to keep in step for no visible gain.
+        /// </summary>
+        private void HandleElementBurst(in VfxEvent effect)
+        {
+            _pool.AddRing(
+                ToWorld(effect.Position),
+                effect.Magnitude,
+                ToColor(effect.Color),
+                _config.ExplosionSeconds,
+                _config.ExplosionWidth);
         }
 
         private void HandleExplosion(in VfxEvent effect)

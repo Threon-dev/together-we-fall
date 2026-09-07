@@ -346,6 +346,11 @@ namespace TogetherWeFall.Skills.Systems
                         ExplosionRadius = projectile.ExplosionRadius,
                         ExplosionDamage = projectile.ExplosionDamage,
 
+                        // Whatever it gathered on the way is still on it when it
+                        // bursts. A blast that arrived through a wall of fire is
+                        // carrying fire into everything it catches.
+                        CarriedElements = projectile.CarriedElements,
+
                         // Explicitly nothing. The trigger already fired above,
                         // for this same impact, and zero is a real skill index —
                         // leaving the field at its default would make every
@@ -372,7 +377,12 @@ namespace TogetherWeFall.Skills.Systems
                     ChainDelay = projectile.ChainDelay,
                     Delay = 0f,
                     ExplosionRadius = projectile.ExplosionRadius,
-                    ExplosionDamage = projectile.ExplosionDamage
+                    ExplosionDamage = projectile.ExplosionDamage,
+
+                    // What it picked up on the way. This is the point of the
+                    // whole overlap stage: the element gathered in flight arrives
+                    // at the target beside the projectile's own.
+                    CarriedElements = projectile.CarriedElements
                 };
 
                 hit.Visited.Add(target);

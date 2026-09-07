@@ -47,6 +47,15 @@ namespace TogetherWeFall.Config
         [Header("Projectile")]
         [SerializeField, Min(1f)] private float _projectileSpeed = 26f;
 
+        [Header("Persistent zone")]
+        [Tooltip("How long a Persistent Zone stays on the ground. Ignored by " +
+                 "every other effect.")]
+        [SerializeField, Min(0.5f)] private float _zoneDuration = 5f;
+
+        [Tooltip("Seconds between damage pulses inside a zone. A pulse is worth " +
+                 "the skill damage, so this is the rate as well as the rhythm.")]
+        [SerializeField, Range(0.1f, 3f)] private float _zoneTickInterval = 0.5f;
+
         [Header("Chaining")]
         [Tooltip("Jumps the skill makes on its own, before any support.")]
         [SerializeField, Range(0, 20)] private int _baseChains;
@@ -80,6 +89,9 @@ namespace TogetherWeFall.Config
         public float Radius => _radius;
         public float ArcDegrees => _arcDegrees;
         public float ProjectileSpeed => _projectileSpeed;
+
+        public float ZoneDuration => _zoneDuration;
+        public float ZoneTickInterval => _zoneTickInterval;
 
         public int BaseChains => _baseChains;
         public float ChainRange => _chainRange;

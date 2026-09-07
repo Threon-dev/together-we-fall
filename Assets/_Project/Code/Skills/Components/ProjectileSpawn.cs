@@ -110,6 +110,7 @@ namespace TogetherWeFall.Skills
                 case DamageType.Fire: return new float4(1f, 0.45f, 0.12f, 1f);
                 case DamageType.Cold: return new float4(0.35f, 0.75f, 1f, 1f);
                 case DamageType.Lightning: return new float4(0.95f, 0.9f, 0.25f, 1f);
+                case DamageType.Chaos: return new float4(0.7f, 0.25f, 0.85f, 1f);
                 default: return new float4(0.85f, 0.85f, 0.9f, 1f);
             }
         }

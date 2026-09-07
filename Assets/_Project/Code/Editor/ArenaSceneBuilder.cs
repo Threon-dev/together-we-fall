@@ -85,10 +85,15 @@ namespace TogetherWeFall.EditorTools
             Material projectileMaterial =
                 SceneBuildUtility.CreateMaterial("SkillProjectile", Color.white);
 
+            Material zoneMaterial =
+                SceneBuildUtility.CreateMaterial("ElementZone", Color.white);
+
             GameObject enemyPrefab = SceneBuildUtility.CreateEnemyPrefab(enemyConfig, enemyMaterial);
             GameObject projectilePrefab =
                 SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
+            GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(zoneMaterial);
             SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
+            ElementReactionTable reactionTable = ElementContentFactory.CreateReactionTable();
 
             SceneBuildUtility.CreateLighting();
             GameObject ground = CreateGround(groundMaterial);
@@ -101,7 +106,9 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateSimulationSettings(pathfindingConfig, separationConfig);
             GameObject characterStats = SceneBuildUtility.CreateCharacterStats(characterConfig);
             GameObject skillDatabase =
-                SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab);
+                SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab, zonePrefab);
+            GameObject elementReactions =
+                SceneBuildUtility.CreateElementReactionDatabase(reactionTable);
 
             PlayerMotor player =
                 SceneBuildUtility.CreatePlayer(playerMaterial, new Vector3(0f, 1f, 0f));
@@ -145,18 +152,20 @@ namespace TogetherWeFall.EditorTools
             Selection.objects = new Object[]
             {
                 spawnPoints, waveSpawner, simulationSettings, characterStats, skillDatabase,
-                trainingDummies
+                elementReactions, trainingDummies
             };
 
             Debug.Log(
                 $"[ArenaSceneBuilder] Arena built: {ScenePath}\n" +
                 "ONE STEP LEFT: SpawnPoints, WaveSpawner, SimulationSettings, CharacterStats, " +
-                "SkillDatabase and TrainingDummies are already selected in the hierarchy — " +
-                "right-click them, then New Sub Scene > From Selection. Without a SubScene they " +
-                "are never baked into entities: no waves spawn, enemies receive no pathfinding " +
-                "settings, nothing is castable and the dummies are scenery.\n" +
+                "SkillDatabase, ElementReactions and TrainingDummies are already selected in the " +
+                "hierarchy — right-click them, then New Sub Scene > From Selection. Without a " +
+                "SubScene they are never baked into entities: no waves spawn, enemies receive no " +
+                "pathfinding settings, nothing is castable, nothing burns and the dummies are " +
+                "scenery.\n" +
                 "In play mode: Space spawns a wave; left mouse, right mouse, Q and R cast. The " +
-                "three dummies ahead of the start take damage, flash and never fall over.");
+                "three dummies ahead of the start take damage, flash and never fall over — and " +
+                "are the quickest way to watch a status tick and a reaction go off.");
         }
 
         private static GameObject CreateGround(Material material)

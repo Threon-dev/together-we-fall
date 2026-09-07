@@ -83,23 +83,31 @@ namespace TogetherWeFall.Skills.Systems
 
                 // Announced once per blast, not once per body caught in it.
                 // Whether anything draws it is not this system's concern.
-                vfx.Add(new VfxEvent
+                //
+                // Unless it asked not to be. A zone pulsing on a timer produces
+                // an area like any other, and announcing each pulse would shake
+                // the camera and stop time twice a second for as long as it
+                // burns — for an effect that is already visibly on the screen.
+                if (!area.Silent)
                 {
-                    Kind = VfxEventKind.Explosion,
-                    Position = area.Position,
-                    Color = DamageTypePalette.For(area.Type),
-                    Magnitude = area.Radius
-                });
+                    vfx.Add(new VfxEvent
+                    {
+                        Kind = VfxEventKind.Explosion,
+                        Position = area.Position,
+                        Color = DamageTypePalette.For(area.Type),
+                        Magnitude = area.Radius
+                    });
 
-                SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
-                {
-                    Cue = AudioCue.Explosion,
-                    Position = area.Position,
+                    SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
+                    {
+                        Cue = AudioCue.Explosion,
+                        Position = area.Position,
 
-                    // Scaled by the blast, so a big one is heard over a wave of
-                    // small ones instead of being gated behind them.
-                    Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
-                });
+                        // Scaled by the blast, so a big one is heard over a wave
+                        // of small ones instead of being gated behind them.
+                        Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
+                    });
+                }
 
                 // Once per blast, not once per body caught in it — same rule as
                 // the effect above, and for the same reason.
@@ -154,7 +162,13 @@ namespace TogetherWeFall.Skills.Systems
                     ChainsRemaining = 0,
                     Delay = 0f,
                     ExplosionRadius = area.ExplosionRadius,
-                    ExplosionDamage = area.ExplosionDamage
+                    ExplosionDamage = area.ExplosionDamage,
+
+                    // Passed straight through: what the blast was carrying, every
+                    // body it caught is struck by, and whether the blast was
+                    // itself a reaction decides whether these hits may start one.
+                    CarriedElements = area.CarriedElements,
+                    FromReaction = area.FromReaction
                 });
             }
         }

@@ -56,6 +56,12 @@ namespace TogetherWeFall.Skills
 
         public float ProjectileSpeed;
 
+        /// <summary>How long a persistent zone lasts. Ignored by every other effect.</summary>
+        public float ZoneDuration;
+
+        /// <summary>Seconds between a zone's damage pulses.</summary>
+        public float ZoneTickInterval;
+
         public int BaseChains;
         public float ChainRange;
         public float ChainDelay;
@@ -93,6 +99,9 @@ namespace TogetherWeFall.Skills
         public float Radius;
         public float ArcCosine;
         public float ProjectileSpeed;
+
+        public float ZoneDuration;
+        public float ZoneTickInterval;
 
         /// <summary>How many times the whole skill goes off. Multicast raises it.</summary>
         public int Casts;
@@ -322,6 +331,13 @@ namespace TogetherWeFall.Skills
                 Radius = skill.Radius * (1f + increasedArea * 0.01f),
                 ArcCosine = math.cos(math.radians(math.clamp(skill.ArcDegrees, 0f, 360f) * 0.5f)),
                 ProjectileSpeed = skill.ProjectileSpeed * (1f + increasedSpeed * 0.01f),
+
+                // Duration is not scaled by anything yet. Increased area already
+                // makes a zone cover more ground through Radius above, and a
+                // support for how long it lasts is a new modifier kind rather
+                // than a number quietly borrowed from an existing one.
+                ZoneDuration = skill.ZoneDuration,
+                ZoneTickInterval = skill.ZoneTickInterval,
                 Casts = math.max(1, casts),
                 Forks = math.max(0, forks),
                 Chains = math.max(0, chains),

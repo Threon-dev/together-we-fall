@@ -83,7 +83,18 @@ namespace TogetherWeFall.EditorTools
             LootTable lootTable = CreateOrLoadTreasureTable();
             GameObject projectilePrefab =
                 SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
+
+            // White too: the pool writes the element colour onto every zone.
+            GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(
+                SceneBuildUtility.CreateMaterial("ElementZone", Color.white));
+
             SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
+            ElementReactionTable reactionTable = ElementContentFactory.CreateReactionTable();
+
+            // The gem that casts the zone skill, added to the chest table if it
+            // is not already there. Without it the zone skill exists in the
+            // database and nothing can ever cast it.
+            ElementContentFactory.CreateZoneGem(skills[skills.Length - 1], lootTable);
 
             SceneBuildUtility.CreateLighting();
 
@@ -97,7 +108,9 @@ namespace TogetherWeFall.EditorTools
             GameObject characterStats =
                 SceneBuildUtility.CreateCharacterStats(characterConfig);
             GameObject skillDatabase =
-                SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab);
+                SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab, zonePrefab);
+            GameObject elementReactions =
+                SceneBuildUtility.CreateElementReactionDatabase(reactionTable);
 
             // The director moves the player onto the entrance during Awake, so
             // the authored position only has to be somewhere harmless.
@@ -135,16 +148,18 @@ namespace TogetherWeFall.EditorTools
             // while through the menu it is two clicks.
             Selection.objects = new Object[]
             {
-                waveSpawner, simulationSettings, lootDatabase, characterStats, skillDatabase
+                waveSpawner, simulationSettings, lootDatabase, characterStats, skillDatabase,
+                elementReactions
             };
 
             Debug.Log(
                 $"[DungeonSceneBuilder] Dungeon scene built: {ScenePath}\n" +
-                "ONE STEP LEFT: WaveSpawner, SimulationSettings, LootDatabase, CharacterStats " +
-                "and SkillDatabase are already selected in the hierarchy — right-click them, " +
-                "then New Sub Scene > From Selection. Without a SubScene they are never baked " +
-                "into entities: no waves spawn, enemies get no pathfinding settings, no chests " +
-                "are placed, characters have no base stats and nothing is castable.\n" +
+                "ONE STEP LEFT: WaveSpawner, SimulationSettings, LootDatabase, CharacterStats, " +
+                "SkillDatabase and ElementReactions are already selected in the hierarchy — " +
+                "right-click them, then New Sub Scene > From Selection. Without a SubScene they " +
+                "are never baked into entities: no waves spawn, enemies get no pathfinding " +
+                "settings, no chests are placed, characters have no base stats, nothing is " +
+                "castable and nothing burns.\n" +
                 "There are deliberately no spawn points and no chests in the scene — the " +
                 "dungeon creates them in its combat and treasure rooms once the floor is " +
                 "generated.\n" +

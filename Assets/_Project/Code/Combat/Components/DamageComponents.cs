@@ -20,15 +20,29 @@ namespace TogetherWeFall.Combat
     /// Carried all the way through the pipeline so an elemental conversion is a
     /// real change rather than a cosmetic one. Nothing resists anything yet —
     /// enemies have health and no mitigation — so today the type decides only
-    /// what the damage is called. The single place that will ever consult it is
-    /// DamageResolutionSystem.
+    /// what the damage is called.
+    ///
+    /// This is also THE element, singular. The status and reaction systems could
+    /// have brought an ElementType of their own, and it would have needed
+    /// converting at every boundary in the pipeline this one already crosses —
+    /// two enums for one fact, of the kind that stay in step until the day one
+    /// of them gains a value. A status is a DamageType with a lifetime, and a
+    /// reaction is a pair of DamageTypes.
     /// </summary>
     public enum DamageType : byte
     {
         Physical = 0,
         Fire = 1,
         Cold = 2,
-        Lightning = 3
+        Lightning = 3,
+
+        /// <summary>
+        /// Added for the element system, which needed a fifth to prove that
+        /// "how many elements are there" is one number in one place. Nothing
+        /// resists it and no skill deals it yet; it exists so a reaction table
+        /// authored against it is not a special case.
+        /// </summary>
+        Chaos = 4
     }
 
     /// <summary>
@@ -65,6 +79,32 @@ namespace TogetherWeFall.Combat
         public float ExplosionRadius;
 
         public float ExplosionDamage;
+
+        /// <summary>
+        /// Elements riding along with this blow that are not its own — what the
+        /// projectile picked up on the way.
+        ///
+        /// Carried here rather than looked up on the target, because by the time
+        /// damage is resolved the projectile that gathered them is back in the
+        /// pool. It is the whole of "the projectile brought something with it":
+        /// one byte, set where the effect met a zone, read where the reaction is
+        /// worked out.
+        /// </summary>
+        public byte CarriedElements;
+
+        /// <summary>
+        /// Whether this damage is itself the product of a status or a reaction.
+        ///
+        /// The rail that keeps reactions from feeding themselves. A burn tick
+        /// that refreshed its own burn would never end, and a reaction blast
+        /// whose damage reacted again would walk across a crowd — the same shape
+        /// as the explode-on-kill support having to zero its own blast radius,
+        /// and the same one line standing between a feature and a hung frame.
+        ///
+        /// False for every blow a player actually struck, which is why the flag
+        /// is worded this way round: the default has to be the ordinary case.
+        /// </summary>
+        public bool FromReaction;
     }
 
     /// <summary>

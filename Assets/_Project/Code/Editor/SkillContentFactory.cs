@@ -112,7 +112,33 @@ namespace TogetherWeFall.EditorTools
                     skill.Modifiers = new[] { brutality };
                 });
 
-            return new[] { splinter, nova, lance, sweep };
+            // The only skill that leaves something behind. It exists to be flown
+            // through: a wall of fire is where a projectile picks an element up,
+            // and without one in the game the carried half of the reaction system
+            // has nothing to demonstrate itself with.
+            SkillDefinition wall =
+                Skill("CinderWall", "Cinder Wall", skill =>
+                {
+                    skill.Effect = SkillEffectKind.PersistentZone;
+                    skill.DamageType = DamageType.Fire;
+
+                    // Per pulse, not per cast. Low on purpose: what a zone is for
+                    // is the ignite it keeps applying and the element it hands
+                    // out, not the damage.
+                    skill.BaseDamage = 9f;
+                    skill.Cooldown = 4f;
+                    skill.Range = 14f;
+                    skill.Radius = 3f;
+                    skill.ZoneDuration = 6f;
+                    skill.ZoneTickInterval = 0.5f;
+
+                    // No supports. Increased area is the one that reads on a zone
+                    // and it is a gem the player can socket themselves — which is
+                    // the whole point of gems being the build.
+                    skill.Modifiers = System.Array.Empty<SkillModifier>();
+                });
+
+            return new[] { splinter, nova, lance, sweep, wall };
         }
 
         private static SkillModifier Modifier(
@@ -162,6 +188,8 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_radius").floatValue = fields.Radius;
             serialized.FindProperty("_arcDegrees").floatValue = fields.ArcDegrees;
             serialized.FindProperty("_projectileSpeed").floatValue = fields.ProjectileSpeed;
+            serialized.FindProperty("_zoneDuration").floatValue = fields.ZoneDuration;
+            serialized.FindProperty("_zoneTickInterval").floatValue = fields.ZoneTickInterval;
             serialized.FindProperty("_baseChains").intValue = fields.BaseChains;
             serialized.FindProperty("_chainRange").floatValue = fields.ChainRange;
             serialized.FindProperty("_chainDelay").floatValue = fields.ChainDelay;
@@ -193,6 +221,8 @@ namespace TogetherWeFall.EditorTools
             public float Radius;
             public float ArcDegrees = 360f;
             public float ProjectileSpeed = 26f;
+            public float ZoneDuration = 5f;
+            public float ZoneTickInterval = 0.5f;
             public int BaseChains;
             public float ChainRange = 8f;
             public float ChainDelay = 0.07f;

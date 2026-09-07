@@ -90,6 +90,11 @@ namespace TogetherWeFall.Enemies
 
                 entityManager.GetBuffer<PathPoint>(enemy).Clear();
 
+                // Whatever the previous occupant was burning with. Left alone, a
+                // reused body would come back out of the pool already ignited —
+                // and, worse, would react with the next hit it took.
+                entityManager.GetBuffer<ElementalStatus>(enemy).Clear();
+
                 entityManager.SetComponentEnabled<Dead>(enemy, false);
                 entityManager.SetComponentEnabled<DeathFade>(enemy, false);
                 entityManager.SetComponentEnabled<DamageFeedback>(enemy, false);

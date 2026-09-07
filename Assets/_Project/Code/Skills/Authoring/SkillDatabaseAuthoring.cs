@@ -27,6 +27,11 @@ namespace TogetherWeFall.Skills.Authoring
 
         [SerializeField] private GameObject _projectilePrefab;
 
+        [Tooltip("The patch of ground a persistent zone is made of. Leave it " +
+                 "empty and zone skills simply do nothing — which is what every " +
+                 "scene built before zones existed does.")]
+        [SerializeField] private GameObject _zonePrefab;
+
         [Tooltip("How many triggers deep a chain of skills may go. Two means a " +
                  "skill can trigger a skill that triggers a skill, and there it " +
                  "stops. The rail that keeps a pair of skills triggering each " +
@@ -38,6 +43,11 @@ namespace TogetherWeFall.Skills.Authoring
                  "fired, which under a barrage nobody can see.")]
         [SerializeField, Range(16, 1024)] private int _projectilePoolSize = 256;
 
+        [Tooltip("Zones created once and reused forever, and so also the ceiling " +
+                 "on how many can burn at once. Small on purpose: they last " +
+                 "seconds, and a floor covered in them would be a different game.")]
+        [SerializeField, Range(1, 64)] private int _zonePoolSize = 12;
+
         [Tooltip("Area effects resolved per frame. Several players emptying area " +
                  "skills into one crowd should cost more frames, not one long one.")]
         [SerializeField, Range(1, 256)] private int _maxAreasPerFrame = 12;
@@ -48,6 +58,8 @@ namespace TogetherWeFall.Skills.Authoring
 
         public SkillDefinition[] Skills => _skills;
         public GameObject ProjectilePrefab => _projectilePrefab;
+        public GameObject ZonePrefab => _zonePrefab;
+        public int ZonePoolSize => _zonePoolSize;
         public int MaxTriggerDepth => _maxTriggerDepth;
         public int ProjectilePoolSize => _projectilePoolSize;
         public int MaxAreasPerFrame => _maxAreasPerFrame;
@@ -73,7 +85,15 @@ namespace TogetherWeFall.Skills.Authoring
                 AddComponent(entity, new SkillPrefabs
                 {
                     Projectile = GetEntity(authoring.ProjectilePrefab, TransformUsageFlags.Dynamic),
-                    ProjectilePoolSize = authoring.ProjectilePoolSize
+                    ProjectilePoolSize = authoring.ProjectilePoolSize,
+
+                    // Null is an ordinary answer, not a failure: a scene with no
+                    // zone prefab has no zone pool and no zones, and everything
+                    // else works exactly as before.
+                    Zone = authoring.ZonePrefab != null
+                        ? GetEntity(authoring.ZonePrefab, TransformUsageFlags.Dynamic)
+                        : Entity.Null,
+                    ZonePoolSize = authoring.ZonePoolSize
                 });
 
                 AddComponent(entity, new SkillBudgetSettings
@@ -233,6 +253,8 @@ namespace TogetherWeFall.Skills.Authoring
                 blob.Radius = skill.Radius;
                 blob.ArcDegrees = skill.ArcDegrees;
                 blob.ProjectileSpeed = skill.ProjectileSpeed;
+                blob.ZoneDuration = skill.ZoneDuration;
+                blob.ZoneTickInterval = skill.ZoneTickInterval;
                 blob.BaseChains = skill.BaseChains;
                 blob.ChainRange = skill.ChainRange;
                 blob.ChainDelay = skill.ChainDelay;
