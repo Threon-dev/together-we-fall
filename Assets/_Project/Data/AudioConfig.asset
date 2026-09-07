@@ -1,0 +1,75 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f4e2347e017ce4468b5b220b3de01d5, type: 3}
+  m_Name: AudioConfig
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.AudioConfig
+  _cues:
+  - _cue: 1
+    _clips: []
+    _volume: 0.6
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 4
+    _minIntervalSeconds: 0.03
+  - _cue: 2
+    _clips: []
+    _volume: 0.5
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 4
+    _minIntervalSeconds: 0.03
+  - _cue: 3
+    _clips: []
+    _volume: 0.9
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 2
+    _minIntervalSeconds: 0.1
+  - _cue: 4
+    _clips: []
+    _volume: 0.6
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 3
+    _minIntervalSeconds: 0.06
+  - _cue: 5
+    _clips: []
+    _volume: 0.7
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 3
+    _minIntervalSeconds: 0.09
+  - _cue: 6
+    _clips: []
+    _volume: 0.9
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 1
+    _maxVoicesPerFrame: 1
+    _minIntervalSeconds: 0
+  - _cue: 7
+    _clips: []
+    _volume: 0.8
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 0
+    _maxVoicesPerFrame: 2
+    _minIntervalSeconds: 0
+  - _cue: 8
+    _clips: []
+    _volume: 0.6
+    _pitchRange: {x: 0.95, y: 1.05}
+    _spatial: 0
+    _maxVoicesPerFrame: 3
+    _minIntervalSeconds: 0
+  _voicePoolSize: 24
+  _maxVoicesPerFrame: 8
+  _maxAudibleDistance: 45
+  _masterVolume: 1
