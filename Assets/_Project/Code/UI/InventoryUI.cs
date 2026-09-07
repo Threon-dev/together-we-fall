@@ -7,6 +7,7 @@ using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.UI
 {
@@ -54,6 +55,17 @@ namespace TogetherWeFall.UI
         private const float MinCellSize = 12f;
 
         /// <summary>
+        /// The floor for a slot box, lowered when the sockets and the hotkeys
+        /// arrived.
+        ///
+        /// Ten slot boxes, four stat rows and a row of hotkeys do not fit into
+        /// the 338 logical pixels a 32:9 screen offers at 24 pixels a box. The
+        /// same rule as the cells: fitting beats comfort, because a comfortable
+        /// box below the bottom edge is not comfortable, it is gone.
+        /// </summary>
+        private const float MinSlotBoxHeightFloor = 18f;
+
+        /// <summary>
         /// Above this a small bag on a large screen turns into a wall of tiles.
         /// </summary>
         private const float MaxCellSize = 52f;
@@ -63,10 +75,11 @@ namespace TogetherWeFall.UI
 
         /// <summary>
         /// Everything above and below the grid inside the panel: padding, the
-        /// "Bag" heading and the message line. Measured rather than derived
-        /// because the alternative is asking the layout engine mid-layout.
+        /// "Bag" and "Sockets" headings, two rows of socket cells and the
+        /// message line. Measured rather than derived because the alternative is
+        /// asking the layout engine mid-layout.
         /// </summary>
-        private const float VerticalChrome = 76f;
+        private const float VerticalChrome = 147f;
 
         private const float ColumnGap = 16f;
 
@@ -83,13 +96,25 @@ namespace TogetherWeFall.UI
         private const float MinSlotBoxHeight = 24f;
 
         /// <summary>
-        /// Everything in the sidebar that is not a slot box: panel padding, two
-        /// headings, the section margins and the four rows of stats.
+        /// Everything in the sidebar that is not a slot box: panel padding,
+        /// three headings, the section margins, the four rows of stats and the
+        /// row of hotkeys.
         /// </summary>
-        private const float SidebarChrome = 160f;
+        private const float SidebarChrome = 225f;
 
         /// <summary>Ten slots, two to a line.</summary>
         private const int SlotRows = (EquipmentSlots.Count + 1) / 2;
+
+        /// <summary>Side of one socket cell, and the gap between linked ones.</summary>
+        private const float SocketCellSize = 20f;
+
+        private const float LinkBarWidth = 6f;
+
+        /// <summary>Height of one hotkey box on the skill bar.</summary>
+        private const float BarBoxHeight = 34f;
+
+        /// <summary>How many hotkeys there are. SkillLoadoutSystem hands out these.</summary>
+        private const int BarSlotCount = 4;
 
         /// <summary>
         /// How much of the screen the panel may take. Not all of it: a panel
@@ -109,6 +134,7 @@ namespace TogetherWeFall.UI
         private EntityManager _entityManager;
         private EntityQuery _characterQuery;
         private EntityQuery _itemDatabaseQuery;
+        private EntityQuery _skillDatabaseQuery;
 
         private int _playerId;
         private bool _hasWorld;
@@ -125,6 +151,8 @@ namespace TogetherWeFall.UI
         private VisualElement _panel;
         private VisualElement _sidebar;
         private VisualElement _bagColumn;
+        private VisualElement _socketList;
+        private VisualElement _barList;
         private VisualElement _statsList;
         private VisualElement _slotList;
         private VisualElement _gridRoot;
@@ -136,6 +164,8 @@ namespace TogetherWeFall.UI
         private Label _message;
 
         private readonly List<SlotTarget> _slotTargets = new List<SlotTarget>();
+        private readonly List<SocketTarget> _socketTargets = new List<SocketTarget>();
+        private readonly List<BarTarget> _barTargets = new List<BarTarget>();
 
         /// <summary>
         /// Reused across rebuilds. A multi-cell item appears in the cell buffer
@@ -180,6 +210,11 @@ namespace TogetherWeFall.UI
 
             _itemDatabaseQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<ItemDatabase>());
+
+            // Needed to say what a socket casts. The panel never decides with
+            // it — it asks the same GemSockets the host asks.
+            _skillDatabaseQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<SkillDatabase>());
 
             _hasWorld = true;
         }
@@ -283,6 +318,14 @@ namespace TogetherWeFall.UI
             _sidebar.Add(MakeHeading("Equipped"));
             _slotList = MakeSection(_sidebar);
 
+            // The hotkeys go in the sidebar and the sockets under the bag, so
+            // the two new sections land in different columns. Stacking both on
+            // one would put the panel back over the edge of a short screen,
+            // which is the failure this layout already had to stop having once.
+            _sidebar.Add(MakeHeading("Skill bar"));
+            _barList = MakeSection(_sidebar);
+            _barList.style.flexDirection = FlexDirection.Row;
+
             _bagColumn.Add(MakeHeading("Bag"));
 
             _gridRoot = new VisualElement();
@@ -339,6 +382,9 @@ namespace TogetherWeFall.UI
             _ghost.Add(_ghostLabel);
 
             _panel.Add(_ghost);
+
+            _bagColumn.Add(MakeHeading("Sockets"));
+            _socketList = MakeSection(_bagColumn);
 
             _message = new Label(string.Empty);
             _message.style.color = new Color(0.72f, 0.55f, 0.45f);
@@ -478,7 +524,7 @@ namespace TogetherWeFall.UI
             // the panel is as tall as the taller of the two.
             _slotBoxHeight = Mathf.Clamp(
                 Mathf.Floor((rootHeight * ScreenFraction - SidebarChrome) / SlotRows) - 4f,
-                MinSlotBoxHeight,
+                MinSlotBoxHeightFloor,
                 MaxSlotBoxHeight);
 
             float byWidth = availableWidth / grid.Width;
@@ -529,8 +575,10 @@ namespace TogetherWeFall.UI
 
             ReportRefusals(character);
             ReportEquipRefusals(character);
+            ReportSocketRefusals(character);
 
-            int signature = Signature(stats, slots, cells);
+            int signature = Signature(stats, slots, cells) * 31 +
+                            SocketSignature(character, slots);
             if (signature == _lastSignature)
                 return;
 
@@ -548,6 +596,8 @@ namespace TogetherWeFall.UI
             RebuildStats(stats);
             RebuildSlots(slots, items);
             RebuildItems(bag, cells, items);
+            RebuildSockets(slots, items);
+            RebuildBar(character, items);
         }
 
         /// <summary>
@@ -599,6 +649,48 @@ namespace TogetherWeFall.UI
             }
 
             results.Clear();
+        }
+
+        /// <summary>The same again for sockets. Three queues, three answerers.</summary>
+        private void ReportSocketRefusals(Entity character)
+        {
+            DynamicBuffer<SocketResult> results =
+                _entityManager.GetBuffer<SocketResult>(character);
+
+            if (results.Length == 0)
+                return;
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i].Succeeded)
+                    continue;
+
+                ShowMessage(DescribeSocketRefusal(results[i].Status));
+                break;
+            }
+
+            results.Clear();
+        }
+
+        private static string DescribeSocketRefusal(SocketStatus status)
+        {
+            switch (status)
+            {
+                case SocketStatus.RejectedSocketFull:
+                    return "That socket already has a gem in it.";
+                case SocketStatus.RejectedSocketEmpty:
+                    return "That socket is empty.";
+                case SocketStatus.RejectedNotAGem:
+                    return "That is not a gem.";
+                case SocketStatus.RejectedBagFull:
+                    return "No room in the bag for that gem.";
+                case SocketStatus.RejectedNotActive:
+                    return "A support gem cannot be cast on its own.";
+                case SocketStatus.RejectedNotCarried:
+                    return "That is not yours to socket.";
+                default:
+                    return "The change was refused.";
+            }
         }
 
         private static string DescribeEquipRefusal(EquipStatus status)
@@ -945,7 +1037,7 @@ namespace TogetherWeFall.UI
 
             StartDrag(evt, box, items, slot.ItemId, slot.Item, bag, false);
 
-            _drag.FromSlot = true;
+            _drag.Source2 = DragSource.EquipmentSlot;
             _drag.SourceSlot = slot.Slot;
 
             if (GridFit.TryGetFootprint(items, slot.ItemId, false, out int width, out int height))
@@ -977,7 +1069,13 @@ namespace TogetherWeFall.UI
                 ItemId = itemId,
                 AllowedSlots = AllowedSlotsOf(items, itemId),
                 Rotated = rotated,
-                PointerId = evt.pointerId
+                PointerId = evt.pointerId,
+
+                // Asked once here rather than at every hover: a pointer move
+                // touches every socket cell on screen, and none of them should
+                // be doing a database lookup to decide what colour to be.
+                IsGem = GemKindOf(items, itemId) != GemKind.None,
+                IsActiveGem = GemKindOf(items, itemId) == GemKind.Active
             };
 
             source.CapturePointer(evt.pointerId);
@@ -1091,6 +1189,46 @@ namespace TogetherWeFall.UI
 
                 SetBorder(target.Element, colour);
             }
+
+            for (int i = 0; i < _socketTargets.Count; i++)
+            {
+                SocketTarget target = _socketTargets[i];
+                Color colour = target.DefaultBorder;
+
+                if (target.Element.worldBound.Contains(pointer))
+                {
+                    // A gem out of the bag, into a hole that is free. A gem
+                    // already in a socket moves by coming out first, which is
+                    // what the host would say too.
+                    bool accepts = _drag.Source2 == DragSource.Bag &&
+                                   _drag.IsGem && target.IsEmpty;
+
+                    colour = accepts
+                        ? new Color(0.35f, 0.80f, 0.40f)
+                        : new Color(0.85f, 0.30f, 0.30f);
+                }
+
+                SetBorder(target.Element, colour);
+            }
+
+            for (int i = 0; i < _barTargets.Count; i++)
+            {
+                BarTarget target = _barTargets[i];
+                Color colour = target.DefaultBorder;
+
+                if (target.Element.worldBound.Contains(pointer))
+                {
+                    // Only an active gem, and only one already in a socket: a
+                    // hotkey points at a hole, so there has to be a hole.
+                    bool accepts = _drag.Source2 == DragSource.Socket && _drag.IsActiveGem;
+
+                    colour = accepts
+                        ? new Color(0.35f, 0.80f, 0.40f)
+                        : new Color(0.85f, 0.30f, 0.30f);
+                }
+
+                SetBorder(target.Element, colour);
+            }
         }
 
         /// <summary>
@@ -1106,7 +1244,7 @@ namespace TogetherWeFall.UI
             if (target.Blocked)
                 return false;
 
-            if (_drag.FromSlot && target.Slot == _drag.SourceSlot)
+            if (_drag.Source2 == DragSource.EquipmentSlot && target.Slot == _drag.SourceSlot)
                 return false;
 
             return EquipmentSlots.Accepts(_drag.AllowedSlots, target.Slot);
@@ -1169,21 +1307,59 @@ namespace TogetherWeFall.UI
 
             Entity item = _drag.Item;
             Entity bag = _drag.Bag;
-            bool fromSlot = _drag.FromSlot;
+            DragSource source = _drag.Source2;
             EquipmentSlot sourceSlot = _drag.SourceSlot;
             bool rotated = _drag.Rotated;
             int targetX = _drag.TargetX;
             int targetY = _drag.TargetY;
 
+            Entity sourceGear = _drag.SourceGear;
+            int sourceSocket = _drag.SourceSocket;
+            bool isActiveGem = _drag.IsActiveGem;
+
             bool overGrid = _gridRoot.worldBound.Contains(evt.position);
             EquipmentSlot slot = default;
             bool overSlot = TryFindSlotUnder(evt.position, ref slot);
 
+            bool overSocket = TryFindSocketUnder(
+                evt.position, out Entity socketGear, out int socketIndex);
+            bool overBar = TryFindBarUnder(evt.position, out int barIndex);
+
             CancelDrag();
+
+            if (overSocket)
+            {
+                if (source == DragSource.Bag)
+                    SendSocketInsert(socketGear, item, socketIndex);
+                else
+                    ShowMessage("Take the gem out before moving it to another socket.");
+
+                return;
+            }
+
+            if (overBar)
+            {
+                if (source == DragSource.Socket && isActiveGem)
+                    SendBindBar(sourceGear, sourceSocket, barIndex);
+                else
+                    ShowMessage("Only an active gem in a socket can go on a hotkey.");
+
+                return;
+            }
+
+            if (source == DragSource.Socket)
+            {
+                // Anywhere else means out. The host finds it room, or refuses
+                // and leaves the gem where it is.
+                if (overGrid)
+                    SendSocketRemove(sourceGear, sourceSocket);
+
+                return;
+            }
 
             if (overSlot)
             {
-                if (fromSlot)
+                if (source == DragSource.EquipmentSlot)
                 {
                     if (slot != sourceSlot)
                         SendSwapSlots(sourceSlot, slot);
@@ -1202,7 +1378,7 @@ namespace TogetherWeFall.UI
             if (!overGrid)
                 return;
 
-            if (fromSlot)
+            if (source == DragSource.EquipmentSlot)
             {
                 SendUnequip(sourceSlot, true, targetX, targetY, rotated);
                 return;
@@ -1232,11 +1408,51 @@ namespace TogetherWeFall.UI
             for (int i = 0; i < _slotTargets.Count; i++)
                 SetBorder(_slotTargets[i].Element, _slotTargets[i].DefaultBorder);
 
+            for (int i = 0; i < _socketTargets.Count; i++)
+                SetBorder(_socketTargets[i].Element, _socketTargets[i].DefaultBorder);
+
+            for (int i = 0; i < _barTargets.Count; i++)
+                SetBorder(_barTargets[i].Element, _barTargets[i].DefaultBorder);
+
             _ghost.style.display = DisplayStyle.None;
             _highlight.style.display = DisplayStyle.None;
 
             _drag = default;
             _lastSignature = int.MinValue;
+        }
+
+        private bool TryFindSocketUnder(Vector2 position, out Entity gear, out int socketIndex)
+        {
+            gear = Entity.Null;
+            socketIndex = 0;
+
+            for (int i = 0; i < _socketTargets.Count; i++)
+            {
+                if (!_socketTargets[i].Element.worldBound.Contains(position))
+                    continue;
+
+                gear = _socketTargets[i].Gear;
+                socketIndex = _socketTargets[i].SocketIndex;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryFindBarUnder(Vector2 position, out int barIndex)
+        {
+            barIndex = 0;
+
+            for (int i = 0; i < _barTargets.Count; i++)
+            {
+                if (!_barTargets[i].Element.worldBound.Contains(position))
+                    continue;
+
+                barIndex = _barTargets[i].BarSlotIndex;
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryFindSlotUnder(Vector2 position, ref EquipmentSlot slot)
@@ -1251,6 +1467,271 @@ namespace TogetherWeFall.UI
             }
 
             return false;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Sockets and the skill bar
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Draws the holes in everything currently worn.
+        ///
+        /// Only gear that has any: nine of the ten slots have no sockets today,
+        /// and a row of empty labels for each would be a list of nothing. Linked
+        /// sockets are joined by a bar between them, which is the whole reason
+        /// the cells are drawn in a row rather than in a grid — a link is a
+        /// relationship between neighbours, and neighbours are what a row has.
+        /// </summary>
+        private void RebuildSockets(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
+        {
+            _socketList.Clear();
+            _socketTargets.Clear();
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                Entity gear = slots[i].Item;
+
+                if (!slots[i].HasItem || !_entityManager.HasBuffer<GearSocket>(gear))
+                    continue;
+
+                DynamicBuffer<GearSocket> sockets =
+                    _entityManager.GetBuffer<GearSocket>(gear, isReadOnly: true);
+
+                if (sockets.Length == 0)
+                    continue;
+
+                _socketList.Add(MakeSocketRow(gear, sockets, items, NameOf(items, slots[i].ItemId)));
+            }
+
+            if (_socketList.childCount == 0)
+                _socketList.Add(MakeRow("Nothing worn has sockets", string.Empty, null));
+        }
+
+        private VisualElement MakeSocketRow(
+            Entity gear, DynamicBuffer<GearSocket> sockets, ItemDatabase items, string label)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.marginBottom = 4f;
+
+            var name = new Label(label);
+            name.style.fontSize = 11;
+            name.style.color = new Color(0.66f, 0.68f, 0.72f);
+            name.style.width = 96f;
+            name.pickingMode = PickingMode.Ignore;
+            row.Add(name);
+
+            for (int i = 0; i < sockets.Length; i++)
+            {
+                // The bar goes BEFORE the cell it links backwards to, so the
+                // row reads left to right the way the link does.
+                if (i > 0)
+                    row.Add(MakeLink(sockets[i - 1].LinkGroup == sockets[i].LinkGroup));
+
+                row.Add(MakeSocketCell(gear, sockets[i], items));
+            }
+
+            return row;
+        }
+
+        /// <summary>
+        /// The bar between two neighbouring sockets, drawn only when they share
+        /// a group. An unlinked pair still gets the element, transparent, so the
+        /// cells stay on the same pitch whether they are joined or not.
+        /// </summary>
+        private static VisualElement MakeLink(bool linked)
+        {
+            var link = new VisualElement();
+            link.style.width = LinkBarWidth;
+            link.style.height = 3f;
+            link.pickingMode = PickingMode.Ignore;
+
+            link.style.backgroundColor = linked
+                ? new Color(0.75f, 0.70f, 0.42f)
+                : new Color(0f, 0f, 0f, 0f);
+
+            return link;
+        }
+
+        private VisualElement MakeSocketCell(Entity gear, GearSocket socket, ItemDatabase items)
+        {
+            var cell = new VisualElement();
+            cell.style.width = SocketCellSize;
+            cell.style.height = SocketCellSize;
+            cell.style.justifyContent = Justify.Center;
+            cell.style.alignItems = Align.Center;
+            cell.style.borderTopWidth = 1f;
+            cell.style.borderBottomWidth = 1f;
+            cell.style.borderLeftWidth = 1f;
+            cell.style.borderRightWidth = 1f;
+
+            Color border = new Color(0.30f, 0.32f, 0.38f);
+            var mark = new Label(string.Empty);
+            mark.style.fontSize = 10;
+            mark.pickingMode = PickingMode.Ignore;
+
+            if (!socket.IsEmpty &&
+                GemSockets.TryDescribeGem(
+                    _entityManager, items, socket.InsertedGem, out GemKind kind, out _, out _))
+            {
+                int itemId = _entityManager.GetComponentData<ItemInstance>(socket.InsertedGem).ItemId;
+                ItemRarity rarity = RarityOf(items, itemId);
+
+                border = RarityColour(rarity);
+                cell.style.backgroundColor = Tint(rarity);
+
+                // One letter, because a socket cell is twenty pixels across and
+                // the only thing worth reading at that size is whether this hole
+                // casts something or changes something.
+                mark.text = kind == GemKind.Active ? "A" : "S";
+                mark.style.color = border;
+
+                Entity capturedGem = socket.InsertedGem;
+                int capturedIndex = socket.SocketIndex;
+                ItemDatabase capturedItems = items;
+                Entity capturedGear = gear;
+
+                cell.RegisterCallback<PointerDownEvent>(evt => BeginSocketDrag(
+                    evt, cell, capturedGear, capturedIndex, capturedGem, capturedItems));
+                cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
+                cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+            }
+            else
+            {
+                cell.style.backgroundColor = new Color(0.09f, 0.10f, 0.13f, 1f);
+            }
+
+            SetBorder(cell, border);
+            cell.Add(mark);
+
+            _socketTargets.Add(new SocketTarget
+            {
+                Element = cell,
+                Gear = gear,
+                SocketIndex = socket.SocketIndex,
+                IsEmpty = socket.IsEmpty,
+                DefaultBorder = border
+            });
+
+            return cell;
+        }
+
+        /// <summary>
+        /// Draws the hotkeys and what each one currently casts.
+        ///
+        /// The name is derived through the same GemSockets the cast system uses,
+        /// so a key bound to a socket somebody emptied reads as empty here for
+        /// exactly the reason it casts nothing there.
+        /// </summary>
+        private void RebuildBar(Entity character, ItemDatabase items)
+        {
+            _barList.Clear();
+            _barTargets.Clear();
+
+            if (_skillDatabaseQuery.IsEmptyIgnoreFilter)
+                return;
+
+            SkillDatabase skills = _skillDatabaseQuery.GetSingleton<SkillDatabase>();
+            DynamicBuffer<SkillSlot> bar =
+                _entityManager.GetBuffer<SkillSlot>(character, isReadOnly: true);
+
+            for (int i = 0; i < bar.Length && i < BarSlotCount; i++)
+                _barList.Add(MakeBarBox(i, bar[i], items, skills));
+        }
+
+        private VisualElement MakeBarBox(
+            int index, in SkillSlot slot, ItemDatabase items, SkillDatabase skills)
+        {
+            var box = new VisualElement();
+            box.style.flexGrow = 1f;
+            box.style.height = BarBoxHeight;
+            box.style.marginRight = 3f;
+            box.style.justifyContent = Justify.Center;
+            box.style.alignItems = Align.Center;
+            box.style.borderTopWidth = 1f;
+            box.style.borderBottomWidth = 1f;
+            box.style.borderLeftWidth = 1f;
+            box.style.borderRightWidth = 1f;
+
+            Color border = new Color(0.24f, 0.26f, 0.32f);
+            string text = HotkeyName(index);
+
+            if (GemSockets.TryResolveActive(
+                    _entityManager, items, skills, slot.Gear, slot.SocketIndex,
+                    out int skillIndex, out _))
+            {
+                border = new Color(0.45f, 0.62f, 0.85f);
+                text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}";
+            }
+
+            box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);
+            SetBorder(box, border);
+
+            var label = new Label(text);
+            label.style.fontSize = 10;
+            label.style.color = border;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.unityTextAlign = TextAnchor.MiddleCenter;
+            label.pickingMode = PickingMode.Ignore;
+            box.Add(label);
+
+            int captured = index;
+            box.RegisterCallback<ClickEvent>(evt =>
+            {
+                if (evt.clickCount >= 2)
+                    SendClearBar(captured);
+            });
+
+            _barTargets.Add(new BarTarget
+            {
+                Element = box,
+                BarSlotIndex = index,
+                DefaultBorder = border
+            });
+
+            return box;
+        }
+
+        /// <summary>What the player actually presses. Matches PlayerInputReader.</summary>
+        private static string HotkeyName(int index)
+        {
+            switch (index)
+            {
+                case 0: return "LMB";
+                case 1: return "RMB";
+                case 2: return "Q";
+                default: return "R";
+            }
+        }
+
+        /// <summary>Starts a drag from a gem sitting in a socket.</summary>
+        private void BeginSocketDrag(
+            PointerDownEvent evt,
+            VisualElement cell,
+            Entity gear,
+            int socketIndex,
+            Entity gem,
+            ItemDatabase items)
+        {
+            if (evt.button != 0 || _drag.Active)
+                return;
+
+            if (!TryGetCharacter(out _, out Entity bag))
+                return;
+
+            int itemId = _entityManager.GetComponentData<ItemInstance>(gem).ItemId;
+
+            StartDrag(evt, cell, items, itemId, gem, bag, false);
+
+            _drag.Source2 = DragSource.Socket;
+            _drag.SourceGear = gear;
+            _drag.SourceSocket = socketIndex;
+
+            if (GridFit.TryGetFootprint(items, itemId, false, out int width, out int height))
+                _drag.GrabOffset = new Vector2(width * _cellSize, height * _cellSize) * 0.5f;
+
+            evt.StopPropagation();
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1331,6 +1812,56 @@ namespace TogetherWeFall.UI
             });
         }
 
+        private void SendSocket(SocketRequest request)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
+                return;
+
+            _entityManager.GetBuffer<SocketRequest>(character).Add(request);
+            _lastSignature = int.MinValue;
+        }
+
+        private void SendSocketInsert(Entity gear, Entity gem, int socketIndex)
+        {
+            SendSocket(new SocketRequest
+            {
+                Kind = SocketRequestKind.Insert,
+                Gear = gear,
+                Gem = gem,
+                SocketIndex = socketIndex
+            });
+        }
+
+        private void SendSocketRemove(Entity gear, int socketIndex)
+        {
+            SendSocket(new SocketRequest
+            {
+                Kind = SocketRequestKind.Remove,
+                Gear = gear,
+                SocketIndex = socketIndex
+            });
+        }
+
+        private void SendBindBar(Entity gear, int socketIndex, int barSlotIndex)
+        {
+            SendSocket(new SocketRequest
+            {
+                Kind = SocketRequestKind.BindBar,
+                Gear = gear,
+                SocketIndex = socketIndex,
+                BarSlotIndex = barSlotIndex
+            });
+        }
+
+        private void SendClearBar(int barSlotIndex)
+        {
+            SendSocket(new SocketRequest
+            {
+                Kind = SocketRequestKind.ClearBar,
+                BarSlotIndex = barSlotIndex
+            });
+        }
+
         // ─────────────────────────────────────────────────────────────────
         // Lookups
         // ─────────────────────────────────────────────────────────────────
@@ -1379,6 +1910,19 @@ namespace TogetherWeFall.UI
         /// The same mask the host checks a request against, read straight off
         /// the blob. The panel colours a slot with it; it never decides with it.
         /// </summary>
+        /// <summary>What kind of gem an item is, or None. Read straight off the blob.</summary>
+        private static GemKind GemKindOf(ItemDatabase items, int itemId)
+        {
+            int index = items.IndexOf(itemId);
+            if (index < 0)
+                return GemKind.None;
+
+            // By reference: ItemBlob carries a BlobArray, and copying it would
+            // leave the affixes pointing at nothing.
+            ref ItemBlob item = ref items.Value.Value.Items[index];
+            return item.GemKind;
+        }
+
         private static ushort AllowedSlotsOf(ItemDatabase items, int itemId)
         {
             int index = items.IndexOf(itemId);
@@ -1440,6 +1984,43 @@ namespace TogetherWeFall.UI
 
                 for (int i = 0; i < cells.Length; i++)
                     hash = hash * 31 + cells[i].OccupyingItem.Index;
+
+                return hash;
+            }
+        }
+
+        /// <summary>
+        /// What the sockets and the hotkeys are showing, in one number.
+        ///
+        /// Separate from the main signature because it needs an EntityManager to
+        /// reach the socket buffers, and the main one is deliberately static —
+        /// a function of exactly what is handed to it.
+        /// </summary>
+        private int SocketSignature(Entity character, DynamicBuffer<EquippedItem> slots)
+        {
+            unchecked
+            {
+                int hash = 17;
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    Entity gear = slots[i].Item;
+
+                    if (!slots[i].HasItem || !_entityManager.HasBuffer<GearSocket>(gear))
+                        continue;
+
+                    DynamicBuffer<GearSocket> sockets =
+                        _entityManager.GetBuffer<GearSocket>(gear, isReadOnly: true);
+
+                    for (int s = 0; s < sockets.Length; s++)
+                        hash = hash * 31 + sockets[s].InsertedGem.Index;
+                }
+
+                DynamicBuffer<SkillSlot> bar =
+                    _entityManager.GetBuffer<SkillSlot>(character, isReadOnly: true);
+
+                for (int i = 0; i < bar.Length; i++)
+                    hash = hash * 31 + bar[i].Gear.Index * 7 + bar[i].SocketIndex;
 
                 return hash;
             }
@@ -1530,9 +2111,36 @@ namespace TogetherWeFall.UI
 
             _characterQuery.Dispose();
             _itemDatabaseQuery.Dispose();
+            _skillDatabaseQuery.Dispose();
         }
 
         /// <summary>One equipment row, and which slot dropping on it means.</summary>
+        /// <summary>Where a drag began. Three places, four meanings on drop.</summary>
+        private enum DragSource : byte
+        {
+            Bag = 0,
+            EquipmentSlot = 1,
+            Socket = 2
+        }
+
+        /// <summary>One socket cell, and the hole it stands for.</summary>
+        private struct SocketTarget
+        {
+            public VisualElement Element;
+            public Entity Gear;
+            public int SocketIndex;
+            public bool IsEmpty;
+            public Color DefaultBorder;
+        }
+
+        /// <summary>One hotkey box.</summary>
+        private struct BarTarget
+        {
+            public VisualElement Element;
+            public int BarSlotIndex;
+            public Color DefaultBorder;
+        }
+
         private struct SlotTarget
         {
             public VisualElement Element;
@@ -1570,12 +2178,22 @@ namespace TogetherWeFall.UI
             public VisualElement Source;
 
             /// <summary>
-            /// Whether this started in an equipment slot rather than in the bag.
-            /// It decides what a drop means on both possible targets, which is
-            /// why it is remembered rather than worked out at the end.
+            /// Where this started. It decides what a drop means on every target,
+            /// which is why it is remembered rather than worked out at the end.
             /// </summary>
-            public bool FromSlot;
+            public DragSource Source2;
+
             public EquipmentSlot SourceSlot;
+
+            /// <summary>The gear whose socket this came out of. Socket drags only.</summary>
+            public Entity SourceGear;
+            public int SourceSocket;
+
+            /// <summary>Whether what is being dragged is a gem at all.</summary>
+            public bool IsGem;
+
+            /// <summary>Whether the gem being dragged can be bound to a hotkey.</summary>
+            public bool IsActiveGem;
 
             public Entity Bag;
             public Entity Item;

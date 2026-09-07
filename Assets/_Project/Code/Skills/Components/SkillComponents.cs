@@ -123,12 +123,11 @@ namespace TogetherWeFall.Skills
         public bool HasBinding => Gear != Entity.Null;
     }
 
-    /// <summary>The loadout a character starts with, baked beside the skill database.</summary>
-    [InternalBufferCapacity(4)]
-    public struct DefaultSkillSlot : IBufferElementData
-    {
-        public int SkillIndex;
-    }
+    // The starting loadout used to be a DefaultSkillSlot buffer here. Skills
+    // live in gems now, so what a character can cast is decided by what is
+    // socketed — and a second list saying otherwise would be a second answer to
+    // the same question. What a character STARTS with is a list of items, and
+    // that is StarterItem, beside the character sheet.
 
     /// <summary>
     /// A skill that something other than a player asked for.

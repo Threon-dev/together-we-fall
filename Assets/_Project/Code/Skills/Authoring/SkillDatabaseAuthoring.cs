@@ -24,7 +24,6 @@ namespace TogetherWeFall.Skills.Authoring
 
         [Tooltip("What a fresh character is armed with, in slot order. The first " +
                  "is the primary attack, the second the secondary.")]
-        [SerializeField] private SkillDefinition[] _defaultLoadout;
 
         [SerializeField] private GameObject _projectilePrefab;
 
@@ -48,7 +47,6 @@ namespace TogetherWeFall.Skills.Authoring
         [SerializeField, Range(16, 4096)] private int _maxHitsPerFrame = 512;
 
         public SkillDefinition[] Skills => _skills;
-        public SkillDefinition[] DefaultLoadout => _defaultLoadout;
         public GameObject ProjectilePrefab => _projectilePrefab;
         public int MaxTriggerDepth => _maxTriggerDepth;
         public int ProjectilePoolSize => _projectilePoolSize;
@@ -94,7 +92,6 @@ namespace TogetherWeFall.Skills.Authoring
                     MaxDepth = authoring.MaxTriggerDepth
                 });
 
-                AddDefaultLoadout(entity, authoring);
             }
 
             /// <summary>
@@ -128,30 +125,6 @@ namespace TogetherWeFall.Skills.Authoring
                         if (modifiers[m].TriggeredSkill != null)
                             DependsOn(modifiers[m].TriggeredSkill);
                     }
-                }
-            }
-
-            private void AddDefaultLoadout(Entity entity, SkillDatabaseAuthoring authoring)
-            {
-                DynamicBuffer<DefaultSkillSlot> loadout = AddBuffer<DefaultSkillSlot>(entity);
-
-                SkillDefinition[] defaults = authoring.DefaultLoadout;
-                if (defaults == null)
-                    return;
-
-                for (int i = 0; i < defaults.Length; i++)
-                {
-                    int index = IndexOf(authoring.Skills, defaults[i]);
-
-                    if (index < 0)
-                    {
-                        Debug.LogWarning(
-                            $"[{nameof(SkillDatabaseAuthoring)}] Loadout slot {i} refers to a " +
-                            "skill that is not in the skills list — slot left empty.", authoring);
-                        continue;
-                    }
-
-                    loadout.Add(new DefaultSkillSlot { SkillIndex = index });
                 }
             }
 

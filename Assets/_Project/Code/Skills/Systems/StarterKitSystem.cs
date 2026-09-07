@@ -36,10 +36,10 @@ namespace TogetherWeFall.Skills.Systems
     /// This way there is exactly one — something is in a socket — and the kit
     /// simply puts the first few things there.
     ///
-    /// The gems are socketed rather than left loose ONLY because there is no UI
-    /// to socket them with yet. That is the one line here that is temporary:
-    /// once gems can be dragged into holes, this should drop them in the bag and
-    /// let the player decide. Everything else about the kit is permanent.
+    /// The gems go in the bag, not into the holes. Socketing them here would
+    /// be deciding somebody's build for them, and the whole point of the model
+    /// is that the arrangement is the player's. The weapon is worn because a
+    /// character with no gear has nowhere to put a gem at all.
     ///
     /// Items come from the loot pool like every other item in the game, so the
     /// pool stays the ceiling on how many exist at once.
@@ -153,13 +153,11 @@ namespace TogetherWeFall.Skills.Systems
                     continue;
                 }
 
-                Socket(entityManager, items, gear, item);
+                PlaceInBag(entityManager, items, bag, item);
             }
 
             if (gear != Entity.Null)
                 Equip(entityManager, character, gear, items);
-
-            BindBar(entityManager, items, character, gear);
 
             entityManager.AddComponent<StarterKitGranted>(character);
 
@@ -167,28 +165,44 @@ namespace TogetherWeFall.Skills.Systems
                 $"[StarterKitSystem] Starter kit granted with {itemIds.Length - 1} gems.");
         }
 
-        /// <summary>Drops a gem into the first empty socket on the gear.</summary>
-        private static void Socket(
-            EntityManager entityManager, ItemDatabase items, Entity gear, Entity gem)
+        /// <summary>
+        /// Lays a gem out in the bag, wherever it fits.
+        ///
+        /// Through GridFit rather than a placement request, because the kit runs
+        /// before anybody has had a chance to send one and the items are already
+        /// owned — there is nothing to check and nobody to answer.
+        /// </summary>
+        private static void PlaceInBag(
+            EntityManager entityManager, ItemDatabase items, Entity bag, Entity item)
         {
-            if (gear == Entity.Null || !entityManager.HasBuffer<GearSocket>(gear))
+            if (bag == Entity.Null || !entityManager.HasComponent<InventoryCell>(bag))
                 return;
 
-            DynamicBuffer<GearSocket> sockets = entityManager.GetBuffer<GearSocket>(gear);
+            int itemId = entityManager.GetComponentData<ItemInstance>(item).ItemId;
 
-            for (int i = 0; i < sockets.Length; i++)
+            if (!GridFit.TryGetFootprint(items, itemId, false, out int width, out int height))
+                return;
+
+            InventoryGridComponent grid =
+                entityManager.GetComponentData<InventoryGridComponent>(bag);
+            DynamicBuffer<InventoryCell> cells = entityManager.GetBuffer<InventoryCell>(bag);
+
+            if (!GridFit.FindFirstFit(cells, grid, width, height, item, out int x, out int y))
             {
-                if (!sockets[i].IsEmpty)
-                    continue;
-
-                GearSocket socket = sockets[i];
-                socket.InsertedGem = gem;
-                sockets[i] = socket;
+                UnityEngine.Debug.LogWarning(
+                    "[StarterKitSystem] No room in the bag for the whole starter kit.");
                 return;
             }
 
-            UnityEngine.Debug.LogWarning(
-                "[StarterKitSystem] The starter gear has fewer sockets than the kit has gems.");
+            GridFit.Occupy(cells, grid, x, y, width, height, item);
+
+            entityManager.SetComponentData(item, new ItemGridPlacement
+            {
+                ContainerEntity = bag,
+                OriginX = x,
+                OriginY = y,
+                IsRotated = false
+            });
         }
 
         /// <summary>
@@ -224,45 +238,5 @@ namespace TogetherWeFall.Skills.Systems
             entityManager.SetComponentEnabled<StatsDirty>(character, true);
         }
 
-        /// <summary>
-        /// Points each hotkey at the next socket holding an active gem.
-        ///
-        /// Supports are skipped rather than refused: the kit is a list of items,
-        /// not a layout, and which holes ended up with actives in them is a
-        /// consequence of that order.
-        /// </summary>
-        private static void BindBar(
-            EntityManager entityManager, ItemDatabase items, Entity character, Entity gear)
-        {
-            if (gear == Entity.Null || !entityManager.HasBuffer<GearSocket>(gear))
-                return;
-
-            DynamicBuffer<GearSocket> sockets = entityManager.GetBuffer<GearSocket>(gear, true);
-            DynamicBuffer<SkillSlot> bar = entityManager.GetBuffer<SkillSlot>(character);
-
-            int barSlot = 0;
-
-            for (int i = 0; i < sockets.Length && barSlot < bar.Length; i++)
-            {
-                if (sockets[i].IsEmpty)
-                    continue;
-
-                if (!GemSockets.TryDescribeGem(
-                        entityManager, items, sockets[i].InsertedGem, out GemKind kind, out _, out _))
-                {
-                    continue;
-                }
-
-                if (kind != GemKind.Active)
-                    continue;
-
-                SkillSlot slot = bar[barSlot];
-                slot.Gear = gear;
-                slot.SocketIndex = i;
-                bar[barSlot] = slot;
-
-                barSlot++;
-            }
-        }
     }
 }
