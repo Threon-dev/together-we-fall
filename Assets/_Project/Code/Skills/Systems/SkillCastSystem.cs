@@ -198,6 +198,18 @@ namespace TogetherWeFall.Skills.Systems
             StatBlock stats = state.EntityManager.GetComponentData<PlayerStats>(character).Final;
             ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports);
 
+            // TEMPORARY DIAGNOSTIC — delete once the gem chain is trusted.
+            //
+            // Every link in that chain looks correct read on its own, so the
+            // only thing left is to watch it run. This says what the host
+            // decided, in the order it decided it: which hole, which group, how
+            // many supports that group handed over, and what came out.
+            UnityEngine.Debug.Log(
+                $"[cast] socket {slot.SocketIndex} group {linkGroup} " +
+                $"skill {skills.NameOf(skillIndex)} " +
+                $"supports {supports.Length} -> forks {resolved.Forks} " +
+                $"casts {resolved.Casts} chains {resolved.Chains}");
+
             var context = new CastContext
             {
                 PlayerId = request.PlayerId,

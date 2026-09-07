@@ -243,6 +243,22 @@ namespace TogetherWeFall.Skills
         /// <summary>Splits left. Each split makes two projectiles with one fewer.</summary>
         public int ForksRemaining;
 
+        /// <summary>
+        /// The body this projectile last landed on, and the one its forks must
+        /// not land on again.
+        ///
+        /// A fork is born at the impact point, which is by definition inside the
+        /// hit radius of whatever was just hit — so without this it strikes the
+        /// same enemy on its first frame, spends its last split and vanishes
+        /// before travelling anywhere. Two forks appearing and dying on one
+        /// frame at one spot is indistinguishable from a fork support that does
+        /// nothing.
+        ///
+        /// Never cleared. A projectile travels in a straight line, so a body it
+        /// has already passed through is not one it should meet again.
+        /// </summary>
+        public Entity LastHitTarget;
+
         /// <summary>Skill to cast where this lands, or -1. Set by a trigger support.</summary>
         public int TriggerSkillIndex;
 

@@ -254,11 +254,16 @@ namespace TogetherWeFall.Skills.Systems
                     Transforms = EnemyTransforms
                 };
 
-                int index = targets.FindNearest(transform.Position, projectile.HitRadius);
+                int index = FindTarget(targets, transform.Position, projectile);
 
                 if (index >= 0)
                 {
                     Impact(Enemies[index], transform.Position, projectile);
+
+                    // Recorded before retiring, because the forks made from this
+                    // projectile inherit it and it is the only thing standing
+                    // between them and the body they were born inside.
+                    projectile.LastHitTarget = Enemies[index];
                     Retire(ref projectile, isSpent, hitSomething: true);
                     return;
                 }
@@ -267,6 +272,26 @@ namespace TogetherWeFall.Skills.Systems
                     return;
 
                 Retire(ref projectile, isSpent, hitSomething: false);
+            }
+
+            /// <summary>
+            /// The nearest enemy in range, skipping the one this projectile came
+            /// out of.
+            ///
+            /// Only forks carry that exclusion; a freshly cast projectile has no
+            /// history and takes the plain path, which is the one almost every
+            /// projectile in the air is on.
+            /// </summary>
+            private int FindTarget(
+                in EnemyTargets targets, float3 position, in SkillProjectile projectile)
+            {
+                if (projectile.LastHitTarget == Entity.Null)
+                    return targets.FindNearest(position, projectile.HitRadius);
+
+                var born = new FixedList64Bytes<Entity>();
+                born.Add(projectile.LastHitTarget);
+
+                return targets.FindNearestUnvisited(position, projectile.HitRadius, born);
             }
 
             private static void Retire(
