@@ -1,4 +1,5 @@
 using Unity.Entities;
+using TogetherWeFall.Audio;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Loot;
@@ -40,6 +41,10 @@ namespace TogetherWeFall.Inventory.Systems
             ItemDatabase items = SystemAPI.GetSingleton<ItemDatabase>();
             EntityManager entityManager = state.EntityManager;
 
+            // Taken once for the whole frame rather than looked up per pickup.
+            // Nothing below is a structural change, so it stays valid.
+            DynamicBuffer<AudioEvent> audio = SystemAPI.GetSingletonBuffer<AudioEvent>();
+
             foreach ((DynamicBuffer<InventoryPlacementRequest> requests,
                       DynamicBuffer<InventoryPlacementResult> results,
                       RefRO<PlayerCharacter> character) in
@@ -53,7 +58,7 @@ namespace TogetherWeFall.Inventory.Systems
                 for (int i = 0; i < requests.Length; i++)
                 {
                     results.Add(Apply(
-                        entityManager, items, requests[i], character.ValueRO.PlayerId));
+                        entityManager, items, audio, requests[i], character.ValueRO.PlayerId));
                 }
 
                 // Requests live for one frame. A refused one is not retried: the
@@ -71,6 +76,7 @@ namespace TogetherWeFall.Inventory.Systems
         private static InventoryPlacementResult Apply(
             EntityManager entityManager,
             ItemDatabase items,
+            DynamicBuffer<AudioEvent> audio,
             in InventoryPlacementRequest request,
             int playerId)
         {
@@ -84,12 +90,13 @@ namespace TogetherWeFall.Inventory.Systems
 
             return request.Mode == InventoryPlacementMode.Remove
                 ? Remove(entityManager, request)
-                : Place(entityManager, items, request, playerId);
+                : Place(entityManager, items, audio, request, playerId);
         }
 
         private static InventoryPlacementResult Place(
             EntityManager entityManager,
             ItemDatabase items,
+            DynamicBuffer<AudioEvent> audio,
             in InventoryPlacementRequest request,
             int playerId)
         {
@@ -175,7 +182,14 @@ namespace TogetherWeFall.Inventory.Systems
             // Off the floor and into ownership. Only reached once the cells are
             // written, so an item is never both invisible and un-owned.
             if (!entityManager.IsComponentEnabled<ItemStored>(request.Item))
+            {
                 LootItemPool.Store(entityManager, request.Item);
+
+                // Only for an item that was actually picked up. Shuffling
+                // something around inside the bag is not a pickup, and hearing
+                // it as one is how tidying up starts sounding like a haul.
+                audio.Add(new AudioEvent { Cue = AudioCue.ItemPickup, Volume = 1f });
+            }
 
             return new InventoryPlacementResult
             {

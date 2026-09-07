@@ -3,6 +3,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
+using TogetherWeFall.Audio;
 using TogetherWeFall.Enemies;
 using TogetherWeFall.Skills;
 using TogetherWeFall.Vfx;
@@ -132,6 +133,18 @@ namespace TogetherWeFall.Combat.Systems
         {
             if (transforms.Length == 0)
                 return;
+
+            // Two queues, announced together and budgeted apart. A crowd wiped
+            // out at once wants every little corpse drawn and about one thud.
+            SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
+            {
+                Cue = AudioCue.EnemyDeath,
+                Position = transforms[0].Position,
+
+                // Louder for a crowd, which is also what gets it past the
+                // minimum gap when deaths are arriving every frame.
+                Volume = math.min(2f, 0.7f + transforms.Length * 0.15f)
+            });
 
             DynamicBuffer<VfxEvent> events = SystemAPI.GetSingletonBuffer<VfxEvent>();
 

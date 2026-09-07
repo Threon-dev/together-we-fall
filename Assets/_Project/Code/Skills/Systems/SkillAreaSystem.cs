@@ -2,6 +2,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using TogetherWeFall.Audio;
 using TogetherWeFall.Enemies;
 using TogetherWeFall.Vfx;
 
@@ -88,6 +89,16 @@ namespace TogetherWeFall.Skills.Systems
                     Position = area.Position,
                     Color = DamageTypePalette.For(area.Type),
                     Magnitude = area.Radius
+                });
+
+                SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
+                {
+                    Cue = AudioCue.Explosion,
+                    Position = area.Position,
+
+                    // Scaled by the blast, so a big one is heard over a wave of
+                    // small ones instead of being gated behind them.
+                    Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
                 });
 
                 // Once per blast, not once per body caught in it — same rule as

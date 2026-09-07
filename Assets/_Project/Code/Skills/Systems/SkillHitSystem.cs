@@ -2,6 +2,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using TogetherWeFall.Audio;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Enemies;
 using TogetherWeFall.Vfx;
@@ -58,6 +59,7 @@ namespace TogetherWeFall.Skills.Systems
             var targets = new EnemyTargets { Entities = enemies, Transforms = enemyTransforms };
 
             DynamicBuffer<VfxEvent> vfx = SystemAPI.GetSingletonBuffer<VfxEvent>();
+            DynamicBuffer<AudioEvent> audio = SystemAPI.GetSingletonBuffer<AudioEvent>();
 
             float deltaTime = SystemAPI.Time.DeltaTime;
             float dealt = 0f;
@@ -79,7 +81,7 @@ namespace TogetherWeFall.Skills.Systems
                 }
 
                 budget--;
-                dealt += Apply(ref state, hit, targets, hits, vfx);
+                dealt += Apply(ref state, hit, targets, hits, vfx, audio);
             }
 
             if (dealt <= 0f)
@@ -98,7 +100,8 @@ namespace TogetherWeFall.Skills.Systems
             in PendingHit hit,
             in EnemyTargets targets,
             DynamicBuffer<PendingHit> hits,
-            DynamicBuffer<VfxEvent> vfx)
+            DynamicBuffer<VfxEvent> vfx,
+            DynamicBuffer<AudioEvent> audio)
         {
             float dealt = 0f;
 
@@ -166,6 +169,13 @@ namespace TogetherWeFall.Skills.Systems
                 EndPosition = jump.Origin,
                 Color = DamageTypePalette.For(hit.Type),
                 Magnitude = math.max(0.05f, hit.ChainDelay)
+            });
+
+            audio.Add(new AudioEvent
+            {
+                Cue = AudioCue.ChainZap,
+                Position = jump.Origin,
+                Volume = 0.7f
             });
 
             return dealt;

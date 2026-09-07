@@ -13,6 +13,8 @@ using TogetherWeFall.Loot;
 using TogetherWeFall.Loot.Authoring;
 using TogetherWeFall.Player;
 using TogetherWeFall.UI;
+using TogetherWeFall.Audio;
+using TogetherWeFall.Curtain;
 using TogetherWeFall.Vfx;
 
 namespace TogetherWeFall.EditorTools
@@ -111,8 +113,16 @@ namespace TogetherWeFall.EditorTools
             VfxPresenter vfxPresenter =
                 SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial, panelSettings);
 
+            // Above every other panel, so a fade covers the inventory too.
+            CurtainPresenter curtainPresenter =
+                SceneBuildUtility.CreateCurtainPresenter(panelSettings);
+
+            AudioPresenter audioPresenter = SceneBuildUtility.CreateAudioPresenter(
+                SceneBuildUtility.CreateAudioConfig("AudioConfig"));
+
             SceneBuildUtility.CreateBootstrap(
-                cameraRig, player, debugTools, director, inventoryUI, vfxPresenter);
+                cameraRig, player, debugTools, director, inventoryUI, vfxPresenter,
+                curtainPresenter, audioPresenter);
 
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath)!);
             EditorSceneManager.SaveScene(scene, ScenePath);

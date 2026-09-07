@@ -2,8 +2,10 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using TogetherWeFall.Audio;
 using TogetherWeFall.Bootstrap;
 using TogetherWeFall.CameraRig;
+using TogetherWeFall.Curtain;
 using TogetherWeFall.Config;
 using TogetherWeFall.DebugTools;
 using TogetherWeFall.Dungeon;
@@ -108,7 +110,9 @@ namespace TogetherWeFall.EditorTools
             GameObject debugTools,
             DungeonDirector dungeon = null,
             InventoryUI inventoryUI = null,
-            VfxPresenter vfxPresenter = null)
+            VfxPresenter vfxPresenter = null,
+            CurtainPresenter curtainPresenter = null,
+            AudioPresenter audioPresenter = null)
         {
             var bootstrapObject = new GameObject("GameBootstrap");
             GameBootstrap bootstrap = bootstrapObject.AddComponent<GameBootstrap>();
@@ -129,6 +133,8 @@ namespace TogetherWeFall.EditorTools
                 player.GetComponent<PlayerActionPublisher>();
             serialized.FindProperty("_inventoryUI").objectReferenceValue = inventoryUI;
             serialized.FindProperty("_vfxPresenter").objectReferenceValue = vfxPresenter;
+            serialized.FindProperty("_curtainPresenter").objectReferenceValue = curtainPresenter;
+            serialized.FindProperty("_audioPresenter").objectReferenceValue = audioPresenter;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -434,6 +440,103 @@ namespace TogetherWeFall.EditorTools
             SetReference(ui, "_document", document);
 
             return ui;
+        }
+
+        /// <summary>
+        /// The screen curtain.
+        ///
+        /// Its own UIDocument on the same panel settings, sorted above
+        /// everything else. A fade that the inventory panel can be on top of is
+        /// not a fade — and the sorting order is the only place that can be
+        /// said, because the panels are built lazily and in no fixed order.
+        /// </summary>
+        public static CurtainPresenter CreateCurtainPresenter(PanelSettings panelSettings)
+        {
+            var curtainObject = new GameObject("CurtainPresenter");
+
+            UIDocument document = curtainObject.AddComponent<UIDocument>();
+            document.panelSettings = panelSettings;
+            document.sortingOrder = 10f;
+
+            CurtainPresenter presenter = curtainObject.AddComponent<CurtainPresenter>();
+            SetReference(presenter, "_document", document);
+
+            return presenter;
+        }
+
+        /// <summary>
+        /// The object that plays what the simulation announced. Its pooled
+        /// AudioSources are parented to it, so the whole voice bank is one
+        /// collapsible entry in the hierarchy.
+        /// </summary>
+        public static AudioPresenter CreateAudioPresenter(AudioConfig config)
+        {
+            var audioObject = new GameObject("AudioPresenter");
+
+            AudioPresenter presenter = audioObject.AddComponent<AudioPresenter>();
+            SetReference(presenter, "_config", config);
+
+            return presenter;
+        }
+
+        /// <summary>
+        /// The audio config, with a row for every cue the simulation can name.
+        ///
+        /// Filled in on creation and never touched again, the same way the
+        /// sample items are: a table with eight empty rows is something a
+        /// designer drops clips into, and an empty table is something they have
+        /// to work out the shape of first. No clips are assigned — there are
+        /// none in the project — so every cue is silent until one is, which is
+        /// a normal state rather than an error.
+        /// </summary>
+        public static AudioConfig CreateAudioConfig(string assetName)
+        {
+            AudioConfig config = CreateOrLoadConfig<AudioConfig>(assetName, out bool created);
+
+            if (!created)
+                return config;
+
+            // cue, volume, spatial, voices per frame, minimum gap
+            //
+            // The gaps are the interesting column. Ungated, a sustained chain
+            // reaction starts a death sound a hundred and twenty times a
+            // second, which is not a hundred and twenty deaths — it is one
+            // clipped tone. At 0.09 it is ten a second, which still reads as
+            // carnage and still reads as individual bodies. That number is
+            // measured; the other two are the same reasoning applied to
+            // shorter sounds and want a pass with actual clips in them.
+            var defaults = new (AudioCue cue, float volume, bool spatial, int voices, float gap)[]
+            {
+                (AudioCue.SkillCast, 0.6f, true, 4, 0.03f),
+                (AudioCue.ProjectileImpact, 0.5f, true, 4, 0.03f),
+                (AudioCue.Explosion, 0.9f, true, 2, 0.10f),
+                (AudioCue.ChainZap, 0.6f, true, 3, 0.06f),
+                (AudioCue.EnemyDeath, 0.7f, true, 3, 0.09f),
+                (AudioCue.ChestOpen, 0.9f, true, 1, 0f),
+                (AudioCue.ItemPickup, 0.8f, false, 2, 0f),
+                (AudioCue.UiClick, 0.6f, false, 3, 0f)
+            };
+
+            var serialized = new SerializedObject(config);
+            SerializedProperty cues = serialized.FindProperty("_cues");
+            cues.arraySize = defaults.Length;
+
+            for (int i = 0; i < defaults.Length; i++)
+            {
+                SerializedProperty element = cues.GetArrayElementAtIndex(i);
+
+                element.FindPropertyRelative("_cue").enumValueIndex = (int)defaults[i].cue;
+                element.FindPropertyRelative("_volume").floatValue = defaults[i].volume;
+                element.FindPropertyRelative("_spatial").boolValue = defaults[i].spatial;
+                element.FindPropertyRelative("_maxVoicesPerFrame").intValue = defaults[i].voices;
+                element.FindPropertyRelative("_minIntervalSeconds").floatValue = defaults[i].gap;
+                element.FindPropertyRelative("_pitchRange").vector2Value =
+                    new Vector2(0.95f, 1.05f);
+                element.FindPropertyRelative("_clips").arraySize = 0;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return config;
         }
 
         /// <summary>

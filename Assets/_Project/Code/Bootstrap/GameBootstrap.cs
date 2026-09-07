@@ -1,6 +1,8 @@
 using Unity.Entities;
 using UnityEngine;
+using TogetherWeFall.Audio;
 using TogetherWeFall.CameraRig;
+using TogetherWeFall.Curtain;
 using TogetherWeFall.DebugTools;
 using TogetherWeFall.Dungeon;
 using TogetherWeFall.Enemies;
@@ -45,6 +47,13 @@ namespace TogetherWeFall.Bootstrap
         [Tooltip("Optional. Without it the game plays identically and looks flat.")]
         [SerializeField] private VfxPresenter _vfxPresenter;
 
+        [Tooltip("Optional. Without it the fades still run in the simulation " +
+                 "and simply cannot be seen.")]
+        [SerializeField] private CurtainPresenter _curtainPresenter;
+
+        [Tooltip("Optional. Without it the game plays identically and silently.")]
+        [SerializeField] private AudioPresenter _audioPresenter;
+
         private readonly DebugRunStatusProbe _statusProbe = new DebugRunStatusProbe();
 
         private EntityQuery _enemyQuery;
@@ -81,6 +90,15 @@ namespace TogetherWeFall.Bootstrap
             // After the camera, because the presenter shakes it.
             if (_vfxPresenter != null)
                 _vfxPresenter.Initialize(_cameraRig);
+
+            if (_curtainPresenter != null)
+                _curtainPresenter.Initialize();
+
+            // The rig, not the player: the AudioListener sits on the camera, so
+            // distance culling has to measure from where Unity is listening or
+            // it will drop sounds that are still audible.
+            if (_audioPresenter != null)
+                _audioPresenter.Initialize(_cameraRig.transform);
 
             _hud.Initialize(CreateEnemyCountProvider(), CreateStatusProvider());
         }
@@ -145,9 +163,9 @@ namespace TogetherWeFall.Bootstrap
         {
             // Catch a forgotten reference with one clear message instead of a
             // NullReference somewhere in Update a frame after startup. The
-            // dungeon director, the action publisher, the inventory panel and
-            // the VFX presenter are not on the list: a scene without any of them
-            // still plays.
+            // dungeon director, the action publisher, the inventory panel, the
+            // VFX presenter, the curtain and the audio presenter are not on the
+            // list: a scene without any of them still plays.
             if (_cameraRig == null || _player == null || _input == null ||
                 _positionPublisher == null || _hud == null || _spawnTrigger == null)
             {
