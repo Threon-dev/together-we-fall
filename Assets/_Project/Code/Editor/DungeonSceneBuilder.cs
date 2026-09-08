@@ -96,6 +96,12 @@ namespace TogetherWeFall.EditorTools
             // database and nothing can ever cast it.
             ElementContentFactory.CreateZoneGem(skills[skills.Length - 1], lootTable);
 
+            // The trigger gem, the conditional support and the two keystone
+            // rings, added to the same table for the same reason: a mechanism
+            // that exists in the code and in no item is a mechanism nobody can
+            // reach.
+            SkillContentFactory.CreateBuildContent(lootTable);
+
             SceneBuildUtility.CreateLighting();
 
             DungeonDirector director = CreateDungeonRoot(dungeonConfig);

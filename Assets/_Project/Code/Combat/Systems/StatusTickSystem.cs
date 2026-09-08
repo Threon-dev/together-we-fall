@@ -4,6 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Equipment;
+using TogetherWeFall.Player;
 using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Combat.Systems
@@ -28,8 +30,14 @@ namespace TogetherWeFall.Combat.Systems
     [UpdateBefore(typeof(TogetherWeFall.Skills.Systems.SkillHitSystem))]
     public partial struct StatusTickSystem : ISystem
     {
+        private EntityQuery _characterQuery;
+
         public void OnCreate(ref SystemState state)
         {
+            _characterQuery = SystemAPI.QueryBuilder()
+                .WithAll<PlayerCharacter, KeystoneComponent>()
+                .Build();
+
             state.RequireForUpdate<ElementReactionDatabase>();
             state.RequireForUpdate<SkillEventsSingleton>();
         }
@@ -40,10 +48,20 @@ namespace TogetherWeFall.Combat.Systems
 
             state.CompleteDependency();
 
+            using NativeArray<PlayerCharacter> characters =
+                _characterQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
+            using NativeArray<KeystoneComponent> keystones =
+                _characterQuery.ToComponentDataArray<KeystoneComponent>(Allocator.Temp);
+
             new TickStatusesJob
             {
                 DeltaTime = SystemAPI.Time.DeltaTime,
                 Database = SystemAPI.GetSingleton<ElementReactionDatabase>(),
+
+                // Rebuilt from the characters each frame: the burn knows who lit
+                // it as a player id, and a player id is not something a
+                // ComponentLookup can be asked about.
+                Keystones = KeystoneSet.Gather(characters, keystones),
                 Hits = hits
             }.Run();
 
@@ -66,6 +84,7 @@ namespace TogetherWeFall.Combat.Systems
         {
             public float DeltaTime;
             public ElementReactionDatabase Database;
+            public KeystoneSet Keystones;
 
             public NativeList<PendingHit> Hits;
 
@@ -90,24 +109,52 @@ namespace TogetherWeFall.Combat.Systems
                         continue;
                     }
 
-                    Burn(entity, transform.Position, ref status);
+                    // A burn that resolved all at once has nothing left to run
+                    // down, so it leaves rather than sitting at zero damage for
+                    // the rest of its duration.
+                    if (Burn(entity, transform.Position, ref status))
+                    {
+                        statuses.RemoveAtSwapBack(i);
+                        continue;
+                    }
+
                     statuses[i] = status;
                 }
             }
 
-            private void Burn(Entity entity, float3 position, ref ElementalStatus status)
+            /// <summary>
+            /// Makes one status hurt, if it is the kind that does. Returns
+            /// whether it is finished.
+            /// </summary>
+            private bool Burn(Entity entity, float3 position, ref ElementalStatus status)
             {
                 if (!Database.TryGetStatus(status.Definition, out StatusBlob definition))
-                    return;
+                    return false;
 
                 // Most statuses only mark their target. Shock and chill exist to
                 // be reacted with, and never tick at all.
                 if (definition.DamagePerSecond <= 0f || definition.TickInterval <= 0f)
-                    return;
+                    return false;
+
+                // The keystone: everything the burn was ever going to do,
+                // delivered now, and then it is over.
+                //
+                // A real trade rather than free damage. Nothing stays alight, so
+                // nothing is left for a second element to react with — which for
+                // a fire build is the difference between arranging a reaction and
+                // simply hitting things.
+                if (Keystones.Has(status.SourcePlayerId, KeystoneEffect.StatusInstantResolve))
+                {
+                    Hits.Add(MakeTick(
+                        entity, position, status,
+                        definition.DamagePerSecond * status.RemainingDuration * status.Stacks));
+
+                    return true;
+                }
 
                 status.TickRemaining -= DeltaTime;
                 if (status.TickRemaining > 0f)
-                    return;
+                    return false;
 
                 // Added rather than reset, so a long frame does not quietly stretch
                 // the rhythm — and clamped, so an interval shorter than a frame
@@ -115,7 +162,28 @@ namespace TogetherWeFall.Combat.Systems
                 status.TickRemaining = math.max(
                     definition.TickInterval, status.TickRemaining + definition.TickInterval);
 
-                Hits.Add(new PendingHit
+                // A tick is worth an interval of damage, so changing the
+                // interval changes the rhythm and not the total.
+                Hits.Add(MakeTick(
+                    entity, position, status,
+                    definition.DamagePerSecond * definition.TickInterval * status.Stacks));
+
+                return false;
+            }
+
+            /// <summary>
+            /// One helping of status damage, whether it arrived on a rhythm or
+            /// all at once.
+            ///
+            /// One method because the two differ only in the number: a burn that
+            /// resolves instantly is still a burn, and it must carry the same
+            /// FromReaction flag — a status that could react would refresh
+            /// itself, and an instant one that refreshed itself would never stop
+            /// arriving.
+            /// </summary>
+            private static PendingHit MakeTick(
+                Entity entity, float3 position, in ElementalStatus status, float damage)
+                => new PendingHit
                 {
                     Target = entity,
 
@@ -124,9 +192,7 @@ namespace TogetherWeFall.Combat.Systems
                     // of the map.
                     Origin = position,
 
-                    // A tick is worth an interval of damage, so changing the
-                    // interval changes the rhythm and not the total.
-                    Damage = definition.DamagePerSecond * definition.TickInterval * status.Stacks,
+                    Damage = damage,
                     Type = status.Element,
                     SourcePlayerId = status.SourcePlayerId,
 
@@ -138,8 +204,7 @@ namespace TogetherWeFall.Combat.Systems
                     // The status doing its work, not a new blow. It reacts with
                     // nothing and refreshes nothing, least of all itself.
                     FromReaction = true
-                });
-            }
+                };
         }
     }
 }

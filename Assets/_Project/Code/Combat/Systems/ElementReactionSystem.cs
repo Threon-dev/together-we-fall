@@ -4,6 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Equipment;
+using TogetherWeFall.Player;
 using TogetherWeFall.Skills;
 using TogetherWeFall.Vfx;
 
@@ -40,8 +42,14 @@ namespace TogetherWeFall.Combat.Systems
     [UpdateBefore(typeof(DamageResolutionSystem))]
     public partial struct ElementReactionSystem : ISystem
     {
+        private EntityQuery _characterQuery;
+
         public void OnCreate(ref SystemState state)
         {
+            _characterQuery = SystemAPI.QueryBuilder()
+                .WithAll<PlayerCharacter, KeystoneComponent>()
+                .Build();
+
             state.RequireForUpdate<ElementReactionDatabase>();
             state.RequireForUpdate<SkillEventsSingleton>();
         }
@@ -53,6 +61,7 @@ namespace TogetherWeFall.Combat.Systems
             // not required to outlive the call that made it.
             using var areas = new NativeList<PendingArea>(4, Allocator.TempJob);
             using var effects = new NativeList<VfxEvent>(8, Allocator.TempJob);
+            using var triggers = new NativeList<TriggerEvent>(4, Allocator.TempJob);
 
             // Run, not Schedule, because the queues below are drained on this
             // thread in this same update. Run passes a default dependency, so
@@ -64,16 +73,42 @@ namespace TogetherWeFall.Combat.Systems
             {
                 Database = SystemAPI.GetSingleton<ElementReactionDatabase>(),
                 ElapsedTime = (float)SystemAPI.Time.ElapsedTime,
+
+                // Rebuilt every frame from the characters, because this job
+                // walks enemies and holds nothing but a player id — there is no
+                // entity here to look a component up with. Four entries at most.
+                Keystones = GatherKeystones(),
                 Areas = areas,
-                Effects = effects
+                Effects = effects,
+                Triggers = triggers
             }.Run();
 
-            Append(ref state, areas, effects);
+            Append(ref state, areas, effects, triggers);
+        }
+
+        private KeystoneSet GatherKeystones()
+        {
+            using NativeArray<PlayerCharacter> characters =
+                _characterQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
+            using NativeArray<KeystoneComponent> keystones =
+                _characterQuery.ToComponentDataArray<KeystoneComponent>(Allocator.Temp);
+
+            return KeystoneSet.Gather(characters, keystones);
         }
 
         private void Append(
-            ref SystemState state, NativeList<PendingArea> areas, NativeList<VfxEvent> effects)
+            ref SystemState state,
+            NativeList<PendingArea> areas,
+            NativeList<VfxEvent> effects,
+            NativeList<TriggerEvent> triggers)
         {
+            if (triggers.Length > 0)
+            {
+                DynamicBuffer<TriggerEvent> queue = SystemAPI.GetSingletonBuffer<TriggerEvent>();
+                for (int i = 0; i < triggers.Length; i++)
+                    TriggerEvents.Announce(queue, triggers[i]);
+            }
+
             if (areas.Length > 0)
             {
                 // Drained by the area system, which has already run this frame,
@@ -104,11 +139,14 @@ namespace TogetherWeFall.Combat.Systems
         {
             public ElementReactionDatabase Database;
             public float ElapsedTime;
+            public KeystoneSet Keystones;
 
             public NativeList<PendingArea> Areas;
             public NativeList<VfxEvent> Effects;
+            public NativeList<TriggerEvent> Triggers;
 
             private void Execute(
+                Entity entity,
                 in LocalTransform transform,
                 DynamicBuffer<DamageEvent> events,
                 DynamicBuffer<ElementalStatus> statuses)
@@ -126,7 +164,7 @@ namespace TogetherWeFall.Combat.Systems
                     if (damage.FromReaction)
                         continue;
 
-                    bool marked = React(ref damage, transform.Position, statuses);
+                    bool marked = React(ref damage, entity, transform.Position, statuses);
 
                     // Written back because a bonus-damage reaction changes the
                     // number, and the resolver reads this buffer next.
@@ -141,7 +179,11 @@ namespace TogetherWeFall.Combat.Systems
                     // the plain chill of the cold blow that caused it would
                     // overwrite the interesting half a line after producing it.
                     if (!marked)
-                        ApplyDefault(damage.Type, damage.SourcePlayerId, statuses);
+                    {
+                        ApplyDefault(
+                            damage.Type, damage.SourcePlayerId, entity, transform.Position,
+                            statuses);
+                    }
                 }
             }
 
@@ -158,7 +200,10 @@ namespace TogetherWeFall.Combat.Systems
             /// the one case where the blow does not then leave its ordinary mark.
             /// </summary>
             private bool React(
-                ref DamageEvent damage, float3 position, DynamicBuffer<ElementalStatus> statuses)
+                ref DamageEvent damage,
+                Entity entity,
+                float3 position,
+                DynamicBuffer<ElementalStatus> statuses)
             {
                 byte carried = ElementMask.Without(damage.CarriedElements, damage.Type);
 
@@ -174,7 +219,7 @@ namespace TogetherWeFall.Combat.Systems
 
                     // No status index to consume: a carried element is spent by
                     // arriving, whatever the rule says about consuming.
-                    return Resolve(rule, ref damage, position, statuses, existing: -1);
+                    return Resolve(rule, ref damage, entity, position, statuses, existing: -1);
                 }
 
                 int newest = -1;
@@ -203,7 +248,7 @@ namespace TogetherWeFall.Combat.Systems
                 if (newest < 0)
                     return false;
 
-                return Resolve(chosen, ref damage, position, statuses, newest);
+                return Resolve(chosen, ref damage, entity, position, statuses, newest);
             }
 
             /// <summary>
@@ -212,6 +257,7 @@ namespace TogetherWeFall.Combat.Systems
             private bool Resolve(
                 in ElementReactionRuleBlob rule,
                 ref DamageEvent damage,
+                Entity entity,
                 float3 position,
                 DynamicBuffer<ElementalStatus> statuses,
                 int existing)
@@ -229,7 +275,9 @@ namespace TogetherWeFall.Combat.Systems
                         if (Database.TryGetStatus(rule.ResultStatus, out StatusBlob result))
                         {
                             announced = result.Element;
-                            Apply(rule.ResultStatus, result, damage.SourcePlayerId, statuses);
+                            Apply(
+                                rule.ResultStatus, result, damage.SourcePlayerId, entity, position,
+                                statuses);
                             marked = true;
                         }
 
@@ -268,7 +316,17 @@ namespace TogetherWeFall.Combat.Systems
                 // Consuming is about the status that was already there. A rule
                 // that consumes but fired off a carried element has nothing to
                 // spend — the element was gone the moment it arrived.
-                if (rule.ConsumesExisting && existing >= 0)
+                //
+                // The keystone overrules the rule, which is exactly what a
+                // keystone is for: the table stops being "some of these keep
+                // paying out" and becomes "every mark is worth one combination".
+                // One comparison, on a list that is empty for anybody not
+                // wearing one.
+                bool consumes = rule.ConsumesExisting ||
+                                Keystones.Has(
+                                    damage.SourcePlayerId, KeystoneEffect.ReactionsAlwaysConsume);
+
+                if (consumes && existing >= 0)
                     statuses.RemoveAtSwapBack(existing);
 
                 // One generic flash in the colour of whatever came out of it.
@@ -295,14 +353,18 @@ namespace TogetherWeFall.Combat.Systems
             /// ordinary answer rather than a hole. Physical marks nothing today.
             /// </summary>
             private void ApplyDefault(
-                DamageType element, int playerId, DynamicBuffer<ElementalStatus> statuses)
+                DamageType element,
+                int playerId,
+                Entity entity,
+                float3 position,
+                DynamicBuffer<ElementalStatus> statuses)
             {
                 int index = Database.DefaultStatusOf(element);
 
                 if (index < 0 || !Database.TryGetStatus(index, out StatusBlob status))
                     return;
 
-                Apply(index, status, playerId, statuses);
+                Apply(index, status, playerId, entity, position, statuses);
             }
 
             /// <summary>
@@ -318,8 +380,28 @@ namespace TogetherWeFall.Combat.Systems
                 int definition,
                 in StatusBlob status,
                 int playerId,
+                Entity entity,
+                float3 position,
                 DynamicBuffer<ElementalStatus> statuses)
             {
+                // Announced whether it is a fresh mark or a refresh, because a
+                // gem that fires "when you apply a status" means the act, not
+                // the novelty — keeping a crowd alight is applying fire.
+                //
+                // Capped by the list rather than by anything here: three hundred
+                // burning bodies are three hundred applications and, for a
+                // trigger on a cooldown, one cast.
+                if (Triggers.Length < TriggerEvents.MaxPerFrame)
+                {
+                    Triggers.Add(new TriggerEvent
+                    {
+                        Condition = TriggerConditionType.OnStatusApplied,
+                        PlayerId = playerId,
+                        Position = position,
+                        Target = entity
+                    });
+                }
+
                 for (int i = 0; i < statuses.Length; i++)
                 {
                     if (statuses[i].Element != status.Element)

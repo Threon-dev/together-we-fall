@@ -227,6 +227,38 @@ namespace TogetherWeFall.Skills.Authoring
                 return triggered.SkillId;
             }
 
+            /// <summary>
+            /// Says so when a support is authored against something the game
+            /// cannot yet make true.
+            ///
+            /// A warning rather than an error, and deliberately not a refusal:
+            /// these conditions are early, not wrong, and the seam they wait on
+            /// is player health, which is a named next step. What would be wrong
+            /// is a gem that sits in a socket doing nothing with no explanation
+            /// anywhere.
+            /// </summary>
+            private static void WarnAboutInertCondition(SkillModifier modifier, Object context)
+            {
+                if (modifier.Kind == SkillModifierKind.TriggerOnCondition &&
+                    !SkillModifiers.HasSource(modifier.TriggerCondition))
+                {
+                    Debug.LogWarning(
+                        $"[{nameof(SkillDatabaseAuthoring)}] Support '{modifier.name}' triggers on " +
+                        $"{modifier.TriggerCondition}, which nothing raises yet — it needs player " +
+                        "health. The gem sockets and costs nothing; it simply never fires.",
+                        context);
+                }
+
+                if (!SkillModifiers.HasSource(modifier.Condition))
+                {
+                    Debug.LogWarning(
+                        $"[{nameof(SkillDatabaseAuthoring)}] Support '{modifier.name}' is " +
+                        $"conditional on {modifier.Condition}, which is never true yet — it needs " +
+                        "player health. The support will simply never apply.",
+                        context);
+                }
+            }
+
             private static void BuildSkill(
                 BlobBuilder builder,
                 ref SkillBlob blob,
@@ -277,13 +309,22 @@ namespace TogetherWeFall.Skills.Authoring
                     if (modifiers[m] == null)
                         continue;
 
+                    WarnAboutInertCondition(modifiers[m], context);
+
                     blobModifiers[cursor] = new SkillModifierBlob
                     {
                         Kind = modifiers[m].Kind,
                         Value = modifiers[m].Value,
                         SecondaryValue = modifiers[m].SecondaryValue,
                         ConvertTo = modifiers[m].ConvertTo,
-                        TriggeredSkillId = ResolveTrigger(modifiers[m], skill, skills, context)
+                        TriggeredSkillId = ResolveTrigger(modifiers[m], skill, skills, context),
+
+                        TriggerCondition = modifiers[m].TriggerCondition,
+                        TriggerCooldown = modifiers[m].TriggerCooldown,
+                        ProcChance = modifiers[m].ProcChance,
+                        Condition = modifiers[m].Condition,
+                        RequiredElement = modifiers[m].RequiredElement,
+                        Threshold = modifiers[m].Threshold
                     };
 
                     cursor++;

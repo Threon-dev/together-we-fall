@@ -22,7 +22,18 @@ namespace TogetherWeFall.Skills
         Hit = 1,
 
         /// <summary>Acts when something dies.</summary>
-        Kill = 2
+        Kill = 2,
+
+        /// <summary>
+        /// Does not act on the skill at all — it decides who casts it.
+        ///
+        /// Its own phase rather than a fourth kind of Cast, because it is the
+        /// one support whose moment is not inside a cast: it happens when
+        /// something in the world satisfies a condition, and the cast is the
+        /// consequence. Implemented in TriggerEvaluationSystem, which is the
+        /// only stage that reads no skill and produces one.
+        /// </summary>
+        Trigger = 3
     }
 
     /// <summary>
@@ -68,6 +79,11 @@ namespace TogetherWeFall.Skills
                 case SkillModifierKind.ExplodeOnKill:
                     return SkillModifierPhase.Kill;
 
+                // Casts the actives beside it when the world says so, rather
+                // than when a key is pressed.
+                case SkillModifierKind.TriggerOnCondition:
+                    return SkillModifierPhase.Trigger;
+
                 // Everything else changes how much exists, how big it is or what
                 // element it is — all decisions taken before anything is in the
                 // world at all.
@@ -86,6 +102,7 @@ namespace TogetherWeFall.Skills
             {
                 case SkillModifierPhase.Hit: return "H";
                 case SkillModifierPhase.Kill: return "K";
+                case SkillModifierPhase.Trigger: return "T";
                 default: return "C";
             }
         }
@@ -97,8 +114,58 @@ namespace TogetherWeFall.Skills
             {
                 case SkillModifierPhase.Hit: return "on hit";
                 case SkillModifierPhase.Kill: return "on kill";
+                case SkillModifierPhase.Trigger: return "casts itself";
                 default: return "on cast";
             }
         }
+
+        /// <summary>
+        /// Whether this kind takes the key away from the actives beside it.
+        ///
+        /// Asked by the cast system to refuse a manual press and by the panel to
+        /// mark the hotkey as automatic, which is the same question and must
+        /// therefore have one answer. Derived from the phase rather than listed,
+        /// so a second sort of trigger cannot be added without landing here.
+        /// </summary>
+        public static bool IsAutomatic(SkillModifierKind kind)
+            => PhaseOf(kind) == SkillModifierPhase.Trigger;
+
+        /// <summary>
+        /// Whether anything in the game can currently make this condition true.
+        ///
+        /// Four of the six trigger conditions are about the player being hurt,
+        /// and the player cannot be hurt yet. A gem authored against one of them
+        /// is not broken, it is early — so this is a warning at bake and a note
+        /// in the panel rather than a refusal, and it is one table so that the
+        /// warning and the note cannot disagree about which four.
+        ///
+        /// The day player health lands, the answers here change in the same
+        /// commit as the Announce calls that make them true. If this table and
+        /// the announcers ever disagree, the table is the one that is wrong —
+        /// the same rule as PhaseOf.
+        /// </summary>
+        public static bool HasSource(TriggerConditionType condition)
+        {
+            switch (condition)
+            {
+                // Raised by DeathReactionSystem.
+                case TriggerConditionType.OnKill:
+
+                // Raised by ElementReactionSystem.
+                case TriggerConditionType.OnStatusApplied:
+                    return true;
+
+                // OnLowHealth needs no announcer — it is a state read off the
+                // character every frame — but it needs a Health component to
+                // read, and characters have none. The rest need a player who
+                // can be hurt, crit or block.
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>The same question for a support condition. Only one is early.</summary>
+        public static bool HasSource(ModifierConditionType condition)
+            => condition != ModifierConditionType.CasterRecentlyHit;
     }
 }

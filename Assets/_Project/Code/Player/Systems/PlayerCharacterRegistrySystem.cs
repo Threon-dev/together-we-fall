@@ -114,6 +114,10 @@ namespace TogetherWeFall.Player.Systems
             EntityArchetype archetype = state.EntityManager.CreateArchetype(
                 typeof(PlayerCharacter),
                 typeof(PlayerStats),
+
+                // Beside the stats because it is derived exactly as they are:
+                // read off the gear by PlayerStatsSystem on the same dirty flag.
+                typeof(KeystoneComponent),
                 typeof(StatsDirty),
                 typeof(EquippedItem),
                 typeof(EquipRequest),
@@ -126,7 +130,12 @@ namespace TogetherWeFall.Player.Systems
 
                 // Left empty here and filled by SkillLoadoutSystem: the skill
                 // database rides in a SubScene, which may not have loaded yet.
-                typeof(SkillSlot));
+                typeof(SkillSlot),
+
+                // Empty for a character with no trigger gems, which is every
+                // character until one is socketed: entries appear when a trigger
+                // fires and are dropped when they run out.
+                typeof(TriggerCooldown));
 
             Entity entity = state.EntityManager.CreateEntity(archetype);
             state.EntityManager.SetName(entity, "PlayerCharacter");

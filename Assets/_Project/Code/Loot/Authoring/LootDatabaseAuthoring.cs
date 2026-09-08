@@ -234,7 +234,18 @@ namespace TogetherWeFall.Loot.Authoring
                     ConvertTo = modifier.ConvertTo,
                     TriggeredSkillId = modifier.TriggeredSkill != null
                         ? ItemDefinition.ComputeId(modifier.TriggeredSkill.DisplayName)
-                        : 0
+                        : 0,
+
+                    // Read through the properties, which clamp a cooldown away
+                    // from zero and a chance into range. The blob is the only
+                    // copy the host ever sees, so it is the copy that has to be
+                    // sane rather than the asset.
+                    TriggerCondition = modifier.TriggerCondition,
+                    TriggerCooldown = modifier.TriggerCooldown,
+                    ProcChance = modifier.ProcChance,
+                    Condition = modifier.Condition,
+                    RequiredElement = modifier.RequiredElement,
+                    Threshold = modifier.Threshold
                 };
             }
 
@@ -271,6 +282,10 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.GridWidth = item.GridWidth;
                 blob.GridHeight = item.GridHeight;
                 blob.CanRotate = item.CanRotate;
+
+                // Through the property too: it refuses a keystone on a gem, and
+                // a gem is the one item that can never be worn.
+                blob.Keystone = item.Keystone;
 
                 blob.BaseStats = StatBlock.Zero();
 

@@ -36,17 +36,68 @@ namespace TogetherWeFall.Equipment.Systems
             StatBlock characterBase = SystemAPI.GetSingleton<CharacterBaseStats>().Value;
 
             foreach ((RefRW<PlayerStats> stats,
+                      RefRW<KeystoneComponent> keystone,
                       DynamicBuffer<EquippedItem> slots,
                       EnabledRefRW<StatsDirty> dirty) in
                      SystemAPI.Query<RefRW<PlayerStats>,
+                         RefRW<KeystoneComponent>,
                          DynamicBuffer<EquippedItem>,
                          EnabledRefRW<StatsDirty>>())
             {
                 stats.ValueRW.Final = Compute(characterBase, slots, items);
+
+                // On the same pass and the same flag, because it is the same
+                // kind of fact: authored on items, read off what is worn, and
+                // stale the moment the gear changes. A second system on a second
+                // flag would be a second thing to remember to raise.
+                keystone.ValueRW = ChooseKeystone(slots, items);
+
+                // Bumped after both, so the panel's "has anything changed"
+                // covers the keystone too. It is drawn beside the stats and a
+                // ring swapped for another ring changes nothing else.
                 stats.ValueRW.Version++;
 
                 dirty.ValueRW = false;
             }
+        }
+
+        /// <summary>
+        /// Which rule the wearer is breaking, and how many they are not.
+        ///
+        /// First slot in enum order wins. It is an arbitrary rule, but it is a
+        /// STABLE one — two rings swapped between Ring1 and Ring2 keep the same
+        /// keystone in force — and stability is the whole of what makes it
+        /// explainable. Merging two keystones is a design conversation; picking
+        /// whichever the loop reached first would be a coin toss the player
+        /// cannot see.
+        /// </summary>
+        private static KeystoneComponent ChooseKeystone(
+            DynamicBuffer<EquippedItem> slots, ItemDatabase items)
+        {
+            var chosen = KeystoneEffect.None;
+            int ignored = 0;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (!slots[i].HasItem)
+                    continue;
+
+                int index = items.IndexOf(slots[i].ItemId);
+                if (index < 0)
+                    continue;
+
+                ref ItemBlob item = ref items.Value.Value.Items[index];
+
+                if (item.Keystone == KeystoneEffect.None)
+                    continue;
+
+                if (chosen == KeystoneEffect.None)
+                    chosen = item.Keystone;
+                else
+                    ignored++;
+            }
+
+            return new KeystoneComponent { Effect = chosen, Ignored = ignored };
         }
 
         private static StatBlock Compute(

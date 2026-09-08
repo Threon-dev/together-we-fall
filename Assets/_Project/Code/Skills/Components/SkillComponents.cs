@@ -77,7 +77,23 @@ namespace TogetherWeFall.Skills
         /// never once per body hit, or a burst that caught forty enemies would
         /// trigger forty times.
         /// </summary>
-        TriggerOnHit = 8
+        TriggerOnHit = 8,
+
+        /// <summary>
+        /// The actives linked to this cast themselves when the world says so,
+        /// and stop answering the key.
+        ///
+        /// The mirror of TriggerOnHit and the reason both are worth having: that
+        /// one names a second skill and fires it where the first landed; this
+        /// one names no skill at all and fires the ones already beside it. So it
+        /// needs no skill reference, and it REPLACES the manual cast rather than
+        /// adding to it — a gem that both answers the key and fires on kill is a
+        /// skill going off twice for reasons the player cannot see.
+        ///
+        /// Its cooldown and its chance are not tuning. Without them "cast on
+        /// kill" during a wave is a cast every frame.
+        /// </summary>
+        TriggerOnCondition = 9
     }
 
     /// <summary>Marks the entity holding the skill queues.</summary>
@@ -176,6 +192,25 @@ namespace TogetherWeFall.Skills
 
         /// <summary>How many triggers deep this already is. Zero is a player press.</summary>
         public int Depth;
+
+        /// <summary>
+        /// The gear and hole this cast came out of, or Null.
+        ///
+        /// Filled only by a condition trigger, which is the one cause that still
+        /// knows: it decided to fire BECAUSE of what is in a particular socket,
+        /// so the link group is right there. A projectile cannot fill this and
+        /// deliberately does not try — it has been in the air for a second and
+        /// remembering the weapon would mean the weapon could not be swapped
+        /// while it flew.
+        ///
+        /// When it is here the fold gathers the group's supports, so an
+        /// automatic cast is the same skill the key would have cast. When it is
+        /// not, the triggered skill folds its innate supports alone, exactly as
+        /// before.
+        /// </summary>
+        public Entity Gear;
+
+        public int SocketIndex;
     }
 
     /// <summary>How far triggering is allowed to go. Baked beside the database.</summary>

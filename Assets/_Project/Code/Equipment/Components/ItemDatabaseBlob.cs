@@ -83,6 +83,16 @@ namespace TogetherWeFall.Equipment
         /// <summary>Whether the player may turn it on its side.</summary>
         public bool CanRotate;
 
+        /// <summary>
+        /// The combat rule this item inverts while worn, or None.
+        ///
+        /// Beside the affixes rather than among them because it is not a number:
+        /// affixes are summed and a keystone is chosen, and putting a chosen
+        /// thing in a summed list is how "two rings, both keystones" turns into
+        /// a question with no answer.
+        /// </summary>
+        public KeystoneEffect Keystone;
+
         /// <summary>Flat values the item contributes before any modifier.</summary>
         public StatBlock BaseStats;
 

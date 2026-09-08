@@ -28,6 +28,13 @@ namespace TogetherWeFall.Skills
         /// active, so five is the ceiling. The list is fixed-size because this
         /// is gathered per cast and a cast in this game happens in the middle of
         /// a chain reaction.
+        ///
+        /// The list it goes into is a FixedList512Bytes rather than the 128 it
+        /// once was, and that is arithmetic rather than generosity: a support
+        /// grew from twenty bytes to thirty-two when conditions and triggers
+        /// arrived, and 124 bytes of payload holds three of those. Three is
+        /// below this ceiling, which would have meant supports silently
+        /// vanishing out of a six-socket weapon.
         /// </summary>
         public const int MaxSupportsPerGroup = 5;
 
@@ -140,10 +147,10 @@ namespace TogetherWeFall.Skills
         /// the PoE rule and is free here: the group is walked once and the
         /// actives are not consulted.
         /// </summary>
-        public static FixedList128Bytes<SkillModifierBlob> GatherSupports(
+        public static FixedList512Bytes<SkillModifierBlob> GatherSupports(
             EntityManager entityManager, ItemDatabase items, Entity gear, int linkGroup)
         {
-            var supports = new FixedList128Bytes<SkillModifierBlob>();
+            var supports = new FixedList512Bytes<SkillModifierBlob>();
 
             if (linkGroup < 0 || gear == Entity.Null || !entityManager.Exists(gear) ||
                 !entityManager.HasBuffer<GearSocket>(gear))
@@ -178,6 +185,35 @@ namespace TogetherWeFall.Skills
             }
 
             return supports;
+        }
+
+        /// <summary>
+        /// The trigger support in a gathered group, if there is one.
+        ///
+        /// Asked by three callers who must agree: the cast system, to refuse the
+        /// key; the evaluation system, to know what fires and how often; and the
+        /// panel, to say that the key is automatic now. A trigger gem the cast
+        /// system refuses but the evaluator never fires would be a hotkey that
+        /// simply stopped working.
+        ///
+        /// The first one wins when two are socketed together. Firing both would
+        /// mean one condition quietly doubling the other's cooldown, which is
+        /// not what anybody means by socketing two.
+        /// </summary>
+        public static bool TryGetTrigger(
+            in FixedList512Bytes<SkillModifierBlob> supports, out SkillModifierBlob trigger)
+        {
+            for (int i = 0; i < supports.Length; i++)
+            {
+                if (!SkillModifiers.IsAutomatic(supports[i].Kind))
+                    continue;
+
+                trigger = supports[i];
+                return true;
+            }
+
+            trigger = default;
+            return false;
         }
 
         /// <summary>

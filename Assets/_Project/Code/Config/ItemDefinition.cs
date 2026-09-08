@@ -93,6 +93,13 @@ namespace TogetherWeFall.Config
         [Header("Affixes")]
         [SerializeField] private ItemAffix[] _affixes = Array.Empty<ItemAffix>();
 
+        [Tooltip("A rule this item breaks for everything the wearer casts. " +
+                 "None for ordinary gear, which is almost everything — a " +
+                 "keystone belongs on a unique, not on a chest drop. Only one " +
+                 "keystone is ever in force: with two worn, the first slot in " +
+                 "enum order wins and the panel says so.")]
+        [SerializeField] private KeystoneEffect _keystone = KeystoneEffect.None;
+
         [Header("Skill gem")]
         [Tooltip("What this item is when socketed. None for ordinary gear.")]
         [SerializeField] private GemKind _gemKind = GemKind.None;
@@ -135,6 +142,16 @@ namespace TogetherWeFall.Config
 
         public ItemStatValue[] BaseStats => _baseStats;
         public ItemAffix[] Affixes => _affixes;
+
+        /// <summary>
+        /// The rule this item breaks, or None.
+        ///
+        /// Zeroed on a gem, for the same reason two-handedness is zeroed off an
+        /// amulet: a gem is never worn, so a keystone on one would be a state
+        /// that cannot exist, written down where somebody would eventually read
+        /// it and wonder why nothing happened.
+        /// </summary>
+        public KeystoneEffect Keystone => _gemKind == GemKind.None ? _keystone : KeystoneEffect.None;
 
         /// <summary>Clamped, because a zero-cell item would fit anywhere and nowhere.</summary>
         public int GridWidth => Mathf.Max(1, _gridWidth);

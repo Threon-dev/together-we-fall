@@ -54,6 +54,17 @@ namespace TogetherWeFall.Skills.Systems
         /// <summary>Distance in front of the caster a projectile appears at.</summary>
         private const float MuzzleOffset = 0.9f;
 
+        /// <summary>
+        /// The fewest jumps a burst turned into a chain is worth.
+        ///
+        /// An area skill authored with no chains would otherwise become a
+        /// single-target bolt under the keystone, which is not a trade-off, it
+        /// is a punishment. Four is roughly what a blast catches in a crowd, so
+        /// the keystone changes the SHAPE of the damage — a line through bodies
+        /// instead of a circle on the ground — rather than the amount of it.
+        /// </summary>
+        private const int KeystoneChainCount = 4;
+
         private EntityQuery _enemyQuery;
         private EntityQuery _characterQuery;
         private EntityQuery _freeProjectileQuery;
@@ -202,11 +213,41 @@ namespace TogetherWeFall.Skills.Systems
 
             // The build, gathered fresh. The same gem beside different supports
             // is a different skill, and this is the line where that happens.
-            FixedList128Bytes<SkillModifierBlob> supports =
+            FixedList512Bytes<SkillModifierBlob> supports =
                 GemSockets.GatherSupports(state.EntityManager, items, slot.Gear, linkGroup);
 
+            // A trigger gem in the group takes the key away, and this is where
+            // that is enforced — not in the bind, which happened before the gem
+            // arrived and cannot be re-run when it does. The socket is still
+            // bound and the panel still names it; it simply casts when the world
+            // says so rather than when the key is pressed.
+            //
+            // Silently, and on purpose: the alternative is a refusal message
+            // every frame the button is held.
+            if (GemSockets.TryGetTrigger(supports, out _))
+                return;
+
             StatBlock stats = state.EntityManager.GetComponentData<PlayerStats>(character).Final;
-            ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports);
+
+            // Only asked for when something asked. A build with no conditional
+            // supports — which is every build that existed before this — pays
+            // one comparison and never touches the world.
+            CastConditions conditions = SkillConditions.AnyConditional(supports)
+                ? ReadConditions(
+                    ref state, targets, request.Origin, Flatten(request.Direction),
+                    skills.RangeOf(skillIndex))
+                : CastConditions.Unknown(default);
+
+            ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports, conditions);
+
+            KeystoneEffect keystone = KeystoneOf(ref state, character);
+
+            // The one keystone that changes the cast's own numbers rather than
+            // what the cast produces. There is no mana to save yet, so today it
+            // is the downside alone — see KeystoneEffect for why it is here
+            // anyway.
+            if (keystone == KeystoneEffect.NoManaCostDoubleCooldown)
+                resolved.Cooldown *= 2f;
 
             // TEMPORARY DIAGNOSTIC — delete once the gem chain is trusted.
             //
@@ -232,7 +273,12 @@ namespace TogetherWeFall.Skills.Systems
 
                 // A player press is the top of the chain. Anything it triggers
                 // starts counting from here.
-                Depth = 0
+                Depth = 0,
+
+                // Carried rather than read again inside Emit, because Emit is
+                // static and because a keystone is a fact about this cast: it
+                // belongs beside who cast it and where they were pointing.
+                Keystone = keystone
             };
 
             float3 direction = Flatten(request.Direction);
@@ -292,16 +338,40 @@ namespace TogetherWeFall.Skills.Systems
                 ? state.EntityManager.GetComponentData<PlayerStats>(character).Final
                 : StatBlock.Zero();
 
-            // Innate supports only. A triggered skill has no socket of its own
-            // to look at — the link group that caused this lives on gear that a
-            // projectile in flight deliberately does not remember. Carrying it
-            // through is the natural next step and is a change to three structs,
-            // not to this line.
+            // Supports when the cause knew where it came from, and innate ones
+            // when it did not.
+            //
+            // A condition trigger knows: it fired because of what is in a
+            // particular hole, so it names the gear and the hole and the fold
+            // gathers exactly the group the hotkey would have. A trigger on
+            // impact does not and deliberately never will — a projectile that
+            // remembered its weapon is a weapon that cannot be swapped while it
+            // flies.
+            //
+            // Conditions are not asked here either way. What a triggered cast is
+            // aimed at is whatever it landed on, and asking "is the target
+            // burning" of a body a blast already killed is a question with a
+            // misleading answer.
+            var supports = new FixedList512Bytes<SkillModifierBlob>();
+
+            if (cast.Gear != Entity.Null &&
+                GemSockets.TryReadSocket(
+                    state.EntityManager, cast.Gear, cast.SocketIndex, out GearSocket socket))
+            {
+                supports = GemSockets.GatherSupports(
+                    state.EntityManager, SystemAPI.GetSingleton<ItemDatabase>(),
+                    cast.Gear, socket.LinkGroup);
+            }
+
             ResolvedSkill resolved = skills.Resolve(
-                cast.SkillIndex, stats, new FixedList128Bytes<SkillModifierBlob>());
+                cast.SkillIndex, stats, supports, CastConditions.Unknown(default));
 
             resolved.Damage *= cast.DamageScale;
             resolved.ExplosionDamage *= cast.DamageScale;
+
+            KeystoneEffect keystone = character != Entity.Null
+                ? KeystoneOf(ref state, character)
+                : KeystoneEffect.None;
 
             var context = new CastContext
             {
@@ -312,7 +382,8 @@ namespace TogetherWeFall.Skills.Systems
                 // impact point rather than at arm's length beyond it.
                 AimPoint = cast.Origin,
                 PreferredTarget = cast.PreferredTarget,
-                Depth = cast.Depth
+                Depth = cast.Depth,
+                Keystone = keystone
             };
 
             float3 direction = Flatten(cast.Direction);
@@ -376,6 +447,15 @@ namespace TogetherWeFall.Skills.Systems
                     return true;
 
                 case SkillEffectKind.AreaBurst:
+                    // The keystone, answered here rather than in the area stage.
+                    // That queue also carries corpse explosions, zone pulses and
+                    // reaction blasts, and turning those into chains would mean
+                    // a body detonating into lightning because of a ring. This
+                    // is the last place that still knows the blast is a skill
+                    // somebody cast.
+                    if (context.Keystone == KeystoneEffect.AoeToChain)
+                        return EmitChainedBurst(skill, context, direction, targets, hits, effects);
+
                     areas.Add(MakeArea(
                         skill,
                         context,
@@ -417,6 +497,41 @@ namespace TogetherWeFall.Skills.Systems
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// A blast under the AoeToChain keystone: the same skill, spent as jumps
+        /// between bodies instead of as a circle on the ground.
+        ///
+        /// The blast radius becomes the jump range, which is the whole of what
+        /// makes it read as the same skill inverted rather than as a different
+        /// one: a wide burst chains far, a tight one rattles between neighbours.
+        /// The jumps themselves are floored, because an area skill authored with
+        /// no chains would otherwise become single-target — a keystone should
+        /// change what damage looks like, not delete it.
+        ///
+        /// It goes through the ordinary bolt path, so it inherits the acquire
+        /// cone, the visited list and the chain delay without any of that
+        /// knowing a keystone exists.
+        /// </summary>
+        private static bool EmitChainedBurst(
+            in ResolvedSkill skill,
+            in CastContext context,
+            float3 direction,
+            in EnemyTargets targets,
+            NativeList<PendingHit> hits,
+            NativeList<VfxEvent> effects)
+        {
+            ResolvedSkill chained = skill;
+            chained.Chains = math.max(skill.Chains, KeystoneChainCount);
+            chained.ChainRange = math.max(skill.ChainRange, skill.Radius);
+
+            // The delay a skill that never chained has authored is zero, and
+            // zero delay is a chain nobody can see: every jump lands on the same
+            // frame and the whole thing reads as one flash.
+            chained.ChainDelay = math.max(0.05f, skill.ChainDelay);
+
+            return EmitBolt(chained, context, direction, targets, hits, effects);
         }
 
         /// <summary>
@@ -577,6 +692,76 @@ namespace TogetherWeFall.Skills.Systems
             ZoneSpawn.ActivateAll(state.EntityManager, free, zones);
         }
 
+        /// <summary>
+        /// Looks at whatever this cast is aimed at, once, for the conditional
+        /// supports to ask about.
+        ///
+        /// The target is found the same way a bolt finds its first one — the
+        /// aim cone first, then anything in range — so "what the condition asked
+        /// about" and "what a bolt would hit" are the same body rather than two
+        /// answers that agree most of the time.
+        ///
+        /// Reached only when at least one support is conditional, which is why
+        /// it may afford two buffer reads on the main thread.
+        /// </summary>
+        private CastConditions ReadConditions(
+            ref SystemState state,
+            in EnemyTargets targets,
+            float3 origin,
+            float3 direction,
+            float range)
+        {
+            var conditions = CastConditions.Unknown(default);
+
+            int index = targets.FindNearestInArc(origin, direction, BoltAcquireCosine, range);
+            if (index < 0)
+                index = targets.FindNearest(origin, range);
+
+            if (index < 0)
+                return conditions;
+
+            Entity target = targets.Entities[index];
+            conditions.HasTarget = true;
+
+            if (state.EntityManager.HasComponent<Health>(target))
+            {
+                Health health = state.EntityManager.GetComponentData<Health>(target);
+
+                // Guarded, because a target whose maximum is zero would make
+                // every low-life condition true rather than meaningless.
+                conditions.TargetHealthFraction = health.Max > 0f
+                    ? math.saturate(health.Current / health.Max)
+                    : 1f;
+            }
+
+            if (!state.EntityManager.HasBuffer<ElementalStatus>(target))
+                return conditions;
+
+            DynamicBuffer<ElementalStatus> statuses =
+                state.EntityManager.GetBuffer<ElementalStatus>(target, isReadOnly: true);
+
+            // Flattened into the same mask a projectile carries its pickups in.
+            // A condition asking "is this burning" and a hit arriving carrying
+            // fire are the same question about the same byte, which is the whole
+            // reason the mask exists rather than a second kind of set.
+            for (int i = 0; i < statuses.Length; i++)
+                conditions.TargetElements = ElementMask.With(conditions.TargetElements, statuses[i].Element);
+
+            return conditions;
+        }
+
+        /// <summary>
+        /// The rule this caster is breaking, or None.
+        ///
+        /// Read off the character rather than carried in the request, because it
+        /// is derived from what they are wearing right now — the same argument
+        /// that keeps the stats there.
+        /// </summary>
+        private static KeystoneEffect KeystoneOf(ref SystemState state, Entity character)
+            => state.EntityManager.HasComponent<KeystoneComponent>(character)
+                ? state.EntityManager.GetComponentData<KeystoneComponent>(character).Effect
+                : KeystoneEffect.None;
+
         private bool TryGetCharacter(ref SystemState state, int playerId, out Entity character)
         {
             character = Entity.Null;
@@ -614,6 +799,9 @@ namespace TogetherWeFall.Skills.Systems
             public Entity PreferredTarget;
 
             public int Depth;
+
+            /// <summary>The rule the caster is breaking, or None.</summary>
+            public KeystoneEffect Keystone;
         }
 
         /// <summary>Flattens onto the ground plane, with a fallback for a zero aim.</summary>

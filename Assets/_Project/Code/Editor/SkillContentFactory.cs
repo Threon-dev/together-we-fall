@@ -2,6 +2,8 @@ using UnityEditor;
 using UnityEngine;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Config;
+using TogetherWeFall.Equipment;
+using TogetherWeFall.Loot;
 using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.EditorTools
@@ -23,6 +25,7 @@ namespace TogetherWeFall.EditorTools
     public static class SkillContentFactory
     {
         private const string SkillFolder = "Assets/_Project/Data/Skills";
+        private const string ItemFolder = "Assets/_Project/Data/Items";
 
         /// <summary>The skills, in loadout order: primary, secondary, and two more.</summary>
         public static SkillDefinition[] CreateStarterSkills()
@@ -141,13 +144,145 @@ namespace TogetherWeFall.EditorTools
             return new[] { splinter, nova, lance, sweep, wall };
         }
 
+        /// <summary>
+        /// The two gems and the two rings that make the newer half of the model
+        /// reachable without authoring anything by hand.
+        ///
+        /// Deliberately the smallest set that demonstrates all three mechanisms
+        /// AND their interaction, rather than one of each:
+        ///
+        ///   Cast on Kill, socketed beside Cinder Nova, turns the burst into
+        ///   something that goes off when a wave starts falling apart — and
+        ///   takes the key away, which is the rule worth seeing enforced.
+        ///
+        ///   Kindled Chain adds jumps only against burning bodies, so the same
+        ///   gem is dead weight on a fresh crowd and the payoff for having lit
+        ///   one. It reads as a different gem depending on what else is
+        ///   socketed, which is the entire claim.
+        ///
+        ///   Stormcaller's Coil turns Cinder Nova from a circle into a chain,
+        ///   which is what makes Kindled Chain matter to an area skill at all —
+        ///   and neither the keystone nor the support has heard of the other.
+        ///
+        ///   Ashen Signet is the honest downside: burns resolve at once, so
+        ///   nothing stays alight and the conditional support beside it stops
+        ///   finding its condition. Two keystones that pull against each other
+        ///   are how a player learns that only one is ever in force.
+        ///
+        /// They go into the chest table rather than the starter kit. The kit is
+        /// authored balance and is left alone; these are things to find.
+        /// </summary>
+        /// <remarks>
+        /// Takes no skills, unlike the zone gem factory beside it, and that is
+        /// the point rather than an oversight: a condition trigger names no
+        /// skill and a conditional support tunes whatever it is linked to. Both
+        /// are about the group they end up in, which is the player's business.
+        /// </remarks>
+        public static void CreateBuildContent(LootTable table)
+        {
+            SkillModifier castOnKill = Modifier(
+                "SupportCastOnKill", SkillModifierKind.TriggerOnCondition, 0f,
+                triggerCondition: TriggerConditionType.OnKill,
+                triggerCooldown: 3f,
+                procChance: 0.35f);
+
+            SkillModifier kindledChain = Modifier(
+                "SupportKindledChain", SkillModifierKind.AddedChains, 3f,
+                condition: ModifierConditionType.TargetHasStatus,
+                requiredElement: DamageType.Fire);
+
+            SupportGem(
+                "GemCastOnKill", "Cast on Kill Support", castOnKill, ItemRarity.Rare, table);
+
+            SupportGem(
+                "GemKindledChain", "Kindled Chain Support", kindledChain, ItemRarity.Rare, table);
+
+            KeystoneRing(
+                "StormcallersCoil", "Stormcallers Coil", KeystoneEffect.AoeToChain, table);
+
+            KeystoneRing(
+                "AshenSignet", "Ashen Signet", KeystoneEffect.StatusInstantResolve, table);
+        }
+
+        /// <summary>
+        /// A support gem: an ordinary item that happens to carry a modifier.
+        ///
+        /// One cell, like every other gem, because a gem competes for bag space
+        /// with the loot it is meant to help you take.
+        /// </summary>
+        private static ItemDefinition SupportGem(
+            string assetName,
+            string displayName,
+            SkillModifier support,
+            ItemRarity rarity,
+            LootTable table)
+        {
+            ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
+                assetName, ItemFolder, out bool created);
+
+            if (created)
+            {
+                var serialized = new SerializedObject(gem);
+                serialized.FindProperty("_displayName").stringValue = displayName;
+                serialized.FindProperty("_rarity").enumValueIndex = (int)rarity;
+                serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.MainHand;
+                serialized.FindProperty("_gemKind").enumValueIndex = (int)GemKind.Support;
+                serialized.FindProperty("_gemSupport").objectReferenceValue = support;
+                serialized.FindProperty("_gridWidth").intValue = 1;
+                serialized.FindProperty("_gridHeight").intValue = 1;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            SceneBuildUtility.EnsureInLootTable(table, gem);
+            return gem;
+        }
+
+        /// <summary>
+        /// A ring that breaks a rule.
+        ///
+        /// A ring rather than a weapon on purpose: rings are the one item that
+        /// fits in two slots, so two keystones can be worn at once without any
+        /// contrivance — which is exactly the case the "only the first applies"
+        /// rule exists for, and the one a player will find on their own.
+        ///
+        /// No stats. A keystone should be chosen for what it does to the rules,
+        /// not carried because it also happens to add damage.
+        /// </summary>
+        private static ItemDefinition KeystoneRing(
+            string assetName, string displayName, KeystoneEffect effect, LootTable table)
+        {
+            ItemDefinition ring = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
+                assetName, ItemFolder, out bool created);
+
+            if (created)
+            {
+                var serialized = new SerializedObject(ring);
+                serialized.FindProperty("_displayName").stringValue = displayName;
+                serialized.FindProperty("_rarity").enumValueIndex = (int)ItemRarity.Legendary;
+                serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.Ring1;
+                serialized.FindProperty("_keystone").enumValueIndex = (int)effect;
+                serialized.FindProperty("_gridWidth").intValue = 1;
+                serialized.FindProperty("_gridHeight").intValue = 1;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            SceneBuildUtility.EnsureInLootTable(table, ring);
+            return ring;
+        }
+
         private static SkillModifier Modifier(
             string assetName,
             SkillModifierKind kind,
             float value,
             float secondary = 60f,
             DamageType convertTo = DamageType.Fire,
-            SkillDefinition triggered = null)
+            SkillDefinition triggered = null,
+            TriggerConditionType triggerCondition = TriggerConditionType.OnKill,
+            float triggerCooldown = 3f,
+            float procChance = 0.35f,
+            ModifierConditionType condition = ModifierConditionType.None,
+            DamageType requiredElement = DamageType.Fire,
+            float threshold = 0.35f)
         {
             SkillModifier modifier = SceneBuildUtility.CreateOrLoadConfig<SkillModifier>(
                 assetName, SkillFolder, out bool created);
@@ -161,6 +296,15 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_secondaryValue").floatValue = secondary;
             serialized.FindProperty("_convertTo").enumValueIndex = (int)convertTo;
             serialized.FindProperty("_triggeredSkill").objectReferenceValue = triggered;
+
+            serialized.FindProperty("_triggerCondition").enumValueIndex = (int)triggerCondition;
+            serialized.FindProperty("_triggerCooldown").floatValue = triggerCooldown;
+            serialized.FindProperty("_procChance").floatValue = procChance;
+
+            serialized.FindProperty("_condition").enumValueIndex = (int)condition;
+            serialized.FindProperty("_requiredElement").enumValueIndex = (int)requiredElement;
+            serialized.FindProperty("_threshold").floatValue = threshold;
+
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             return modifier;

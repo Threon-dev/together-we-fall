@@ -148,42 +148,8 @@ namespace TogetherWeFall.EditorTools
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            EnsureInTable(table, gem);
+            SceneBuildUtility.EnsureInLootTable(table, gem);
             return gem;
-        }
-
-        /// <summary>
-        /// Appends an item to a loot table if it is not already in it.
-        ///
-        /// Additive on purpose. The table is hand-tuned by now, and a factory
-        /// that rewrote it would throw away weights somebody chose; a factory
-        /// that skipped it entirely would leave a gem that exists on disk and
-        /// can never be found.
-        /// </summary>
-        private static void EnsureInTable(LootTable table, ItemDefinition item)
-        {
-            if (table == null || item == null)
-                return;
-
-            var serialized = new SerializedObject(table);
-            SerializedProperty entries = serialized.FindProperty("_entries");
-
-            for (int i = 0; i < entries.arraySize; i++)
-            {
-                Object existing = entries.GetArrayElementAtIndex(i)
-                    .FindPropertyRelative("_item").objectReferenceValue;
-
-                if (existing == item)
-                    return;
-            }
-
-            entries.arraySize++;
-
-            SerializedProperty added = entries.GetArrayElementAtIndex(entries.arraySize - 1);
-            added.FindPropertyRelative("_item").objectReferenceValue = item;
-            added.FindPropertyRelative("_weight").floatValue = 1f;
-
-            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static StatusEffectDefinition Status(

@@ -593,7 +593,7 @@ namespace TogetherWeFall.UI
             ItemDatabase items = _itemDatabaseQuery.GetSingleton<ItemDatabase>();
 
             BuildGrid(grid);
-            RebuildStats(stats);
+            RebuildStats(character, stats);
             RebuildSlots(slots, items);
             RebuildItems(bag, cells, items);
             RebuildSockets(slots, items);
@@ -731,9 +731,11 @@ namespace TogetherWeFall.UI
             }
         }
 
-        private void RebuildStats(in PlayerStats stats)
+        private void RebuildStats(Entity character, in PlayerStats stats)
         {
             _statsList.Clear();
+
+            AddKeystoneRow(character);
 
             for (int s = 0; s < StatBlock.StatCount; s++)
             {
@@ -749,6 +751,42 @@ namespace TogetherWeFall.UI
 
                 _statsList.Add(row);
             }
+        }
+
+        /// <summary>
+        /// Says which rule of the game this character is currently breaking, and
+        /// says when a second item is being ignored.
+        ///
+        /// Drawn above the stats rather than among them because it is not a
+        /// number and does not add up with anything. A character with no keystone
+        /// gets no row at all: an empty label saying "Keystone: None" is a line
+        /// of nothing on the shortest column of a panel that already struggles
+        /// to fit on an ultrawide.
+        ///
+        /// The conflict note is the whole of the promised warning, and
+        /// deliberately no more than that. Which of two keystones is in force is
+        /// a rule the player can read here; what they would do together is a
+        /// design conversation, not a tooltip.
+        /// </summary>
+        private void AddKeystoneRow(Entity character)
+        {
+            if (!_entityManager.HasComponent<KeystoneComponent>(character))
+                return;
+
+            KeystoneComponent keystone =
+                _entityManager.GetComponentData<KeystoneComponent>(character);
+
+            if (keystone.Effect == KeystoneEffect.None)
+                return;
+
+            string detail = keystone.Ignored > 0
+                ? $"{keystone.Effect} (+{keystone.Ignored} ignored)"
+                : keystone.Effect.ToString();
+
+            VisualElement row = MakeRow("Keystone", detail, null);
+            row.style.width = Length.Percent(98f);
+
+            _statsList.Add(row);
         }
 
         /// <summary>
@@ -1665,10 +1703,25 @@ namespace TogetherWeFall.UI
 
             if (GemSockets.TryResolveActive(
                     _entityManager, items, skills, slot.Gear, slot.SocketIndex,
-                    out int skillIndex, out _))
+                    out int skillIndex, out int linkGroup))
             {
                 border = new Color(0.45f, 0.62f, 0.85f);
                 text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}";
+
+                // A trigger gem linked beside this active takes the key away,
+                // and the player has to be able to see that before they press it
+                // twenty times. Asked of the same GemSockets the cast system
+                // asks, so the panel cannot claim a key works when the host has
+                // already decided it does not.
+                FixedList512Bytes<SkillModifierBlob> supports =
+                    GemSockets.GatherSupports(_entityManager, items, slot.Gear, linkGroup);
+
+                if (GemSockets.TryGetTrigger(supports, out SkillModifierBlob trigger))
+                {
+                    border = new Color(0.85f, 0.66f, 0.38f);
+                    text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}\n" +
+                           $"auto: {trigger.TriggerCondition}";
+                }
             }
 
             box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);

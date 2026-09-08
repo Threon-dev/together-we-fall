@@ -6,11 +6,41 @@ using TogetherWeFall.Equipment;
 
 namespace TogetherWeFall.Skills
 {
-    /// <summary>One support socketed into a skill.</summary>
+    /// <summary>
+    /// One support socketed into a skill.
+    ///
+    /// The fields are grouped by size rather than by meaning, on purpose: five
+    /// bytes and six four-byte values pack into thirty-two, and this struct is
+    /// gathered by value into a fixed list once per cast. Interleaving them
+    /// would pad it to forty-four and cost a fifth of the list capacity for
+    /// nothing.
+    /// </summary>
     public struct SkillModifierBlob
     {
         public SkillModifierKind Kind;
+
+        public DamageType ConvertTo;
+
+        /// <summary>What makes a TriggerOnCondition support fire. Ignored by the rest.</summary>
+        public TriggerConditionType TriggerCondition;
+
+        /// <summary>
+        /// What must be true for this support to count at all, or None.
+        ///
+        /// On every kind rather than on a separate sort of gem, which is the
+        /// whole economy of the idea: "chain" and "chain into burning bodies"
+        /// are one mechanism and one authored field apart, and every support
+        /// that already exists gets the option for free.
+        /// </summary>
+        public ModifierConditionType Condition;
+
+        /// <summary>Which element the condition is about. See ModifierConditionType.</summary>
+        public DamageType RequiredElement;
+
         public float Value;
+
+        /// <summary>Second number, where one is not enough. See SkillModifier.</summary>
+        public float SecondaryValue;
 
         /// <summary>
         /// Skill this support triggers, by stable id, or zero for none.
@@ -18,13 +48,30 @@ namespace TogetherWeFall.Skills
         /// An id rather than an index because a support can now arrive from a
         /// gem, and the item baker has no idea what order the skill database
         /// ended up in. Resolve turns it into an index once, at cast time.
+        ///
+        /// Only TriggerOnHit uses it. A condition trigger names no skill: it
+        /// fires the actives already linked to it.
         /// </summary>
         public int TriggeredSkillId;
 
-        /// <summary>Second number, where one is not enough. See SkillModifier.</summary>
-        public float SecondaryValue;
+        /// <summary>
+        /// How often a condition trigger actually goes off, from zero to one.
+        ///
+        /// Mandatory rather than a nicety. A trigger that is certain turns every
+        /// kill in a wave into a cast, and the interesting version of "cast on
+        /// kill" is the one you cannot count on.
+        /// </summary>
+        public float ProcChance;
 
-        public DamageType ConvertTo;
+        /// <summary>Seconds a condition trigger must wait between firings.</summary>
+        public float TriggerCooldown;
+
+        /// <summary>
+        /// The number the condition compares against: a fraction of health for
+        /// TargetLowHealth and for OnLowHealth. Ignored by conditions that
+        /// compare nothing.
+        /// </summary>
+        public float Threshold;
     }
 
     /// <summary>
@@ -175,6 +222,18 @@ namespace TogetherWeFall.Skills
             => IsValidIndex(index) ? Value.Value.Skills[index].Name : default;
 
         /// <summary>
+        /// How far a skill reaches, before the fold.
+        ///
+        /// Needed by the one caller that has to look at the world BEFORE it can
+        /// fold: a conditional support asks about the target, and finding the
+        /// target needs a range. Range is not scaled by any support, so asking
+        /// early and asking late give the same answer — which is what makes this
+        /// safe rather than a second source of truth.
+        /// </summary>
+        public float RangeOf(int index)
+            => IsValidIndex(index) ? Value.Value.Skills[index].Range : 0f;
+
+        /// <summary>
         /// Everything the supports of one cast add up to, before the maths.
         ///
         /// Its own struct so that innate supports and gem supports run through
@@ -199,8 +258,21 @@ namespace TogetherWeFall.Skills
             public float TriggerShare;
         }
 
-        private static void Accumulate(in SkillModifierBlob modifier, ref Fold fold)
+        /// <summary>
+        /// Folds one support in, unless its condition says otherwise.
+        ///
+        /// The condition check sits here rather than in the two loops below so
+        /// that innate supports and gem supports go through it identically —
+        /// the same reason this method exists at all. It is one comparison for
+        /// every support authored before conditions existed, because None is
+        /// the first case.
+        /// </summary>
+        private static void Accumulate(
+            in SkillModifierBlob modifier, ref Fold fold, in CastConditions conditions)
         {
+            if (!SkillConditions.IsMet(modifier, conditions))
+                return;
+
             switch (modifier.Kind)
             {
                 case SkillModifierKind.IncreasedDamage:
@@ -243,6 +315,14 @@ namespace TogetherWeFall.Skills
                     fold.TriggerId = modifier.TriggeredSkillId;
                     fold.TriggerShare = modifier.Value;
                     break;
+
+                case SkillModifierKind.TriggerOnCondition:
+                    // Nothing to fold. It changes who casts, not what the cast
+                    // is — and by the time anything gets here, that decision has
+                    // already been made by TriggerEvaluationSystem. Listed
+                    // explicitly rather than left to the default so that the one
+                    // support with no numbers is visibly deliberate.
+                    break;
             }
         }
 
@@ -259,11 +339,27 @@ namespace TogetherWeFall.Skills
         /// Increases stack additively before being applied once, the same rule
         /// the equipment stats follow — two supports each adding fifty percent
         /// give double, not two and a quarter times.
+        ///
+        /// <para>
+        /// The conditions arrive as an argument for the same reason the supports
+        /// do: whether a support counts is a fact about this cast, not about the
+        /// gem. A caller with nothing to say passes CastConditions.Unknown and
+        /// every conditional support simply sits out.
+        /// </para>
         /// </summary>
         public ResolvedSkill Resolve(
-            int index, in StatBlock stats, in FixedList128Bytes<SkillModifierBlob> gemSupports)
+            int index,
+            in StatBlock stats,
+            in FixedList512Bytes<SkillModifierBlob> gemSupports,
+            in CastConditions conditions)
         {
             ref SkillBlob skill = ref Value.Value.Skills[index];
+
+            // The element a condition asks about is the authored one, so that
+            // the answer cannot depend on where in this same fold a conversion
+            // gem happens to sit.
+            CastConditions asked = conditions;
+            asked.SkillElement = skill.Type;
 
             var fold = new Fold
             {
@@ -281,11 +377,11 @@ namespace TogetherWeFall.Skills
             {
                 // A plain struct with no blob array inside, so copying is safe
                 // here in a way that copying the skill never is.
-                Accumulate(skill.Modifiers[m], ref fold);
+                Accumulate(skill.Modifiers[m], ref fold, asked);
             }
 
             for (int g = 0; g < gemSupports.Length; g++)
-                Accumulate(gemSupports[g], ref fold);
+                Accumulate(gemSupports[g], ref fold, asked);
 
             float increasedDamage = fold.IncreasedDamage;
             float increasedArea = fold.IncreasedArea;

@@ -333,6 +333,41 @@ namespace TogetherWeFall.EditorTools
             return asset;
         }
 
+        /// <summary>
+        /// Appends an item to a loot table if it is not already in it.
+        ///
+        /// Additive on purpose, and shared because two factories now need it.
+        /// The table is hand-tuned by now: a factory that rewrote it would throw
+        /// away weights somebody chose, and one that skipped it entirely would
+        /// leave an item that exists on disk and can never be found — which is
+        /// indistinguishable, in play, from the feature not being there.
+        /// </summary>
+        public static void EnsureInLootTable(LootTable table, ItemDefinition item)
+        {
+            if (table == null || item == null)
+                return;
+
+            var serialized = new SerializedObject(table);
+            SerializedProperty entries = serialized.FindProperty("_entries");
+
+            for (int i = 0; i < entries.arraySize; i++)
+            {
+                Object existing = entries.GetArrayElementAtIndex(i)
+                    .FindPropertyRelative("_item").objectReferenceValue;
+
+                if (existing == item)
+                    return;
+            }
+
+            entries.arraySize++;
+
+            SerializedProperty added = entries.GetArrayElementAtIndex(entries.arraySize - 1);
+            added.FindPropertyRelative("_item").objectReferenceValue = item;
+            added.FindPropertyRelative("_weight").floatValue = 1f;
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         public static Material CreateMaterial(string name, Color color)
         {
             EnsureAssetFolder(ArtFolder);

@@ -68,6 +68,7 @@ namespace TogetherWeFall.Combat.Systems
 
             QueueExplosions(ref state, info, transforms);
             AnnounceDeaths(ref state, transforms, colors);
+            AnnounceKills(ref state, dead, info, transforms);
 
             RefRW<CombatTally> tally = SystemAPI.GetSingletonRW<CombatTally>();
             tally.ValueRW.Kills += dead.Length;
@@ -159,6 +160,47 @@ namespace TogetherWeFall.Combat.Systems
                 Color = colors[0].Value,
                 Magnitude = transforms.Length
             });
+        }
+
+        /// <summary>
+        /// Tells the trigger stage that this player killed something, once per
+        /// body rather than once per frame.
+        ///
+        /// Per body, unlike the presentation event above, because a chance is a
+        /// chance per opportunity: a gem that fires on a third of kills should
+        /// get a third of a wave, not one roll for the whole of it. The queue's
+        /// own ceiling is what keeps that honest without being expensive — past
+        /// thirty-two the cooldown would have swallowed them anyway, so they are
+        /// dropped rather than held over.
+        ///
+        /// This system does not know what a trigger gem is, exactly as it does
+        /// not know what draws a death. It says what happened.
+        /// </summary>
+        private void AnnounceKills(
+            ref SystemState state,
+            in NativeArray<Entity> dead,
+            in NativeArray<Dead> info,
+            in NativeArray<LocalTransform> transforms)
+        {
+            DynamicBuffer<TriggerEvent> triggers = SystemAPI.GetSingletonBuffer<TriggerEvent>();
+
+            for (int i = 0; i < dead.Length; i++)
+            {
+                if (!TriggerEvents.Announce(triggers, new TriggerEvent
+                    {
+                        Condition = TriggerConditionType.OnKill,
+                        PlayerId = info[i].KilledByPlayerId,
+                        Position = transforms[i].Position,
+
+                        // The corpse. A bolt triggered on a kill would rather
+                        // start on the body that fell than search from scratch —
+                        // and if it has already gone, the search takes over.
+                        Target = dead[i]
+                    }))
+                {
+                    return;
+                }
+            }
         }
 
         /// <summary>
