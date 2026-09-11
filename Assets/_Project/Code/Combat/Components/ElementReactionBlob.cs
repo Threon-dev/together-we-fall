@@ -37,6 +37,17 @@ namespace TogetherWeFall.Combat
     public struct StatusBlob
     {
         public FixedString64Bytes Name;
+
+        /// <summary>
+        /// What this status is. The key it is stored under on a target, and the
+        /// name a skill refers to it by across two separately baked databases.
+        /// </summary>
+        public StatusEffectType Type;
+
+        /// <summary>
+        /// The element it marks with. Meaningless for a status that carries
+        /// none — see StatusEffects.CarriesElement.
+        /// </summary>
         public DamageType Element;
 
         public float Duration;
@@ -47,6 +58,30 @@ namespace TogetherWeFall.Combat
 
         /// <summary>Seconds between ticks. A tick is worth an interval's worth of damage.</summary>
         public float TickInterval;
+
+        /// <summary>
+        /// What one stack is worth to whichever number this status scales: the
+        /// fraction a slow takes away, the fraction vulnerability adds.
+        ///
+        /// Unsigned. Which way it goes is a fact about the type, not about the
+        /// asset, so "Haste, minus thirty percent" cannot be authored.
+        /// </summary>
+        public float MagnitudePerStack;
+
+        /// <summary>
+        /// Whether applying it again adds time instead of refreshing it.
+        ///
+        /// Refreshing is what control wants — being stunned during a stun
+        /// should not lengthen it — and adding is what a poison wants. One flag
+        /// rather than two application paths, and the default is the safe one.
+        /// </summary>
+        public bool StacksDuration;
+
+        /// <summary>
+        /// Multiple of this status's duration that its target is immune for
+        /// afterwards. Read only for hard control; ignored by everything else.
+        /// </summary>
+        public float ImmunityMultiplier;
     }
 
     /// <summary>One rule: what an incoming element does to a target already carrying another.</summary>
@@ -86,6 +121,18 @@ namespace TogetherWeFall.Combat
         /// target with its own element, and the table says what that is called.
         /// </summary>
         public BlobArray<int> DefaultStatus;
+
+        /// <summary>
+        /// Where each status type lives in Statuses, or -1.
+        ///
+        /// StatusMask.Count long, indexed by the type itself. It exists because
+        /// a skill names the status it applies, and a skill is baked by a
+        /// different authoring object than this table — an index would mean
+        /// whichever order that object happened to produce. The type enum is the
+        /// vocabulary the two share, exactly as the FNV id is for items and
+        /// skills, and this array is how a name becomes an index once.
+        /// </summary>
+        public BlobArray<int> StatusByType;
 
         /// <summary>ElementMask.Count squared, indexed existing * Count + incoming.</summary>
         public BlobArray<ElementReactionRuleBlob> Rules;
@@ -151,6 +198,33 @@ namespace TogetherWeFall.Combat
 
             status = Value.Value.Statuses[index];
             return true;
+        }
+
+        /// <summary>
+        /// One status by name, for whoever holds a type rather than an index —
+        /// a skill that applies a stun, a keystone that adds vulnerability.
+        ///
+        /// A status type that nobody authored an asset for answers no, and the
+        /// caller does nothing. That is the right failure: a skill referring to
+        /// a status the reaction table has never heard of should be inert rather
+        /// than inventing default numbers for it.
+        /// </summary>
+        public bool TryGetStatusOfType(StatusEffectType type, out int index, out StatusBlob status)
+        {
+            index = -1;
+            status = default;
+
+            if (!Value.IsCreated || type == StatusEffectType.None)
+                return false;
+
+            ref ElementReactionBlob blob = ref Value.Value;
+
+            int slot = (int)type;
+            if (slot < 0 || slot >= blob.StatusByType.Length)
+                return false;
+
+            index = blob.StatusByType[slot];
+            return TryGetStatus(index, out status);
         }
     }
 }

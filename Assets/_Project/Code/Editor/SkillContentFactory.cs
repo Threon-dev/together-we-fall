@@ -100,6 +100,12 @@ namespace TogetherWeFall.EditorTools
                     skill.Range = 18f;
                     skill.Radius = 4f;
                     skill.Modifiers = new[] { area, explode };
+
+                    // A crowd that is burning and slowed, from one button. It is
+                    // what makes the Frozen Hourglass worth wearing and what
+                    // Riven Chain is conditional on — three separate pieces of
+                    // content that only meet in a build the player assembles.
+                    skill.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Slow);
                 });
 
             SkillDefinition sweep =
@@ -113,6 +119,13 @@ namespace TogetherWeFall.EditorTools
                     skill.Radius = 4.5f;
                     skill.ArcDegrees = 140f;
                     skill.Modifiers = new[] { brutality };
+
+                    // The one starter skill that controls rather than only
+                    // hurting. A swing is the right place for it: it is short
+                    // ranged and on a fast cooldown, so the diminishing-returns
+                    // window is something the player meets within seconds rather
+                    // than a rule they read about.
+                    skill.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Stun);
                 });
 
             // The only skill that leaves something behind. It exists to be flown
@@ -141,7 +154,65 @@ namespace TogetherWeFall.EditorTools
                     skill.Modifiers = System.Array.Empty<SkillModifier>();
                 });
 
-            return new[] { splinter, nova, lance, sweep, wall };
+            // The two a weapon is born with. Created here rather than beside
+            // the gems because they are the same kind of thing — a skill asset —
+            // and the database below must contain them or a welded weapon
+            // resolves to nothing.
+            CreateDefaultAttacks(out SkillDefinition strike, out SkillDefinition bolt);
+
+            return new[] { splinter, nova, lance, sweep, wall, strike, bolt };
+        }
+
+
+        /// <summary>
+        /// The attacks welded into weapons: a swing and a shot.
+        ///
+        /// Public and create-or-load, because two callers need the same two
+        /// assets — this file, to put them in the skill database, and the item
+        /// factory, to weld them into weapons. Naming them in both places would
+        /// be two lists to keep in step, and the failure would be a weapon
+        /// welded to a skill the database has never heard of.
+        /// </summary>
+        public static void CreateDefaultAttacks(
+            out SkillDefinition strike, out SkillDefinition bolt)
+        {
+            // The two the player never chooses and never loses. Everything above
+            // is a gem somebody has to find and socket; these are welded into
+            // weapons, so they are what a character can do the moment they pick
+            // anything up.
+            //
+            // Their base damage is deliberately tiny. A default attack is the
+            // floor, not a build — and it is the one skill whose damage comes
+            // almost entirely from the weapon holding it, which is exactly what
+            // makes swapping a dagger for a Dawnbringer felt rather than read.
+            strike =
+                Skill("WeaponStrike", "Weapon Strike", skill =>
+                {
+                    skill.Effect = SkillEffectKind.MeleeArc;
+                    skill.DamageType = DamageType.Physical;
+                    skill.BaseDamage = 6f;
+                    skill.Cooldown = 0.45f;
+                    skill.Range = 3.5f;
+                    skill.Radius = 3f;
+                    skill.ArcDegrees = 120f;
+                    skill.Modifiers = System.Array.Empty<SkillModifier>();
+                });
+
+            bolt =
+                Skill("WeaponBolt", "Weapon Bolt", skill =>
+                {
+                    skill.Effect = SkillEffectKind.Projectile;
+                    skill.DamageType = DamageType.Physical;
+                    skill.BaseDamage = 5f;
+                    skill.Cooldown = 0.5f;
+                    skill.Range = 20f;
+                    skill.ProjectileSpeed = 28f;
+                    skill.Modifiers = System.Array.Empty<SkillModifier>();
+                });
+
+            // Both go in the database like any other skill. A welded id that
+            // resolves to nothing is a weapon that cannot attack, and the
+            // failure is silent — the socket looks full and the key does nothing.
         }
 
         /// <summary>
@@ -200,8 +271,32 @@ namespace TogetherWeFall.EditorTools
             KeystoneRing(
                 "StormcallersCoil", "Stormcallers Coil", KeystoneEffect.AoeToChain, table);
 
+            // The same mechanism as Kindled Chain, asking about the wider set.
+            // Together they are the argument for two condition values rather
+            // than one: fire is something a target carries AND something a shot
+            // can fly through, while being slowed is only ever a state a body is
+            // in.
+            SkillModifier rivenChain = Modifier(
+                "SupportRivenChain", SkillModifierKind.AddedChains, 3f,
+                condition: ModifierConditionType.TargetHasStatusEffect,
+                requiredStatus: StatusEffectType.Slow);
+
+            SupportGem(
+                "GemRivenChain", "Riven Chain Support", rivenChain, ItemRarity.Rare, table);
+
+            KeystoneRing(
+                "StormcallersCoil", "Stormcallers Coil", KeystoneEffect.AoeToChain, table);
+
             KeystoneRing(
                 "AshenSignet", "Ashen Signet", KeystoneEffect.StatusInstantResolve, table);
+
+            // The third ring, and the one that ties control to the rest. Cinder
+            // Nova already slows, so wearing it turns a burst somebody chose for
+            // its damage into a party-wide damage multiplier — and it pulls
+            // against Ashen Signet in the usual way, since a build under one is
+            // never under the other.
+            KeystoneRing(
+                "FrozenHourglass", "Frozen Hourglass", KeystoneEffect.SlowsAlsoWeaken, table);
         }
 
         /// <summary>
@@ -282,6 +377,7 @@ namespace TogetherWeFall.EditorTools
             float procChance = 0.35f,
             ModifierConditionType condition = ModifierConditionType.None,
             DamageType requiredElement = DamageType.Fire,
+            StatusEffectType requiredStatus = StatusEffectType.Stun,
             float threshold = 0.35f)
         {
             SkillModifier modifier = SceneBuildUtility.CreateOrLoadConfig<SkillModifier>(
@@ -303,6 +399,7 @@ namespace TogetherWeFall.EditorTools
 
             serialized.FindProperty("_condition").enumValueIndex = (int)condition;
             serialized.FindProperty("_requiredElement").enumValueIndex = (int)requiredElement;
+            serialized.FindProperty("_requiredStatus").enumValueIndex = (int)requiredStatus;
             serialized.FindProperty("_threshold").floatValue = threshold;
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -316,11 +413,22 @@ namespace TogetherWeFall.EditorTools
             SkillDefinition skill = SceneBuildUtility.CreateOrLoadConfig<SkillDefinition>(
                 assetName, SkillFolder, out bool created);
 
-            if (!created)
-                return skill;
-
             var fields = new SkillFields();
             fill(fields);
+
+            if (!created)
+            {
+                // The one field written into an asset that already exists.
+                //
+                // It is a reference rather than a number — the same class of
+                // thing as the reaction table lists, which are rebuilt for the
+                // same reason. A skill authored before statuses existed comes
+                // back with none, and the symptom would not be a missing field:
+                // it would be a stun that never lands, on a swing that looks
+                // exactly as it always did, in a build where nothing says why.
+                WriteAppliedStatus(skill, fields.AppliedStatus);
+                return skill;
+            }
 
             var serialized = new SerializedObject(skill);
             serialized.FindProperty("_displayName").stringValue = displayName;
@@ -345,7 +453,20 @@ namespace TogetherWeFall.EditorTools
                 modifiers.GetArrayElementAtIndex(i).objectReferenceValue = fields.Modifiers[i];
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            WriteAppliedStatus(skill, fields.AppliedStatus);
             return skill;
+        }
+
+        private static void WriteAppliedStatus(
+            SkillDefinition skill, StatusEffectDefinition status)
+        {
+            if (status == null)
+                return;
+
+            var serialized = new SerializedObject(skill);
+            serialized.FindProperty("_appliedStatus").objectReferenceValue = status;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>
@@ -371,6 +492,9 @@ namespace TogetherWeFall.EditorTools
             public float ChainRange = 8f;
             public float ChainDelay = 0.07f;
             public SkillModifier[] Modifiers = System.Array.Empty<SkillModifier>();
+
+            /// <summary>A status the skill marks everything it hits with, or null.</summary>
+            public StatusEffectDefinition AppliedStatus;
         }
     }
 }

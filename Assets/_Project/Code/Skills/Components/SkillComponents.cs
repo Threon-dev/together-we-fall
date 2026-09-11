@@ -351,6 +351,15 @@ namespace TogetherWeFall.Skills
         /// again, because activation writes this whole struct.
         /// </summary>
         public byte CarriedElements;
+
+        /// <summary>
+        /// A status this projectile applies to whatever it lands on, or None.
+        ///
+        /// Carried like everything else it needs to resolve its own impact, and
+        /// inherited by a fork for free because a fork copies this struct — the
+        /// same property that makes CarriedElements a field rather than a buffer.
+        /// </summary>
+        public StatusEffectType AppliedStatus;
     }
 
     /// <summary>
@@ -410,6 +419,9 @@ namespace TogetherWeFall.Skills
         /// <summary>Elements the effect that caused this hit was carrying.</summary>
         public byte CarriedElements;
 
+        /// <summary>The status the effect that caused this hit applies, or None.</summary>
+        public StatusEffectType AppliedStatus;
+
         /// <summary>
         /// Whether this hit is the work of a status or a reaction rather than a
         /// fresh blow. Carried into the damage event, where it stops the
@@ -459,6 +471,16 @@ namespace TogetherWeFall.Skills
 
         /// <summary>Elements the effect that caused this blast was carrying.</summary>
         public byte CarriedElements;
+
+        /// <summary>
+        /// The status every body caught in this blast is marked with, or None.
+        ///
+        /// Passed through to each hit rather than applied here, so one blast
+        /// that stuns forty enemies is forty ordinary applications — each one
+        /// checked against that body's own immunity, which is the only place
+        /// that check can be right.
+        /// </summary>
+        public StatusEffectType AppliedStatus;
 
         /// <summary>
         /// Whether this blast is itself a reaction. Passed on to every hit it

@@ -63,6 +63,10 @@ namespace TogetherWeFall.Config
         [Tooltip("Which element the condition is about.")]
         [SerializeField] private DamageType _requiredElement = DamageType.Fire;
 
+        [Tooltip("Which status the condition is about, for Target Has Status " +
+                 "Effect. Ignored by every other condition.")]
+        [SerializeField] private StatusEffectType _requiredStatus = StatusEffectType.Stun;
+
         [Tooltip("The fraction the condition compares against: life remaining " +
                  "for Target Low Health and for On Low Health. 0.35 is a third.")]
         [SerializeField, Range(0f, 1f)] private float _threshold = 0.35f;
@@ -86,6 +90,7 @@ namespace TogetherWeFall.Config
 
         public ModifierConditionType Condition => _condition;
         public DamageType RequiredElement => _requiredElement;
+        public StatusEffectType RequiredStatus => _requiredStatus;
         public float Threshold => Mathf.Clamp01(_threshold);
     }
 }

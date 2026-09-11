@@ -125,6 +125,12 @@ namespace TogetherWeFall.Skills.Systems
                     // decided one stage later, on the target, by the same system
                     // that answers for statuses.
                     CarriedElements = hit.CarriedElements,
+
+                    // And the status the skill said it applies. It is resolved
+                    // one stage later by the same system that answers for the
+                    // elements beside it — which is why a stun and an ignite
+                    // need no separate path, only a different name.
+                    AppliedStatus = hit.AppliedStatus,
                     FromReaction = hit.FromReaction
                 });
 

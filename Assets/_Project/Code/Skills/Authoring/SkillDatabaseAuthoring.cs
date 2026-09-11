@@ -129,6 +129,11 @@ namespace TogetherWeFall.Skills.Authoring
 
                     DependsOn(skill);
 
+                    // The status asset too. Only its type reaches this blob, but
+                    // a type is exactly the field an edit would change.
+                    if (skill.AppliedStatus != null)
+                        DependsOn(skill.AppliedStatus);
+
                     SkillModifier[] modifiers = skill.Modifiers;
                     if (modifiers == null)
                         continue;
@@ -290,6 +295,7 @@ namespace TogetherWeFall.Skills.Authoring
                 blob.BaseChains = skill.BaseChains;
                 blob.ChainRange = skill.ChainRange;
                 blob.ChainDelay = skill.ChainDelay;
+                blob.AppliedStatus = skill.AppliedStatusType;
 
                 SkillModifier[] modifiers = skill.Modifiers ?? System.Array.Empty<SkillModifier>();
 
@@ -324,6 +330,7 @@ namespace TogetherWeFall.Skills.Authoring
                         ProcChance = modifiers[m].ProcChance,
                         Condition = modifiers[m].Condition,
                         RequiredElement = modifiers[m].RequiredElement,
+                        RequiredStatus = modifiers[m].RequiredStatus,
                         Threshold = modifiers[m].Threshold
                     };
 

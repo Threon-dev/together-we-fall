@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b56e178cdc6c43a469f3ba569be22dd5, type: 3}
+  m_Name: ElementReactionTable
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ElementReactionTable
+  _defaultStatuses:
+  - {fileID: 11400000, guid: d7a60f7230a8594469f1e8ff787cefc0, type: 2}
+  - {fileID: 11400000, guid: 13fdf3e475d97d64399574c7e31f2641, type: 2}
+  - {fileID: 11400000, guid: 7b0cd860c116b374f84f4c726c7e3f05, type: 2}
+  _rules:
+  - {fileID: 11400000, guid: a4ce61ff0d1e75c4f8e58bbcf9a7d1e7, type: 2}
+  - {fileID: 11400000, guid: 8b6bbf1f9ce500746a0d6595639cbf89, type: 2}
+  - {fileID: 11400000, guid: a865dde57ee989743b245b8cec73c19a, type: 2}
+  - {fileID: 11400000, guid: 7ca3fa327c597a94995942d45e5c5932, type: 2}
+  - {fileID: 11400000, guid: 9d4132fa3793cca4888727f91777b114, type: 2}

@@ -417,6 +417,37 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
+        /// The object that carries the loot tables and prefabs into ECS. Goes
+        /// into the SubScene with the wave spawner: without baking there is no
+        /// blob, and without the blob nothing can drop.
+        ///
+        /// Both scenes carry one, and the arena needs it for the half that is
+        /// not about dropping at all: the SAME bake produces the item database,
+        /// and without that there are no gems, so nothing anywhere is castable.
+        /// The arena still has no chests — nothing places any without a dungeon —
+        /// so what it actually gains is the item pool and the database.
+        /// </summary>
+        public static GameObject CreateLootDatabase(
+            LootConfig config, LootTable table, GameObject chestPrefab, GameObject itemPrefab)
+        {
+            var databaseObject = new GameObject("LootDatabase");
+            LootDatabaseAuthoring authoring = databaseObject.AddComponent<LootDatabaseAuthoring>();
+
+            var serialized = new SerializedObject(authoring);
+            serialized.FindProperty("_config").objectReferenceValue = config;
+            serialized.FindProperty("_chestPrefab").objectReferenceValue = chestPrefab;
+            serialized.FindProperty("_itemPrefab").objectReferenceValue = itemPrefab;
+
+            SerializedProperty tables = serialized.FindProperty("_tables");
+            tables.arraySize = 1;
+            tables.GetArrayElementAtIndex(0).objectReferenceValue = table;
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            return databaseObject;
+        }
+
+        /// <summary>
         /// The object that carries the element reaction table into ECS. Goes
         /// into the SubScene with the rest: without baking there is no database,
         /// and both element systems require one — a scene missing this plays

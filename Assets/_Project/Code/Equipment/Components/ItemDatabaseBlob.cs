@@ -59,6 +59,18 @@ namespace TogetherWeFall.Equipment
         /// <summary>What a Support gem does. Flat, so it may be copied freely.</summary>
         public SkillModifierBlob GemSupport;
 
+        /// <summary>
+        /// The skill this gear comes with, by stable id. Zero for everything
+        /// that is not a weapon.
+        ///
+        /// It answers "what does wearing this let me do", which used to have no
+        /// answer at all: a sword with no gem in it was a sword you could not
+        /// swing. Welded into socket 0 when the item is handed out, so the rest
+        /// of the pipeline still finds it exactly where it finds every other
+        /// skill — in a hole.
+        /// </summary>
+        public int InnateSkillId;
+
         /// <summary>How many holes this gear has.</summary>
         public int SocketCount;
 

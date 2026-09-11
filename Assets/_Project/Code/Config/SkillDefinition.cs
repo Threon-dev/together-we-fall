@@ -66,6 +66,14 @@ namespace TogetherWeFall.Config
                  "frame and the chain reads as one flash.")]
         [SerializeField, Range(0f, 0.5f)] private float _chainDelay = 0.07f;
 
+        [Header("Status")]
+        [Tooltip("A status everything this skill hits is marked with, on top of " +
+                 "whatever its element leaves behind. This is the only way a " +
+                 "stun, a root or a debuff ever lands — nothing applies one on " +
+                 "its own. The asset must also be listed on the reaction table, " +
+                 "or the runtime has never heard of it.")]
+        [SerializeField] private StatusEffectDefinition _appliedStatus;
+
         [Header("Supports")]
         [SerializeField] private SkillModifier[] _modifiers = Array.Empty<SkillModifier>();
 
@@ -98,5 +106,18 @@ namespace TogetherWeFall.Config
         public float ChainDelay => _chainDelay;
 
         public SkillModifier[] Modifiers => _modifiers;
+
+        /// <summary>The asset, so the baker can depend on it and read its type.</summary>
+        public StatusEffectDefinition AppliedStatus => _appliedStatus;
+
+        /// <summary>
+        /// What the skill applies, as the name the two databases share.
+        ///
+        /// An asset reference here and a type in the blob: authoring picks a
+        /// thing that exists, and the runtime carries a value a job can compare.
+        /// </summary>
+        public StatusEffectType AppliedStatusType => _appliedStatus != null
+            ? _appliedStatus.Type
+            : StatusEffectType.None;
     }
 }

@@ -60,7 +60,31 @@ namespace TogetherWeFall.Equipment
         /// <summary>The gem sitting in it, or Entity.Null.</summary>
         public Entity InsertedGem;
 
-        public bool IsEmpty => InsertedGem == Entity.Null;
+        /// <summary>
+        /// A skill put in at the forge rather than by the player, by stable id,
+        /// or zero.
+        ///
+        /// This is how a weapon comes with an attack. It is deliberately the
+        /// SAME hole a gem would go in, so that "where does a skill come from"
+        /// keeps its one answer — something is in a socket — rather than gaining
+        /// a second, and so that the supports linked to this socket customise
+        /// the built-in attack with no code that knows it is built in.
+        ///
+        /// An id rather than a gem entity, because the alternative is an item
+        /// out of the pool for every weapon in the world: the pool is the
+        /// ceiling on how many items exist at once, and half of it would go on
+        /// gems nobody can touch. The consequence is the rule itself — there is
+        /// no entity to hand back, so a welded socket cannot be emptied.
+        /// </summary>
+        public int WeldedSkillId;
+
+        public bool IsWelded => WeldedSkillId != 0;
+
+        /// <summary>
+        /// Whether anything can go in. A welded socket is full for good, which
+        /// is what makes the insert and remove checks need no special case.
+        /// </summary>
+        public bool IsEmpty => InsertedGem == Entity.Null && !IsWelded;
     }
 
     /// <summary>What a socket request is asking for.</summary>
@@ -126,7 +150,10 @@ namespace TogetherWeFall.Equipment
         /// <summary>A support gem was dragged onto the skill bar.</summary>
         RejectedNotActive = 10,
 
-        RejectedNoSuchBarSlot = 11
+        RejectedNoSuchBarSlot = 11,
+
+        /// <summary>The socket holds the weapon's own attack and never lets go.</summary>
+        RejectedWelded = 12
     }
 
     /// <summary>

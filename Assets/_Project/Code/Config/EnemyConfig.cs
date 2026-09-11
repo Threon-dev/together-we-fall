@@ -29,6 +29,21 @@ namespace TogetherWeFall.Config
                  "still on screen when the next wave arrives.")]
         [SerializeField, Range(0.05f, 2f)] private float _deathFadeSeconds = 0.35f;
 
+        [Header("Control resistance")]
+        [Tooltip("Stun, Root, Silence and Fear do not land at all. What a boss " +
+                 "is: diminishing returns cap the uptime of a stun-lock, they do " +
+                 "not stop the fight being one. Everything soft still applies — " +
+                 "slow, burn, vulnerability — so control gear keeps its point.")]
+        [SerializeField] private bool _immuneToHardControl;
+
+        [Tooltip("Scales how long control lasts on this enemy. One is ordinary. " +
+                 "Only control is scaled: an enemy that also burned for less " +
+                 "would be resisting fire, which is a different statistic.")]
+        [SerializeField, Range(0f, 2f)] private float _controlDurationMultiplier = 1f;
+
+        public bool ImmuneToHardControl => _immuneToHardControl;
+        public float ControlDurationMultiplier => Mathf.Max(0f, _controlDurationMultiplier);
+
         public float MoveSpeed => _moveSpeed;
         public float RotationSpeed => _rotationSpeed;
         public float StoppingDistance => _stoppingDistance;

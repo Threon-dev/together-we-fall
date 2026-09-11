@@ -93,6 +93,23 @@ namespace TogetherWeFall.Combat
         public byte CarriedElements;
 
         /// <summary>
+        /// A status this blow applies by name, beyond the mark its element
+        /// leaves on its own.
+        ///
+        /// The only way anything non-elemental is ever applied. Nothing stuns of
+        /// its own accord and no pair of elements produces a root, so a control
+        /// or debuff status is on a target because a skill said so and for no
+        /// other reason — which is also what keeps it a build decision rather
+        /// than a side effect of picking an element.
+        ///
+        /// A type rather than an index, because the skill database and the
+        /// status table are baked by two authoring objects that share no
+        /// ordering. The same argument that made a gem name its skill by a
+        /// stable id; the status set is closed, so the enum is the id.
+        /// </summary>
+        public StatusEffectType AppliedStatus;
+
+        /// <summary>
         /// Whether this damage is itself the product of a status or a reaction.
         ///
         /// The rail that keeps reactions from feeding themselves. A burn tick

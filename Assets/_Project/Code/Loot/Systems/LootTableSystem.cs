@@ -247,7 +247,11 @@ namespace TogetherWeFall.Loot.Systems
             }
 
             using NativeArray<Entity> free = _freeItemQuery.ToEntityArray(Allocator.Temp);
-            LootItemPool.Activate(state.EntityManager, free, ready);
+
+            // Read here rather than passed down: this method is reached from the
+            // drop path only, and the system already refuses to run without it.
+            LootItemPool.Activate(
+                state.EntityManager, SystemAPI.GetSingleton<ItemDatabase>(), free, ready);
         }
 
         private static float4 ColorFor(in NativeArray<RarityColor> colors, ItemRarity rarity)

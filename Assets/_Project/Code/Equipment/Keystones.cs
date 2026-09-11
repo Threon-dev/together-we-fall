@@ -81,7 +81,25 @@ namespace TogetherWeFall.Equipment
         /// "some of these keep paying out" into "each mark is worth exactly one
         /// combination", which is a different game out of the same assets.
         /// </summary>
-        ReactionsAlwaysConsume = 4
+        ReactionsAlwaysConsume = 4,
+
+        /// <summary>
+        /// Everything you slow is also made vulnerable.
+        ///
+        /// Answered by ElementReactionSystem, in the one method every status
+        /// application already passes through. It is deliberately hung on Slow
+        /// rather than on a hard control: slow is the one control with no
+        /// diminishing returns, so it is the one an item can build around
+        /// without quietly becoming "your stun-lock also does more damage".
+        ///
+        /// The interesting half is that it needs no new mechanism at all.
+        /// Vulnerability is already a status the damage resolver reads, and a
+        /// slow is already something a frost build applies without choosing to —
+        /// so a build that never went near control finds itself with a
+        /// party-wide damage multiplier it did not author, which is what a
+        /// keystone is for.
+        /// </summary>
+        SlowsAlsoWeaken = 5
     }
 
     /// <summary>

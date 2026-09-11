@@ -10,6 +10,7 @@ using TogetherWeFall.Config;
 using TogetherWeFall.DebugTools.Authoring;
 using TogetherWeFall.Player;
 using TogetherWeFall.Spawning.Authoring;
+using TogetherWeFall.UI;
 using TogetherWeFall.Audio;
 using TogetherWeFall.Curtain;
 using TogetherWeFall.Vfx;
@@ -29,10 +30,19 @@ namespace TogetherWeFall.EditorTools
     /// unchanging floor is what makes two FPS measurements comparable. The
     /// generated dungeon lives in its own scene, built by DungeonSceneBuilder.
     ///
-    /// It carries the character sheet and the skills but no loot: measuring what
+    /// It carries the character sheet, the skills and — since skills became
+    /// gems — the item database and the inventory panel too. That is not a
+    /// softening of "the arena has no loot": nothing here places a chest and
+    /// nothing rolls a table. It is that a gem is an item, so a scene with no
+    /// items is a scene where no hotkey does anything, and a rig that cannot
+    /// cast measures the wrong half of the game.
+    ///
+    /// What stays out is the floor clutter: no chests, no drops. Measuring what
     /// three hundred enemies cost while a chain reaction goes off through them
-    /// is exactly what this scene is for, and chests on the floor would only be
-    /// something else in the frame time.
+    /// is exactly what this scene is for, and items lying about would only be
+    /// something else in the frame time. The pooled item entities are a fixed
+    /// cost that does not grow with the wave, so the curve being measured is
+    /// unaffected.
     /// </summary>
     public static class ArenaSceneBuilder
     {
@@ -81,6 +91,7 @@ namespace TogetherWeFall.EditorTools
             var characterConfig =
                 SceneBuildUtility.CreateOrLoadConfig<CharacterConfig>("CharacterConfig");
             var vfxConfig = SceneBuildUtility.CreateOrLoadConfig<VfxConfig>("VfxConfig");
+            var lootConfig = SceneBuildUtility.CreateOrLoadConfig<LootConfig>("LootConfig");
 
             Material projectileMaterial =
                 SceneBuildUtility.CreateMaterial("SkillProjectile", Color.white);
@@ -88,12 +99,38 @@ namespace TogetherWeFall.EditorTools
             Material zoneMaterial =
                 SceneBuildUtility.CreateMaterial("ElementZone", Color.white);
 
+            // The chest and item prefabs are needed as references, not as
+            // scenery: the loot database refuses to bake without them. No chest
+            // is ever placed here — only a dungeon places those — so what the
+            // arena actually gets out of that bake is the item database.
+            Material chestMaterial =
+                SceneBuildUtility.CreateMaterial("DungeonChest", new Color(0.52f, 0.38f, 0.18f));
+            Material lootItemMaterial =
+                SceneBuildUtility.CreateMaterial("LootItem", Color.white);
+
             GameObject enemyPrefab = SceneBuildUtility.CreateEnemyPrefab(enemyConfig, enemyMaterial);
             GameObject projectilePrefab =
                 SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
             GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(zoneMaterial);
+            GameObject chestPrefab = SceneBuildUtility.CreateChestPrefab(lootConfig, chestMaterial);
+            GameObject lootItemPrefab =
+                SceneBuildUtility.CreateLootItemPrefab(lootConfig, lootItemMaterial);
+
             SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
             ElementReactionTable reactionTable = ElementContentFactory.CreateReactionTable();
+
+            // The same table, the same gems, the same keystones as the dungeon.
+            // Not because the arena rolls loot — it never does — but because the
+            // item database is baked FROM the table, and a rig whose item set
+            // differs from the game measures a game nobody plays.
+            LootTable lootTable = ItemContentFactory.CreateOrLoadTreasureTable();
+            ElementContentFactory.CreateZoneGem(skills[skills.Length - 1], lootTable);
+            SkillContentFactory.CreateBuildContent(lootTable);
+
+            // Every weapon gets the attack it is born with, where it does not
+            // have one yet. This is what makes equipping a sword mean something
+            // on its own: without it a weapon is a stat sheet you cannot swing.
+            ItemContentFactory.AssignDefaultAttacks();
 
             SceneBuildUtility.CreateLighting();
             GameObject ground = CreateGround(groundMaterial);
@@ -105,6 +142,13 @@ namespace TogetherWeFall.EditorTools
             GameObject simulationSettings =
                 SceneBuildUtility.CreateSimulationSettings(pathfindingConfig, separationConfig);
             GameObject characterStats = SceneBuildUtility.CreateCharacterStats(characterConfig);
+
+            // Skills live in gems, gems are items, and items come from here. The
+            // arena went without this for as long as skills were named directly
+            // by the loadout; the moment a socket became the answer, a scene with
+            // no item database became a scene where every hotkey is silent.
+            GameObject lootDatabase = SceneBuildUtility.CreateLootDatabase(
+                lootConfig, lootTable, chestPrefab, lootItemPrefab);
             GameObject skillDatabase =
                 SceneBuildUtility.CreateSkillDatabase(skills, projectilePrefab, zonePrefab);
             GameObject elementReactions =
@@ -115,10 +159,14 @@ namespace TogetherWeFall.EditorTools
             TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
             GameObject debugTools = SceneBuildUtility.CreateDebugTools();
 
-            // The arena has no inventory, but it does have damage numbers, and
-            // those are drawn into a runtime panel like any other UI.
             PanelSettings panelSettings =
                 SceneBuildUtility.CreateOrLoadPanelSettings("RuntimePanelSettings");
+
+            // The arena has an inventory now, and it is not a convenience: the
+            // starter kit hands out gems in the BAG, deliberately, so socketing
+            // them is the player's decision. Without this panel there is no way
+            // to make that decision, and therefore no way to cast anything.
+            InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(panelSettings);
 
             Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
             VfxPresenter vfxPresenter =
@@ -132,7 +180,7 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateAudioConfig("AudioConfig"));
 
             SceneBuildUtility.CreateBootstrap(
-                cameraRig, player, debugTools, dungeon: null, inventoryUI: null,
+                cameraRig, player, debugTools, dungeon: null, inventoryUI: inventoryUI,
                 vfxPresenter: vfxPresenter, curtainPresenter: curtainPresenter,
                 audioPresenter: audioPresenter);
 
@@ -152,20 +200,25 @@ namespace TogetherWeFall.EditorTools
             Selection.objects = new Object[]
             {
                 spawnPoints, waveSpawner, simulationSettings, characterStats, skillDatabase,
-                elementReactions, trainingDummies
+                elementReactions, lootDatabase, trainingDummies
             };
 
             Debug.Log(
                 $"[ArenaSceneBuilder] Arena built: {ScenePath}\n" +
                 "ONE STEP LEFT: SpawnPoints, WaveSpawner, SimulationSettings, CharacterStats, " +
-                "SkillDatabase, ElementReactions and TrainingDummies are already selected in the " +
-                "hierarchy — right-click them, then New Sub Scene > From Selection. Without a " +
-                "SubScene they are never baked into entities: no waves spawn, enemies receive no " +
+                "SkillDatabase, ElementReactions, LootDatabase and TrainingDummies are already " +
+                "selected in the hierarchy — right-click them, then New Sub Scene > " +
+                "From Selection. Without a SubScene they are never baked into entities: no " +
+                "waves spawn, enemies receive no " +
                 "pathfinding settings, nothing is castable, nothing burns and the dummies are " +
                 "scenery.\n" +
-                "In play mode: Space spawns a wave; left mouse, right mouse, Q and R cast. The " +
-                "three dummies ahead of the start take damage, flash and never fall over — and " +
-                "are the quickest way to watch a status tick and a reaction go off.");
+                "In play mode: press I FIRST. The starter kit wears the wand and puts seven gems " +
+                "in the BAG, so nothing casts until an active gem is socketed AND dragged onto " +
+                "a hotkey — the same two steps as in the dungeon, and on purpose: the " +
+                "arrangement is the player's.\n" +
+                "Then Space spawns a wave, and left mouse, right mouse, Q and R cast whatever " +
+                "was bound. The three dummies ahead of the start take damage, flash and never " +
+                "fall over — the quickest way to watch a status tick and a reaction go off.");
         }
 
         private static GameObject CreateGround(Material material)

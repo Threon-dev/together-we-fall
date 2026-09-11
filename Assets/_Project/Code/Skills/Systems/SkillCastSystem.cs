@@ -188,6 +188,16 @@ namespace TogetherWeFall.Skills.Systems
             if (!TryGetCharacter(ref state, request.PlayerId, out Entity character))
                 return;
 
+            // Silenced, or stunned, which includes silence. Checked before the
+            // cooldown is read and long before one is charged: a key pressed
+            // into a silence should cost nothing, so that it works the instant
+            // the silence ends.
+            //
+            // Quietly, like the trigger-gem refusal beside it. A message every
+            // frame the button is held is worse than nothing happening.
+            if (IsSilenced(ref state, character))
+                return;
+
             DynamicBuffer<SkillSlot> slots = state.EntityManager.GetBuffer<SkillSlot>(character);
             if (request.SlotIndex < 0 || request.SlotIndex >= slots.Length)
                 return;
@@ -202,6 +212,16 @@ namespace TogetherWeFall.Skills.Systems
             // What this key casts is whatever is in the socket right now. An
             // empty socket, an unequipped weapon or a support gem where an
             // active should be all come out the same way: nothing happens.
+            //
+            // The unequipped case is checked here rather than merely intended.
+            // It was neither before, and it mattered little while every skill
+            // came from a gem the player had chosen to bind; it matters now that
+            // a weapon carries its own attack, because taking the sword off and
+            // still swinging it is precisely the thing "equipment matters"
+            // cannot mean.
+            if (!IsWorn(ref state, character, slot.Gear))
+                return;
+
             ItemDatabase items = SystemAPI.GetSingleton<ItemDatabase>();
 
             if (!GemSockets.TryResolveActive(
@@ -437,7 +457,12 @@ namespace TogetherWeFall.Skills.Systems
                             // needs to resolve its own impact.
                             TriggerSkillIndex = skill.TriggerSkillIndex,
                             TriggerDamageScale = skill.TriggerDamageScale,
-                            TriggerDepth = context.Depth
+                            TriggerDepth = context.Depth,
+
+                            // And the status it marks whatever it hits with, if
+                            // the skill names one. A fork inherits it for free,
+                            // because a fork copies this struct.
+                            AppliedStatus = skill.AppliedStatus
                         }
                     });
                     return true;
@@ -595,7 +620,8 @@ namespace TogetherWeFall.Skills.Systems
                 ChainDelay = skill.ChainDelay,
                 Delay = 0f,
                 ExplosionRadius = skill.ExplosionRadius,
-                ExplosionDamage = skill.ExplosionDamage
+                ExplosionDamage = skill.ExplosionDamage,
+                AppliedStatus = skill.AppliedStatus
             };
 
             hit.Visited.Add(targets.Entities[index]);
@@ -643,7 +669,8 @@ namespace TogetherWeFall.Skills.Systems
             ExplosionDamage = skill.ExplosionDamage,
             TriggerSkillIndex = skill.TriggerSkillIndex,
             TriggerDamageScale = skill.TriggerDamageScale,
-            TriggerDepth = context.Depth
+            TriggerDepth = context.Depth,
+            AppliedStatus = skill.AppliedStatus
         };
 
         private void AppendEvents(
@@ -734,21 +761,51 @@ namespace TogetherWeFall.Skills.Systems
                     : 1f;
             }
 
-            if (!state.EntityManager.HasBuffer<ElementalStatus>(target))
+            if (!state.EntityManager.HasBuffer<ActiveStatusEffect>(target))
                 return conditions;
 
-            DynamicBuffer<ElementalStatus> statuses =
-                state.EntityManager.GetBuffer<ElementalStatus>(target, isReadOnly: true);
+            DynamicBuffer<ActiveStatusEffect> statuses =
+                state.EntityManager.GetBuffer<ActiveStatusEffect>(target, isReadOnly: true);
 
-            // Flattened into the same mask a projectile carries its pickups in.
-            // A condition asking "is this burning" and a hit arriving carrying
-            // fire are the same question about the same byte, which is the whole
-            // reason the mask exists rather than a second kind of set.
+            // Flattened into two masks, and they are two because they answer
+            // two different questions. The element mask is the same byte a
+            // projectile carries its pickups in — "is this burning" and "did
+            // this shot fly through fire" are one question about one set. The
+            // status mask is the wider one: a target can be stunned, and being
+            // stunned is not an element.
             for (int i = 0; i < statuses.Length; i++)
-                conditions.TargetElements = ElementMask.With(conditions.TargetElements, statuses[i].Element);
+            {
+                conditions.TargetStatuses =
+                    StatusMask.With(conditions.TargetStatuses, statuses[i].Type);
+
+                if (StatusEffects.CarriesElement(statuses[i].Type))
+                {
+                    conditions.TargetElements =
+                        ElementMask.With(conditions.TargetElements, statuses[i].Element);
+                }
+            }
 
             return conditions;
         }
+
+        /// <summary>
+        /// Whether something is stopping this character casting.
+        ///
+        /// Asked of the gate, which is the one answer every status on a body
+        /// has already been reduced to — so Stun and Silence are one question
+        /// here rather than two systems reaching into a buffer.
+        ///
+        /// A character with no gate cannot be silenced, and today that is every
+        /// character: players have no health, so nothing can put a status on
+        /// one, so nothing ever will. The seam is deliberate and is one line
+        /// rather than none, because the decision has been taken — control works
+        /// both ways round — and the thing still missing is the source, not the
+        /// rule. See ModifierConditionType.CasterRecentlyHit, which is honest in
+        /// exactly the same way.
+        /// </summary>
+        private static bool IsSilenced(ref SystemState state, Entity character)
+            => state.EntityManager.HasComponent<StatusGate>(character) &&
+               state.EntityManager.GetComponentData<StatusGate>(character).BlocksCasting;
 
         /// <summary>
         /// The rule this caster is breaking, or None.
@@ -761,6 +818,19 @@ namespace TogetherWeFall.Skills.Systems
             => state.EntityManager.HasComponent<KeystoneComponent>(character)
                 ? state.EntityManager.GetComponentData<KeystoneComponent>(character).Effect
                 : KeystoneEffect.None;
+
+        /// <summary>
+        /// Whether the character is wearing the gear a hotkey points at.
+        ///
+        /// Ten slots read once per cast, on the frames a button goes down rather
+        /// than every frame. The alternative — clearing bar slots whenever
+        /// something is taken off — would put the same fact in two places and
+        /// leave the bar to be repaired by whoever remembered.
+        /// </summary>
+        private bool IsWorn(ref SystemState state, Entity character, Entity gear)
+            => state.EntityManager.HasBuffer<EquippedItem>(character) &&
+               GemSockets.IsWorn(
+                   state.EntityManager.GetBuffer<EquippedItem>(character, true), gear);
 
         private bool TryGetCharacter(ref SystemState state, int playerId, out Entity character)
         {

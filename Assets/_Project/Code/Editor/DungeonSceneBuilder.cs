@@ -36,7 +36,6 @@ namespace TogetherWeFall.EditorTools
     public static class DungeonSceneBuilder
     {
         private const string ScenePath = "Assets/_Project/Scenes/Dungeon.unity";
-        private const string ItemFolder = "Assets/_Project/Data/Items";
 
         [MenuItem("Tools/Together We Fall/Build Dungeon Scene")]
         public static void BuildDungeonScene()
@@ -80,7 +79,7 @@ namespace TogetherWeFall.EditorTools
             GameObject chestPrefab = SceneBuildUtility.CreateChestPrefab(lootConfig, chestMaterial);
             GameObject lootItemPrefab =
                 SceneBuildUtility.CreateLootItemPrefab(lootConfig, lootItemMaterial);
-            LootTable lootTable = CreateOrLoadTreasureTable();
+            LootTable lootTable = ItemContentFactory.CreateOrLoadTreasureTable();
             GameObject projectilePrefab =
                 SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
 
@@ -102,6 +101,11 @@ namespace TogetherWeFall.EditorTools
             // reach.
             SkillContentFactory.CreateBuildContent(lootTable);
 
+            // Every weapon gets the attack it is born with, where it does not
+            // have one yet. This is what makes equipping a sword mean something
+            // on its own: without it a weapon is a stat sheet you cannot swing.
+            ItemContentFactory.AssignDefaultAttacks();
+
             SceneBuildUtility.CreateLighting();
 
             DungeonDirector director = CreateDungeonRoot(dungeonConfig);
@@ -110,7 +114,8 @@ namespace TogetherWeFall.EditorTools
             GameObject simulationSettings =
                 SceneBuildUtility.CreateSimulationSettings(pathfindingConfig, separationConfig);
             GameObject lootDatabase =
-                CreateLootDatabase(lootConfig, lootTable, chestPrefab, lootItemPrefab);
+                SceneBuildUtility.CreateLootDatabase(
+                    lootConfig, lootTable, chestPrefab, lootItemPrefab);
             GameObject characterStats =
                 SceneBuildUtility.CreateCharacterStats(characterConfig);
             GameObject skillDatabase =
@@ -232,220 +237,5 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateMaterial(assetName, color);
         }
 
-        /// <summary>
-        /// The table treasure chests roll on, with a starter set of items.
-        ///
-        /// Filled in only when the asset is created. Rebuilding the scene must
-        /// not overwrite a table somebody has since tuned — the point of these
-        /// assets is that they are edited by hand, and a generator that silently
-        /// reverts that editing is worse than no generator.
-        ///
-        /// The items themselves are placeholders with no stats, because stats
-        /// belong to equipment and equipment is its own step. What they do carry
-        /// is a rarity, which is the only property the drop pipeline reads.
-        /// </summary>
-        private static LootTable CreateOrLoadTreasureTable()
-        {
-            LootTable table = SceneBuildUtility.CreateOrLoadConfig<LootTable>(
-                "TreasureLootTable", out bool created);
-
-            if (!created)
-                return table;
-
-            ItemDefinition[] items = CreateSampleItems();
-
-            var serialized = new SerializedObject(table);
-            SerializedProperty entries = serialized.FindProperty("_entries");
-            entries.arraySize = items.Length;
-
-            for (int i = 0; i < items.Length; i++)
-            {
-                SerializedProperty entry = entries.GetArrayElementAtIndex(i);
-                entry.FindPropertyRelative("_item").objectReferenceValue = items[i];
-                entry.FindPropertyRelative("_weight").floatValue = 1f;
-            }
-
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            return table;
-        }
-
-        /// <summary>
-        /// The starter items.
-        ///
-        /// Placeholders, but not empty ones: every slot is represented, both
-        /// modifier kinds appear, and the numbers climb with rarity. That is
-        /// what makes the character sheet visibly move when something is
-        /// equipped, which is the only way to see the stat maths running.
-        /// </summary>
-        private static ItemDefinition[] CreateSampleItems()
-        {
-            // After the slot come the inventory footprint — width, height and
-            // whether the player may turn it on its side — and whether the item
-            // needs both hands. They differ on purpose: eight one-by-one items
-            // that all go in the same slot would exercise nothing.
-            //
-            // The two rings are here for the same reason. A ring is the only
-            // item that fits in more than one slot, so without one the ring
-            // pairing and the slot-to-slot move have nothing to act on.
-            var definitions =
-                new (string name, ItemRarity rarity, EquipmentSlot slot,
-                     int width, int height, bool canRotate, bool twoHanded,
-                     ItemStatValue[] baseStats, ItemAffix[] affixes)[]
-                {
-                    ("Cracked Dagger", ItemRarity.Common, EquipmentSlot.MainHand,
-                        1, 2, false, false,
-                        new[] { new ItemStatValue(StatKind.Damage, 8f) },
-                        new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 10f) }),
-
-                    ("Dented Buckler", ItemRarity.Common, EquipmentSlot.OffHand,
-                        2, 2, false, false,
-                        new[] { new ItemStatValue(StatKind.Armour, 12f) },
-                        new[] { new ItemAffix(StatKind.Armour, ModifierKind.Increased, 10f) }),
-
-                    ("Rusted Helm", ItemRarity.Common, EquipmentSlot.Helmet,
-                        2, 2, false, false,
-                        new[] { new ItemStatValue(StatKind.Armour, 8f) },
-                        new[] { new ItemAffix(StatKind.MaxHealth, ModifierKind.Flat, 10f) }),
-
-                    ("Hunters Bow", ItemRarity.Uncommon, EquipmentSlot.MainHand,
-                        2, 3, true, true,
-                        new[] { new ItemStatValue(StatKind.Damage, 14f) },
-                        new[] { new ItemAffix(StatKind.AttackSpeed, ModifierKind.Increased, 15f) }),
-
-                    ("Runed Gauntlets", ItemRarity.Uncommon, EquipmentSlot.Gloves,
-                        2, 2, false, false,
-                        new[] { new ItemStatValue(StatKind.Damage, 3f) },
-                        new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 12f) }),
-
-                    ("Band of Embers", ItemRarity.Uncommon, EquipmentSlot.Ring1,
-                        1, 1, false, false,
-                        new[] { new ItemStatValue(StatKind.Damage, 4f) },
-                        new[] { new ItemAffix(StatKind.FireResistance, ModifierKind.Flat, 12f) }),
-
-                    ("Coil of the Deep", ItemRarity.Rare, EquipmentSlot.Ring1,
-                        1, 1, false, false,
-                        new[] { new ItemStatValue(StatKind.MaxHealth, 15f) },
-                        new[] { new ItemAffix(StatKind.ColdResistance, ModifierKind.Flat, 18f) }),
-
-                    ("Frostbite Blade", ItemRarity.Rare, EquipmentSlot.MainHand,
-                        1, 3, true, false,
-                        new[] { new ItemStatValue(StatKind.Damage, 22f) },
-                        new[]
-                        {
-                            new ItemAffix(StatKind.Damage, ModifierKind.Increased, 20f),
-                            new ItemAffix(StatKind.ColdResistance, ModifierKind.Flat, 15f)
-                        }),
-
-                    ("Warlords Plate", ItemRarity.Epic, EquipmentSlot.Chest,
-                        2, 3, false, false,
-                        new[]
-                        {
-                            new ItemStatValue(StatKind.Armour, 40f),
-                            new ItemStatValue(StatKind.MaxHealth, 25f)
-                        },
-                        new[] { new ItemAffix(StatKind.MaxHealth, ModifierKind.Increased, 18f) }),
-
-                    ("Dawnbringer", ItemRarity.Legendary, EquipmentSlot.MainHand,
-                        1, 4, true, true,
-                        new[] { new ItemStatValue(StatKind.Damage, 45f) },
-                        new[]
-                        {
-                            new ItemAffix(StatKind.Damage, ModifierKind.Increased, 45f),
-                            new ItemAffix(StatKind.AttackSpeed, ModifierKind.Increased, 25f)
-                        }),
-
-                    ("Heart of the Fall", ItemRarity.Mythic, EquipmentSlot.Amulet,
-                        1, 1, false, false,
-                        new[] { new ItemStatValue(StatKind.MaxHealth, 50f) },
-                        new[]
-                        {
-                            new ItemAffix(StatKind.Damage, ModifierKind.Increased, 30f),
-                            new ItemAffix(StatKind.MoveSpeed, ModifierKind.Increased, 10f)
-                        })
-                };
-
-            var items = new ItemDefinition[definitions.Length];
-
-            for (int i = 0; i < definitions.Length; i++)
-            {
-                string assetName = definitions[i].name.Replace(" ", string.Empty);
-
-                ItemDefinition item = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                    assetName, ItemFolder, out bool created);
-
-                if (created)
-                {
-                    var serialized = new SerializedObject(item);
-                    serialized.FindProperty("_displayName").stringValue = definitions[i].name;
-                    serialized.FindProperty("_rarity").enumValueIndex = (int)definitions[i].rarity;
-                    serialized.FindProperty("_slot").enumValueIndex = (int)definitions[i].slot;
-
-                    serialized.FindProperty("_gridWidth").intValue = definitions[i].width;
-                    serialized.FindProperty("_gridHeight").intValue = definitions[i].height;
-                    serialized.FindProperty("_canRotate").boolValue = definitions[i].canRotate;
-                    serialized.FindProperty("_isTwoHanded").boolValue = definitions[i].twoHanded;
-
-                    WriteStats(serialized.FindProperty("_baseStats"), definitions[i].baseStats);
-                    WriteAffixes(serialized.FindProperty("_affixes"), definitions[i].affixes);
-
-                    serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
-
-                items[i] = item;
-            }
-
-            return items;
-        }
-
-        private static void WriteStats(SerializedProperty array, ItemStatValue[] values)
-        {
-            array.arraySize = values.Length;
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                SerializedProperty element = array.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("_stat").enumValueIndex = (int)values[i].Stat;
-                element.FindPropertyRelative("_value").floatValue = values[i].Value;
-            }
-        }
-
-        private static void WriteAffixes(SerializedProperty array, ItemAffix[] affixes)
-        {
-            array.arraySize = affixes.Length;
-
-            for (int i = 0; i < affixes.Length; i++)
-            {
-                SerializedProperty element = array.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("_stat").enumValueIndex = (int)affixes[i].Stat;
-                element.FindPropertyRelative("_kind").enumValueIndex = (int)affixes[i].Kind;
-                element.FindPropertyRelative("_value").floatValue = affixes[i].Value;
-            }
-        }
-
-
-        /// <summary>
-        /// The object that carries the loot tables and prefabs into ECS. Goes
-        /// into the SubScene with the wave spawner: without baking there is no
-        /// blob, and without the blob nothing can drop.
-        /// </summary>
-        private static GameObject CreateLootDatabase(
-            LootConfig config, LootTable table, GameObject chestPrefab, GameObject itemPrefab)
-        {
-            var databaseObject = new GameObject("LootDatabase");
-            LootDatabaseAuthoring authoring = databaseObject.AddComponent<LootDatabaseAuthoring>();
-
-            var serialized = new SerializedObject(authoring);
-            serialized.FindProperty("_config").objectReferenceValue = config;
-            serialized.FindProperty("_chestPrefab").objectReferenceValue = chestPrefab;
-            serialized.FindProperty("_itemPrefab").objectReferenceValue = itemPrefab;
-
-            SerializedProperty tables = serialized.FindProperty("_tables");
-            tables.arraySize = 1;
-            tables.GetArrayElementAtIndex(0).objectReferenceValue = table;
-
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-
-            return databaseObject;
-        }
     }
 }

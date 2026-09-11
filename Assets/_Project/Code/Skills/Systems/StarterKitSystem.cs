@@ -158,7 +158,20 @@ namespace TogetherWeFall.Skills.Systems
             }
 
             if (gear != Entity.Null)
+            {
                 Equip(entityManager, character, gear, items);
+
+                // The same arming the equip system does, called by hand because
+                // this path deliberately skips it: the kit hands out gear that
+                // is already owned, so there is no request to send. Without this
+                // a new character wears a weapon whose attack no key casts.
+                GemSockets.ArmDefaultAttack(
+                    entityManager,
+                    items,
+                    SystemAPI.GetSingleton<SkillDatabase>(),
+                    entityManager.GetBuffer<EquippedItem>(character),
+                    entityManager.GetBuffer<SkillSlot>(character));
+            }
 
             entityManager.AddComponent<StarterKitGranted>(character);
 

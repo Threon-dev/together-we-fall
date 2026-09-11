@@ -111,6 +111,13 @@ namespace TogetherWeFall.Config
                  "to it.")]
         [SerializeField] private SkillModifier _gemSupport;
 
+        [Header("Built-in skill")]
+        [Tooltip("The attack this gear comes with. It is welded into socket 0 " +
+                 "when the item is handed out: it cannot be taken out, and the " +
+                 "supports linked to that socket customise it. Leave empty for " +
+                 "anything that is not a weapon.")]
+        [SerializeField] private SkillDefinition _innateSkill;
+
         [Header("Sockets")]
         [Tooltip("Holes in this piece of gear. Fixed per item — rolling them " +
                  "per drop is a feature of its own on top of this one.")]
@@ -190,6 +197,20 @@ namespace TogetherWeFall.Config
             _gemKind == GemKind.Active && _gemSkill != null
                 ? ComputeId(_gemSkill.DisplayName)
                 : 0;
+
+        /// <summary>
+        /// The skill this gear is born holding, as a stable id, or zero.
+        ///
+        /// The same id an active gem uses, and deliberately so: a welded skill
+        /// is not a second kind of thing, it is a gem that was put in at the
+        /// forge instead of by the player. Everything downstream reads it
+        /// through the socket it sits in and cannot tell the difference.
+        /// </summary>
+        public int InnateSkillId =>
+            _innateSkill != null ? ComputeId(_innateSkill.DisplayName) : 0;
+
+        /// <summary>The asset itself, for the baker to depend on.</summary>
+        public SkillDefinition InnateSkill => _innateSkill;
 
         /// <summary>The modifier a Support gem carries, or null.</summary>
         public SkillModifier GemSupportModifier =>

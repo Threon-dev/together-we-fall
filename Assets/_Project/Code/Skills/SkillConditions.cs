@@ -45,7 +45,23 @@ namespace TogetherWeFall.Skills
         /// when gems are swapped between two holes that link identically is a
         /// build nobody can reason about.
         /// </summary>
-        TargetElementType = 4
+        TargetElementType = 4,
+
+        /// <summary>
+        /// The target is under the required status.
+        ///
+        /// The wider sibling of TargetHasStatus, which asks about elements. Two
+        /// values rather than one because the sets genuinely differ: an element
+        /// is also what a projectile can pick up in flight and what a blow
+        /// arrives carrying, while a status is only ever something on a body.
+        /// Collapsing them would mean asking "is this target stunned" of a byte
+        /// that has no room for the answer.
+        ///
+        /// It is what makes control worth applying to something other than the
+        /// enemy in front of you: "chain, but only into rooted bodies" turns a
+        /// root from a defensive move into the setup for the next one.
+        /// </summary>
+        TargetHasStatusEffect = 5
     }
 
     /// <summary>
@@ -77,6 +93,9 @@ namespace TogetherWeFall.Skills
         /// <summary>Which elements the aimed target is carrying, as an ElementMask.</summary>
         public byte TargetElements;
 
+        /// <summary>Everything on the aimed target, as a StatusMask.</summary>
+        public ushort TargetStatuses;
+
         /// <summary>The aimed target's health, from one down to zero.</summary>
         public float TargetHealthFraction;
 
@@ -95,6 +114,7 @@ namespace TogetherWeFall.Skills
         {
             HasTarget = false,
             TargetElements = 0,
+            TargetStatuses = 0,
             TargetHealthFraction = 1f,
             CasterRecentlyHit = false,
             SkillElement = skillElement
@@ -139,6 +159,10 @@ namespace TogetherWeFall.Skills
                 case ModifierConditionType.TargetElementType:
                     return conditions.SkillElement == modifier.RequiredElement;
 
+                case ModifierConditionType.TargetHasStatusEffect:
+                    return conditions.HasTarget &&
+                           StatusMask.Has(conditions.TargetStatuses, modifier.RequiredStatus);
+
                 default:
                     return true;
             }
@@ -173,6 +197,9 @@ namespace TogetherWeFall.Skills
 
                 case ModifierConditionType.TargetElementType:
                     return $"only on {modifier.RequiredElement} skills";
+
+                case ModifierConditionType.TargetHasStatusEffect:
+                    return $"only vs {modifier.RequiredStatus}";
 
                 default:
                     return string.Empty;

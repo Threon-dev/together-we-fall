@@ -4,7 +4,9 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using TogetherWeFall.Interaction;
+using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Loot
 {
@@ -44,8 +46,20 @@ namespace TogetherWeFall.Loot
         /// <summary>How far below the world an idle item waits, out of the frustum.</summary>
         public const float ParkDepth = -1000f;
 
+        /// <summary>
+        /// Puts items on the floor, and gives each the identity it was rolled
+        /// as: its id, its rarity, its colour — and its sockets.
+        ///
+        /// The sockets were missing until the day a weapon started carrying its
+        /// own attack in one. An item out of the pool kept whatever holes the
+        /// previous occupant of that entity had, which for a freshly baked one
+        /// is none — so gear found in a chest had nowhere to put a gem, and the
+        /// only reason nobody noticed is that the starter kit rebuilds its own
+        /// and everything else people had tried was already in the bag.
+        /// </summary>
         public static int Activate(
             EntityManager entityManager,
+            ItemDatabase items,
             in NativeArray<Entity> free,
             NativeList<ItemDrop> drops)
         {
@@ -82,6 +96,12 @@ namespace TogetherWeFall.Loot
                 {
                     ContainerEntity = Entity.Null
                 });
+
+                // The holes this item is supposed to have, and the attack welded
+                // into the first of them. Done here because this is the one
+                // moment an item's identity changes, which is exactly what the
+                // rebuild has always said it was for.
+                GemSockets.Rebuild(entityManager, items, item);
 
                 // Last, for the same reason as everywhere else: the moment this
                 // goes up the resolver can hand it to somebody.

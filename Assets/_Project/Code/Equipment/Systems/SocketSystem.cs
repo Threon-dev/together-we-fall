@@ -131,6 +131,12 @@ namespace TogetherWeFall.Equipment.Systems
             if (request.SocketIndex < 0 || request.SocketIndex >= sockets.Length)
                 return Reject(request, SocketStatus.RejectedNoSuchSocket);
 
+            // Welded first, so the refusal says which of the two it is. "Full"
+            // invites the player to take the thing out and try again, and this
+            // is the one socket where that will never work.
+            if (sockets[request.SocketIndex].IsWelded)
+                return Reject(request, SocketStatus.RejectedWelded);
+
             if (!sockets[request.SocketIndex].IsEmpty)
                 return Reject(request, SocketStatus.RejectedSocketFull);
 
@@ -183,6 +189,12 @@ namespace TogetherWeFall.Equipment.Systems
                 return Reject(request, SocketStatus.RejectedNoSuchSocket);
 
             GearSocket socket = sockets[request.SocketIndex];
+
+            // The weapon's own attack. There is no gem entity to hand back — the
+            // forge put an id there, not an item — so this is not a refusal that
+            // could go the other way on a better day.
+            if (socket.IsWelded)
+                return Reject(request, SocketStatus.RejectedWelded);
 
             if (socket.IsEmpty)
                 return Reject(request, SocketStatus.RejectedSocketEmpty);

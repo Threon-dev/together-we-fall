@@ -3,6 +3,7 @@ using TogetherWeFall.Inventory;
 using TogetherWeFall.Inventory.Systems;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Equipment.Systems
 {
@@ -48,15 +49,22 @@ namespace TogetherWeFall.Equipment.Systems
             // WithPresent, because StatsDirty is down on every character whose
             // stats are up to date — which is exactly the set this loop exists
             // to raise it on.
+            // Optional, and read once: a scene with no skill database still
+            // equips things perfectly well, it simply has nothing to point a
+            // hotkey at.
+            bool hasSkills = SystemAPI.TryGetSingleton(out SkillDatabase skills);
+
             foreach ((DynamicBuffer<EquipRequest> requests,
                       DynamicBuffer<EquipResult> results,
                       DynamicBuffer<EquippedItem> slots,
+                      DynamicBuffer<SkillSlot> bar,
                       RefRO<CarriedBag> bag,
                       EnabledRefRW<StatsDirty> dirty,
                       RefRO<PlayerCharacter> character) in
                      SystemAPI.Query<DynamicBuffer<EquipRequest>,
                          DynamicBuffer<EquipResult>,
                          DynamicBuffer<EquippedItem>,
+                         DynamicBuffer<SkillSlot>,
                          RefRO<CarriedBag>,
                          EnabledRefRW<StatsDirty>,
                          RefRO<PlayerCharacter>>()
@@ -82,8 +90,16 @@ namespace TogetherWeFall.Equipment.Systems
                 // a queue that grows.
                 requests.Clear();
 
-                if (changed)
-                    dirty.ValueRW = true;
+                if (!changed)
+                    continue;
+
+                dirty.ValueRW = true;
+
+                // The weapon's own attack goes on the first free key. Shared
+                // with the starter kit, which equips without ever sending a
+                // request — two callers, one rule.
+                if (hasSkills)
+                    GemSockets.ArmDefaultAttack(entityManager, items, skills, slots, bar);
             }
         }
 

@@ -74,11 +74,29 @@ namespace TogetherWeFall.Enemies.Authoring
                 // exactly the moment a hundred of them arrive at once.
                 AddBuffer<DamageEvent>(entity);
 
-                // What is currently burning, shocking or chilling this body.
-                // Baked for the same reason as the damage buffer: adding it on
-                // the first status would be a structural change, and the first
-                // status arrives in the middle of a fight.
-                AddBuffer<ElementalStatus>(entity);
+                // What is currently burning, stunning, slowing or chilling this
+                // body. Baked for the same reason as the damage buffer: adding
+                // it on the first status would be a structural change, and the
+                // first status arrives in the middle of a fight.
+                AddBuffer<ActiveStatusEffect>(entity);
+
+                // And what it cannot be put under again yet. Empty almost
+                // always — only hard control writes into it — but baked all the
+                // same, because the moment it is needed is the moment a crowd is
+                // being stunned.
+                AddBuffer<CrowdControlImmunity>(entity);
+
+                // What all of that currently adds up to. Written every frame by
+                // the status pass, read by movement and by the damage resolver,
+                // and neutral on a body with nothing on it.
+                AddComponent(entity, StatusGate.Neutral);
+                AddComponent<StatusVisual>(entity);
+
+                AddComponent(entity, new CrowdControlResistance
+                {
+                    ImmuneToHardControl = authoring.Config.ImmuneToHardControl,
+                    DurationMultiplier = authoring.Config.ControlDurationMultiplier
+                });
 
                 // Down until it runs out of health, so dying costs no structural
                 // change inside the parallel job that resolves damage.

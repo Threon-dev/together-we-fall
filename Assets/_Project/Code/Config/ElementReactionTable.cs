@@ -21,6 +21,13 @@ namespace TogetherWeFall.Config
         menuName = "Together We Fall/Element Reaction Table")]
     public sealed class ElementReactionTable : ScriptableObject
     {
+        [Tooltip("Every status in the game, including the ones no element " +
+                 "leaves and no reaction produces — the control and debuff ones " +
+                 "a skill applies by name. A status missing from all three " +
+                 "lists below simply does not exist at runtime.")]
+        [SerializeField] private StatusEffectDefinition[] _statuses =
+            Array.Empty<StatusEffectDefinition>();
+
         [Tooltip("What a plain hit of each element leaves on its target. One " +
                  "entry per element that marks; the rest mark nothing.")]
         [SerializeField] private StatusEffectDefinition[] _defaultStatuses =
@@ -30,6 +37,7 @@ namespace TogetherWeFall.Config
                  "authoring mistake and is reported at bake time.")]
         [SerializeField] private ElementReactionRule[] _rules = Array.Empty<ElementReactionRule>();
 
+        public StatusEffectDefinition[] Statuses => _statuses;
         public StatusEffectDefinition[] DefaultStatuses => _defaultStatuses;
         public ElementReactionRule[] Rules => _rules;
     }

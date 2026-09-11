@@ -37,6 +37,15 @@ namespace TogetherWeFall.Skills
         /// <summary>Which element the condition is about. See ModifierConditionType.</summary>
         public DamageType RequiredElement;
 
+        /// <summary>
+        /// Which status the condition is about, for TargetHasStatusEffect.
+        ///
+        /// A sixth byte in a struct that had five and is padded to thirty-two
+        /// either way, so it costs nothing here and nothing in the fixed list
+        /// the fold gathers into.
+        /// </summary>
+        public StatusEffectType RequiredStatus;
+
         public float Value;
 
         /// <summary>Second number, where one is not enough. See SkillModifier.</summary>
@@ -114,6 +123,22 @@ namespace TogetherWeFall.Skills
         public float ChainDelay;
 
         /// <summary>
+        /// A status this skill applies to everything it hits, or None.
+        ///
+        /// Named by type, because the status table is baked by a different
+        /// authoring object than this database and an index would mean whichever
+        /// order that one happened to produce. A type nothing answers to applies
+        /// nothing, which is the same inert failure a gem naming a missing skill
+        /// already has.
+        ///
+        /// Deliberately no application chance. A chance would be one more field
+        /// and a random number in a job that has none — and chance is balance,
+        /// which this prototype does not have anywhere else either. Making it
+        /// probabilistic later is one field and one draw.
+        /// </summary>
+        public StatusEffectType AppliedStatus;
+
+        /// <summary>
         /// Supports authored onto the skill itself.
         ///
         /// These are now INNATE behaviour rather than the build: a skill that is
@@ -166,6 +191,9 @@ namespace TogetherWeFall.Skills
 
         /// <summary>Fraction of the triggered skill's own damage. One is full.</summary>
         public float TriggerDamageScale;
+
+        /// <summary>The status everything this cast touches is marked with, or None.</summary>
+        public StatusEffectType AppliedStatus;
     }
 
     /// <summary>
@@ -442,7 +470,13 @@ namespace TogetherWeFall.Skills
                 ExplosionRadius = explosionRadius,
                 ExplosionDamage = damage * explosionShare * 0.01f,
                 TriggerSkillIndex = triggerIndex,
-                TriggerDamageScale = math.max(0f, triggerShare) * 0.01f
+                TriggerDamageScale = math.max(0f, triggerShare) * 0.01f,
+
+                // Straight through the fold. No support changes which status a
+                // skill applies, and one that did would be a new modifier kind
+                // rather than a number quietly borrowed here — the same line
+                // drawn for zone duration above.
+                AppliedStatus = skill.AppliedStatus
             };
         }
     }

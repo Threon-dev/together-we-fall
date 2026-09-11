@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 
 namespace TogetherWeFall.Combat.Systems
@@ -20,15 +21,29 @@ namespace TogetherWeFall.Combat.Systems
     [UpdateAfter(typeof(TogetherWeFall.Skills.Systems.SkillHitSystem))]
     public partial struct DamageResolutionSystem : ISystem
     {
+        private ComponentLookup<StatusGate> _gates;
+
         public void OnCreate(ref SystemState state)
         {
+            _gates = state.GetComponentLookup<StatusGate>(isReadOnly: true);
+
             state.RequireForUpdate<Health>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            new ResolveDamageJob().ScheduleParallel();
+            _gates.Update(ref state);
+
+            new ResolveDamageJob
+            {
+                // A lookup rather than a component on the query, deliberately.
+                // Requiring StatusGate here would silently exclude anything with
+                // health that has not been given one — and "this entity takes no
+                // damage at all" is the worst way for a missing component to
+                // announce itself.
+                Gates = _gates
+            }.ScheduleParallel();
         }
 
         /// <summary>
@@ -41,7 +56,10 @@ namespace TogetherWeFall.Combat.Systems
         [WithPresent(typeof(Dead), typeof(DamageFeedback))]
         private partial struct ResolveDamageJob : IJobEntity
         {
+            [ReadOnly] public ComponentLookup<StatusGate> Gates;
+
             private void Execute(
+                Entity entity,
                 ref Health health,
                 ref Dead dead,
                 EnabledRefRW<Dead> isDead,
@@ -58,6 +76,15 @@ namespace TogetherWeFall.Combat.Systems
                 bool alreadyDead = isDead.ValueRO;
                 float remaining = health.Current;
 
+                // Vulnerability and fortification, applied here and nowhere
+                // else. This is the one place health changes, so it is the only
+                // place "takes more damage" can mean one thing — a multiplier
+                // applied where the blow is produced would be applied once per
+                // projectile, once per blast and not at all by a burn.
+                float taken = Gates.HasComponent(entity)
+                    ? Gates[entity].DamageTakenMultiplier
+                    : 1f;
+
                 bool killed = false;
                 DamageEvent killingBlow = default;
 
@@ -66,8 +93,10 @@ namespace TogetherWeFall.Combat.Systems
 
                 for (int i = 0; i < events.Length; i++)
                 {
-                    total += events[i].Amount;
-                    remaining -= events[i].Amount;
+                    float amount = events[i].Amount * taken;
+
+                    total += amount;
+                    remaining -= amount;
 
                     // Captured in the loop, because the buffer is cleared before
                     // the feedback is written and there would be nothing left to

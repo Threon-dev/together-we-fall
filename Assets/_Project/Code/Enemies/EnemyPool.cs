@@ -90,10 +90,20 @@ namespace TogetherWeFall.Enemies
 
                 entityManager.GetBuffer<PathPoint>(enemy).Clear();
 
-                // Whatever the previous occupant was burning with. Left alone, a
-                // reused body would come back out of the pool already ignited —
-                // and, worse, would react with the next hit it took.
-                entityManager.GetBuffer<ElementalStatus>(enemy).Clear();
+                // Whatever the previous occupant was burning with, and whatever
+                // it had recently been stunned by. Left alone, a reused body
+                // would come back out of the pool already ignited — and, worse,
+                // would react with the next hit it took, or refuse the first
+                // stun of its new life because of one the last occupant took.
+                entityManager.GetBuffer<ActiveStatusEffect>(enemy).Clear();
+                entityManager.GetBuffer<CrowdControlImmunity>(enemy).Clear();
+
+                // The answer those two add up to. The status pass rebuilds it
+                // from nothing every frame, but the first frame out of the pool
+                // is one the movement systems also read, and a body that came
+                // back rooted would spend it standing still.
+                entityManager.SetComponentData(enemy, StatusGate.Neutral);
+                entityManager.SetComponentData(enemy, new StatusVisual());
 
                 entityManager.SetComponentEnabled<Dead>(enemy, false);
                 entityManager.SetComponentEnabled<DeathFade>(enemy, false);

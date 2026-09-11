@@ -351,6 +351,11 @@ namespace TogetherWeFall.Skills.Systems
                         // carrying fire into everything it catches.
                         CarriedElements = projectile.CarriedElements,
 
+                        // As is the status it was told to apply, which every
+                        // body the burst catches is then marked with — checked
+                        // against each of their own immunities, one at a time.
+                        AppliedStatus = projectile.AppliedStatus,
+
                         // Explicitly nothing. The trigger already fired above,
                         // for this same impact, and zero is a real skill index —
                         // leaving the field at its default would make every
@@ -382,7 +387,8 @@ namespace TogetherWeFall.Skills.Systems
                     // What it picked up on the way. This is the point of the
                     // whole overlap stage: the element gathered in flight arrives
                     // at the target beside the projectile's own.
-                    CarriedElements = projectile.CarriedElements
+                    CarriedElements = projectile.CarriedElements,
+                    AppliedStatus = projectile.AppliedStatus
                 };
 
                 hit.Visited.Add(target);

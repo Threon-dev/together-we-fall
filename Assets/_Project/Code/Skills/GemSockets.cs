@@ -117,6 +117,18 @@ namespace TogetherWeFall.Skills
             if (!TryReadSocket(entityManager, gear, socketIndex, out GearSocket socket))
                 return false;
 
+            // The weapon's own attack. Answered before the gem is looked at
+            // because a welded socket never holds one — there is no entity, only
+            // the id the forge put there — and from here down nothing else in
+            // the pipeline can tell the two apart.
+            if (socket.IsWelded)
+            {
+                skillIndex = skills.IndexOf(socket.WeldedSkillId);
+                linkGroup = socket.LinkGroup;
+
+                return skillIndex >= 0;
+            }
+
             if (socket.IsEmpty)
                 return false;
 
@@ -217,6 +229,106 @@ namespace TogetherWeFall.Skills
         }
 
         /// <summary>
+        /// Points the first hotkey at a worn weapon's built-in attack, when that
+        /// key has nothing better to do.
+        ///
+        /// Without this, equipping a weapon changes nothing a player can see:
+        /// the attack exists, in a socket, and no key casts it. Binding is a
+        /// CHOICE rather than a fact, which is why giving it a default breaks
+        /// nothing — the bar still names a socket and the skill still comes from
+        /// one. What would break the model is a bar carrying a skill of its own,
+        /// and this does not.
+        ///
+        /// It never takes a key away. A key is free if it is unbound, or if it
+        /// points at gear the character is no longer wearing — which is exactly
+        /// what a weapon swap leaves behind, and the alternative there is a
+        /// hotkey still casting the sword now sitting in the bag.
+        ///
+        /// Called from the two places gear is put on: the equip system, and the
+        /// starter kit, which dresses a new character without sending itself a
+        /// request. Both on the frame it happens and never every frame — a
+        /// version that ran continuously would put the binding back a frame
+        /// after a player deliberately cleared it.
+        /// </summary>
+        public static void ArmDefaultAttack(
+            EntityManager entityManager,
+            ItemDatabase items,
+            SkillDatabase skills,
+            DynamicBuffer<EquippedItem> worn,
+            DynamicBuffer<SkillSlot> bar)
+        {
+            if (bar.Length == 0 || !IsBarSlotFree(entityManager, worn, bar[0]))
+                return;
+
+            // In slot order, so the main hand is asked first: it is slot zero,
+            // and the hand holding the weapon is where a default attack should
+            // come from when both hands have one.
+            for (int i = 0; i < worn.Length; i++)
+            {
+                Entity gear = worn[i].Item;
+                if (gear == Entity.Null || !entityManager.HasBuffer<GearSocket>(gear))
+                    continue;
+
+                DynamicBuffer<GearSocket> sockets =
+                    entityManager.GetBuffer<GearSocket>(gear, true);
+
+                for (int socket = 0; socket < sockets.Length; socket++)
+                {
+                    if (!sockets[socket].IsWelded)
+                        continue;
+
+                    // Resolved rather than assumed: a welded id naming a skill
+                    // the database has never heard of would bind a key to
+                    // nothing, and a key that does nothing is the bug this
+                    // exists to remove.
+                    if (!TryResolveActive(
+                            entityManager, items, skills, gear, socket, out _, out _))
+                    {
+                        continue;
+                    }
+
+                    SkillSlot bound = bar[0];
+                    bound.Gear = gear;
+                    bound.SocketIndex = socket;
+                    bar[0] = bound;
+
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether a hotkey is the game's to fill: empty, or pointing at
+        /// something the character is not wearing any more.
+        /// </summary>
+        private static bool IsBarSlotFree(
+            EntityManager entityManager, DynamicBuffer<EquippedItem> worn, in SkillSlot slot)
+            => !slot.HasBinding || !entityManager.Exists(slot.Gear) || !IsWorn(worn, slot.Gear);
+
+        /// <summary>
+        /// Whether this gear is actually on the character.
+        ///
+        /// Public and here rather than a loop in each caller, because three of
+        /// them need the same answer and must agree: the cast system, which
+        /// refuses a hotkey pointing at a sword in the bag; the arming above,
+        /// which treats such a key as free; and the panel, which must not name a
+        /// skill the host will not cast.
+        /// </summary>
+        public static bool IsWorn(DynamicBuffer<EquippedItem> worn, Entity gear)
+        {
+            if (gear == Entity.Null)
+                return false;
+
+            for (int i = 0; i < worn.Length; i++)
+            {
+                if (worn[i].Item == gear)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Rebuilds an item's sockets from the layout its definition authored.
         ///
         /// Called when an item is handed out of the pool, which is the only
@@ -250,6 +362,37 @@ namespace TogetherWeFall.Skills
                     InsertedGem = Entity.Null
                 });
             }
+
+            Weld(sockets, blob.InnateSkillId);
+        }
+
+        /// <summary>
+        /// Puts the weapon's own attack into socket zero.
+        ///
+        /// It takes an authored socket rather than being added beside them: a
+        /// built-in attack that cost nothing would be strictly better than one
+        /// the player chose, and the whole model rests on holes being the scarce
+        /// thing. A weapon with no authored sockets at all still gets one, so
+        /// that "this weapon has an attack" never depends on a layout somebody
+        /// forgot to write.
+        ///
+        /// Socket zero specifically, so the attack is always in the same place —
+        /// and so the supports the author linked to that group are the ones that
+        /// customise it.
+        /// </summary>
+        private static void Weld(DynamicBuffer<GearSocket> sockets, int innateSkillId)
+        {
+            if (innateSkillId == 0)
+                return;
+
+            if (sockets.Length == 0)
+            {
+                sockets.Add(new GearSocket { SocketIndex = 0, LinkGroup = 0 });
+            }
+
+            GearSocket first = sockets[0];
+            first.WeldedSkillId = innateSkillId;
+            sockets[0] = first;
         }
     }
 }

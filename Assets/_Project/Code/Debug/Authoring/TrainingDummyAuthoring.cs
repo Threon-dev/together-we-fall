@@ -50,11 +50,20 @@ namespace TogetherWeFall.DebugTools.Authoring
 
                 AddBuffer<DamageEvent>(entity);
 
-                // Dummies burn and shock like anything else. They are the one
-                // thing in the game that stands still and never dies, which
-                // makes them the only way to watch a status run its whole
-                // course and a reaction fire on a body you chose.
-                AddBuffer<ElementalStatus>(entity);
+                // Dummies burn, freeze and stun like anything else. They are
+                // the one thing in the game that stands still and never dies,
+                // which makes them the only way to watch a status run its whole
+                // course, a reaction fire on a body you chose, and a stun be
+                // refused because the last one has not finished protecting it.
+                AddBuffer<ActiveStatusEffect>(entity);
+                AddBuffer<CrowdControlImmunity>(entity);
+
+                AddComponent(entity, StatusGate.Neutral);
+                AddComponent<StatusVisual>(entity);
+
+                // Ordinary resistance. A dummy is the baseline everything is
+                // measured against, so making it special would defeat it.
+                AddComponent(entity, CrowdControlResistance.None);
 
                 // Present so the damage pipeline can raise it in its parallel
                 // job, and lowered again the same frame by TrainingDummySystem.

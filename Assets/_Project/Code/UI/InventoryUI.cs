@@ -688,6 +688,8 @@ namespace TogetherWeFall.UI
                     return "A support gem cannot be cast on its own.";
                 case SocketStatus.RejectedNotCarried:
                     return "That is not yours to socket.";
+                case SocketStatus.RejectedWelded:
+                    return "That is the weapon's own attack. It does not come out.";
                 default:
                     return "The change was refused.";
             }
@@ -1609,7 +1611,28 @@ namespace TogetherWeFall.UI
             mark.style.fontSize = 10;
             mark.pickingMode = PickingMode.Ignore;
 
-            if (!socket.IsEmpty &&
+            if (socket.IsWelded)
+            {
+                // The weapon's own attack. Its own colour rather than a rarity,
+                // because it has no gem to take a rarity from — and a letter of
+                // its own, because "A" would promise a gem the player could pull
+                // out and put somewhere else.
+                border = new Color(0.62f, 0.58f, 0.42f);
+                cell.style.backgroundColor = new Color(0.20f, 0.18f, 0.12f, 1f);
+
+                mark.text = "W";
+                mark.style.color = border;
+
+                int capturedSocket = socket.SocketIndex;
+                ItemDatabase capturedDatabase = items;
+                Entity capturedWeapon = gear;
+
+                cell.RegisterCallback<PointerDownEvent>(evt => BeginWeldedDrag(
+                    evt, cell, capturedWeapon, capturedSocket, capturedDatabase));
+                cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
+                cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+            }
+            else if (!socket.IsEmpty &&
                 GemSockets.TryDescribeGem(
                     _entityManager, items, socket.InsertedGem,
                     out GemKind kind, out _, out SkillModifierBlob support))
@@ -1680,12 +1703,21 @@ namespace TogetherWeFall.UI
             DynamicBuffer<SkillSlot> bar =
                 _entityManager.GetBuffer<SkillSlot>(character, isReadOnly: true);
 
+            // What is worn, so a key pointing at a sword now sitting in the bag
+            // reads as empty here for exactly the reason it casts nothing there.
+            DynamicBuffer<EquippedItem> worn =
+                _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true);
+
             for (int i = 0; i < bar.Length && i < BarSlotCount; i++)
-                _barList.Add(MakeBarBox(i, bar[i], items, skills));
+                _barList.Add(MakeBarBox(i, bar[i], worn, items, skills));
         }
 
         private VisualElement MakeBarBox(
-            int index, in SkillSlot slot, ItemDatabase items, SkillDatabase skills)
+            int index,
+            in SkillSlot slot,
+            DynamicBuffer<EquippedItem> worn,
+            ItemDatabase items,
+            SkillDatabase skills)
         {
             var box = new VisualElement();
             box.style.flexGrow = 1f;
@@ -1701,7 +1733,8 @@ namespace TogetherWeFall.UI
             Color border = new Color(0.24f, 0.26f, 0.32f);
             string text = HotkeyName(index);
 
-            if (GemSockets.TryResolveActive(
+            if (GemSockets.IsWorn(worn, slot.Gear) &&
+                GemSockets.TryResolveActive(
                     _entityManager, items, skills, slot.Gear, slot.SocketIndex,
                     out int skillIndex, out int linkGroup))
             {
@@ -1765,6 +1798,55 @@ namespace TogetherWeFall.UI
         }
 
         /// <summary>Starts a drag from a gem sitting in a socket.</summary>
+        /// <summary>
+        /// Drags a weapon's built-in attack, which exists as an id in a socket
+        /// and not as a gem anywhere.
+        ///
+        /// It is worth being draggable for one reason: the hotkey. Equipping
+        /// arms the first key automatically, but a player who binds something
+        /// else there would otherwise have no way back to their own weapon's
+        /// attack short of taking the weapon off and putting it on again.
+        ///
+        /// Dropped anywhere but a hotkey it goes nowhere — the host refuses to
+        /// remove a welded socket, and says so.
+        /// </summary>
+        private void BeginWeldedDrag(
+            PointerDownEvent evt,
+            VisualElement cell,
+            Entity gear,
+            int socketIndex,
+            ItemDatabase items)
+        {
+            if (evt.button != 0 || _drag.Active)
+                return;
+
+            if (!TryGetCharacter(out _, out Entity bag))
+                return;
+
+            if (!_entityManager.HasComponent<ItemInstance>(gear))
+                return;
+
+            // The ghost is shaped from the weapon, because the thing being
+            // dragged has no shape of its own. What matters is that something
+            // follows the pointer at all.
+            int gearId = _entityManager.GetComponentData<ItemInstance>(gear).ItemId;
+
+            StartDrag(evt, cell, items, gearId, Entity.Null, bag, false);
+
+            // Set after the fact, because both are read off the item id and the
+            // id here belongs to the sword rather than to the attack in it. What
+            // is being dragged behaves as an active gem in a socket, which is
+            // exactly what the hotkey drop is looking for.
+            _drag.IsGem = true;
+            _drag.IsActiveGem = true;
+
+            _drag.Source2 = DragSource.Socket;
+            _drag.SourceGear = gear;
+            _drag.SourceSocket = socketIndex;
+
+            evt.StopPropagation();
+        }
+
         private void BeginSocketDrag(
             PointerDownEvent evt,
             VisualElement cell,

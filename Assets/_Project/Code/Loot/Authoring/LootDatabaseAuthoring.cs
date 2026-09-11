@@ -126,8 +126,16 @@ namespace TogetherWeFall.Loot.Authoring
 
                     for (int e = 0; e < entries.Length; e++)
                     {
-                        if (entries[e]?.Item != null)
-                            DependsOn(entries[e].Item);
+                        ItemDefinition item = entries[e]?.Item;
+                        if (item == null)
+                            continue;
+
+                        DependsOn(item);
+
+                        // The welded skill too: its name is what the id is
+                        // hashed from, so renaming it has to re-bake this.
+                        if (item.InnateSkill != null)
+                            DependsOn(item.InnateSkill);
                     }
                 }
             }
@@ -245,6 +253,7 @@ namespace TogetherWeFall.Loot.Authoring
                     ProcChance = modifier.ProcChance,
                     Condition = modifier.Condition,
                     RequiredElement = modifier.RequiredElement,
+                    RequiredStatus = modifier.RequiredStatus,
                     Threshold = modifier.Threshold
                 };
             }
@@ -265,6 +274,11 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.GemKind = item.GemType;
                 blob.GemSkillId = item.GemSkillId;
                 blob.GemSupport = BuildSupport(item.GemSupportModifier);
+
+                // An id rather than an index, like every other cross-database
+                // reference here: the item database and the skill database are
+                // baked by two authoring objects that share no ordering.
+                blob.InnateSkillId = item.InnateSkillId;
 
                 blob.SocketCount = item.SocketCount;
                 blob.LinkGroups = new FixedList32Bytes<byte>();

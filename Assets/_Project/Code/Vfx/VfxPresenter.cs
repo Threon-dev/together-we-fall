@@ -1,8 +1,12 @@
+using Unity.Collections;
 using Unity.Entities;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.UIElements;
 using TogetherWeFall.CameraRig;
+using TogetherWeFall.Combat;
 using TogetherWeFall.Config;
+using TogetherWeFall.Enemies;
 
 namespace TogetherWeFall.Vfx
 {
@@ -41,11 +45,13 @@ namespace TogetherWeFall.Vfx
 
         private readonly VfxLinePool _pool = new VfxLinePool();
         private readonly DamageNumberPool _numbers = new DamageNumberPool();
+        private readonly StatusIconPool _icons = new StatusIconPool();
         private readonly HitStopController _hitStop = new HitStopController();
 
         private TopDownCameraRig _camera;
         private EntityManager _entityManager;
         private EntityQuery _eventsQuery;
+        private EntityQuery _afflictedQuery;
         private bool _hasWorld;
 
         private int _deathsInWindow;
@@ -78,6 +84,15 @@ namespace TogetherWeFall.Vfx
             _entityManager = world.EntityManager;
             _eventsQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadWrite<VfxEventsSingleton>());
+
+            // EnemyTag is enableable, so this query is already only the bodies
+            // that are currently enemies: one asleep in the pool and one playing
+            // out its death are both excluded, and neither the pool nor the
+            // death fade has to remember to take a marker down.
+            _afflictedQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<EnemyTag>(),
+                ComponentType.ReadOnly<StatusVisual>(),
+                ComponentType.ReadOnly<LocalTransform>());
 
             _pool.Initialize(_config.PoolSize, _lineMaterial, transform);
             _hitStop.Configure(
@@ -115,6 +130,7 @@ namespace TogetherWeFall.Vfx
                 _shakeCooldown -= unscaled;
 
             DrainEvents();
+            DrawStatusMarkers();
             AdvanceMassKillWindow(unscaled);
 
             _pool.Tick(unscaled);
@@ -285,6 +301,70 @@ namespace TogetherWeFall.Vfx
                 _config.DamageNumberFontSize,
                 root,
                 _camera.Camera);
+
+            _icons.Initialize(
+                _config.StatusIconBudget,
+                _config.StatusIconFontSize,
+                root,
+                _camera.Camera);
+        }
+
+        /// <summary>
+        /// Puts a marker over every afflicted body the player can actually read
+        /// one on.
+        ///
+        /// A level rather than a queue, which is why this reads the world
+        /// directly instead of draining events. A status lasts seconds; an event
+        /// per frame per status would be three hundred events on a frame where a
+        /// crowd is burning, and the presenter would then have to work out which
+        /// of them were still true.
+        ///
+        /// It still reads and never writes, so the rule the whole VFX seam rests
+        /// on holds: a build without this component plays identically. The
+        /// simulation reduced the buffer to StatusVisual and knows nothing about
+        /// what became of it.
+        ///
+        /// Budgeted by distance first and then by count, in that order and
+        /// deliberately: the same rule the audio presenter follows, because a
+        /// marker nobody can read still takes the label the near fight needed.
+        /// </summary>
+        private void DrawStatusMarkers()
+        {
+            if (!_icons.IsReady || _camera == null || _camera.Camera == null)
+                return;
+
+            _icons.Begin();
+
+            if (!_afflictedQuery.IsEmptyIgnoreFilter)
+            {
+                using NativeArray<StatusVisual> visuals =
+                    _afflictedQuery.ToComponentDataArray<StatusVisual>(Allocator.Temp);
+                using NativeArray<LocalTransform> transforms =
+                    _afflictedQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+
+                Vector3 viewer = _camera.Camera.transform.position;
+                float rangeSq = _config.StatusIconRange * _config.StatusIconRange;
+
+                for (int i = 0; i < visuals.Length && i < transforms.Length; i++)
+                {
+                    if (visuals[i].Icons == 0)
+                        continue;
+
+                    Vector3 world = transforms[i].Position;
+
+                    if ((world - viewer).sqrMagnitude > rangeSq)
+                        continue;
+
+                    Color tint = visuals[i].HasTint
+                        ? new Color(
+                            visuals[i].Tint.x, visuals[i].Tint.y, visuals[i].Tint.z, 1f)
+                        : Color.white;
+
+                    _icons.Add(world, visuals[i].Icons, tint);
+                }
+            }
+
+            _icons.Finish();
         }
 
         /// <summary>

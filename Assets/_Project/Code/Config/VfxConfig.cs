@@ -105,10 +105,28 @@ namespace TogetherWeFall.Config
                  "punch the camera every frame.")]
         [SerializeField, Range(0.1f, 3f)] private float _massKillCooldownSeconds = 0.8f;
 
+        [Header("Status markers")]
+        [Tooltip("How many afflicted bodies carry a marker at once. A budget " +
+                 "rather than a pool size: a hundred burning enemies are a " +
+                 "hundred markers nobody can read, so the nearest ones get one " +
+                 "and the rest are simply coloured.")]
+        [SerializeField, Range(0, 64)] private int _statusIconBudget = 16;
+
+        [Tooltip("How far from the camera rig a body still gets a marker. The " +
+                 "same cut-off idea as the audio distance: something nobody can " +
+                 "read should not be holding a label the near fight needs.")]
+        [SerializeField, Range(5f, 80f)] private float _statusIconRange = 30f;
+
+        [SerializeField, Range(6, 32)] private int _statusIconFontSize = 11;
+
         [Header("Pooling")]
         [Tooltip("Line renderers kept alive and reused. Effects that fire dozens " +
                  "of times a second must never allocate.")]
         [SerializeField, Range(8, 512)] private int _poolSize = 96;
+
+        public int StatusIconBudget => _statusIconBudget;
+        public float StatusIconRange => _statusIconRange;
+        public int StatusIconFontSize => _statusIconFontSize;
 
         public float ChainLinkSeconds => _chainLinkSeconds;
         public float ChainLinkWidth => _chainLinkWidth;

@@ -168,6 +168,7 @@ namespace TogetherWeFall.Skills.Systems
                     // body it caught is struck by, and whether the blast was
                     // itself a reaction decides whether these hits may start one.
                     CarriedElements = area.CarriedElements,
+                    AppliedStatus = area.AppliedStatus,
                     FromReaction = area.FromReaction
                 });
             }

@@ -61,6 +61,16 @@ namespace TogetherWeFall.Combat.Authoring
             {
                 DependsOn(table);
 
+                StatusEffectDefinition[] all = table.Statuses;
+                if (all != null)
+                {
+                    for (int i = 0; i < all.Length; i++)
+                    {
+                        if (all[i] != null)
+                            DependsOn(all[i]);
+                    }
+                }
+
                 StatusEffectDefinition[] defaults = table.DefaultStatuses;
                 if (defaults != null)
                 {
@@ -90,14 +100,24 @@ namespace TogetherWeFall.Combat.Authoring
             /// <summary>
             /// Every status named anywhere in the table, once each.
             ///
-            /// Gathered from both places a status can be named — what an element
-            /// leaves on its own, and what a reaction produces — so that a status
-            /// used only as a reaction result still has an index to be referred
-            /// to by.
+            /// Gathered from all three places a status can be named — the flat
+            /// list, what an element leaves on its own, and what a reaction
+            /// produces — so that a status used in only one of them still has an
+            /// index to be referred to by. The flat list is what control and
+            /// debuff statuses arrive through: nothing leaves a Stun on its own
+            /// and no pair of elements produces one, so without it a skill that
+            /// stuns would name a status the runtime has never heard of.
             /// </summary>
             private static List<StatusEffectDefinition> CollectStatuses(ElementReactionTable table)
             {
                 var statuses = new List<StatusEffectDefinition>();
+
+                StatusEffectDefinition[] all = table.Statuses;
+                if (all != null)
+                {
+                    for (int i = 0; i < all.Length; i++)
+                        AddStatus(statuses, all[i]);
+                }
 
                 StatusEffectDefinition[] defaults = table.DefaultStatuses;
                 if (defaults != null)
@@ -134,6 +154,7 @@ namespace TogetherWeFall.Combat.Authoring
                 ref ElementReactionBlob root = ref builder.ConstructRoot<ElementReactionBlob>();
 
                 BuildStatuses(builder, ref root, statuses);
+                BuildStatusesByType(builder, ref root, statuses, context);
                 BuildDefaults(builder, ref root, table, statuses, context);
                 BuildRules(builder, ref root, table, statuses, context);
 
@@ -153,12 +174,73 @@ namespace TogetherWeFall.Combat.Authoring
                     blobStatuses[i] = new StatusBlob
                     {
                         Name = ToFixedString(statuses[i].DisplayName),
+                        Type = statuses[i].Type,
                         Element = statuses[i].Element,
                         Duration = statuses[i].Duration,
                         MaxStacks = statuses[i].MaxStacks,
                         DamagePerSecond = statuses[i].DamagePerSecond,
-                        TickInterval = statuses[i].TickInterval
+                        TickInterval = statuses[i].TickInterval,
+                        MagnitudePerStack = statuses[i].MagnitudePerStack,
+                        StacksDuration = statuses[i].StacksDuration,
+                        ImmunityMultiplier = statuses[i].ImmunityMultiplier
                     };
+                }
+            }
+
+            /// <summary>
+            /// Which asset answers to each status type.
+            ///
+            /// The one index a skill can reach a status through, since the skill
+            /// database is baked elsewhere and shares no ordering with this one.
+            /// Two assets claiming the same type is an error rather than a
+            /// warning: the loser would be authored, wired in, visible in the
+            /// table and never once applied, which is the worst kind of quiet.
+            ///
+            /// A status left at None is the shape an asset written before the
+            /// type existed comes back as. It is reported for the same reason —
+            /// it has no identity, so nothing can name it and no reaction can
+            /// tell it apart from the next one.
+            /// </summary>
+            private static void BuildStatusesByType(
+                BlobBuilder builder,
+                ref ElementReactionBlob root,
+                List<StatusEffectDefinition> statuses,
+                Object context)
+            {
+                BlobBuilderArray<int> byType =
+                    builder.Allocate(ref root.StatusByType, StatusMask.Count);
+
+                for (int i = 0; i < StatusMask.Count; i++)
+                    byType[i] = -1;
+
+                for (int i = 0; i < statuses.Count; i++)
+                {
+                    StatusEffectType type = statuses[i].Type;
+
+                    if (type == StatusEffectType.None)
+                    {
+                        Debug.LogError(
+                            $"[{nameof(ElementReactionAuthoring)}] Status " +
+                            $"{statuses[i].DisplayName} has no type. Nothing can apply it by " +
+                            "name and it cannot be told apart from any other — set its Type.",
+                            context);
+                        continue;
+                    }
+
+                    int slot = (int)type;
+                    if (slot < 0 || slot >= StatusMask.Count)
+                        continue;
+
+                    if (byType[slot] >= 0)
+                    {
+                        Debug.LogError(
+                            $"[{nameof(ElementReactionAuthoring)}] Two statuses claim {type}. " +
+                            $"{statuses[i].DisplayName} is ignored — a type has one asset.",
+                            context);
+                        continue;
+                    }
+
+                    byType[slot] = i;
                 }
             }
 
@@ -191,6 +273,20 @@ namespace TogetherWeFall.Combat.Authoring
                 {
                     if (authored[i] == null)
                         continue;
+
+                    // A stun is not what fire leaves behind. Without this the
+                    // corrected Element property hands back Physical for every
+                    // status that carries none, and the first one listed would
+                    // quietly become what a physical blow marks with.
+                    if (!authored[i].CarriesElement)
+                    {
+                        Debug.LogWarning(
+                            $"[{nameof(ElementReactionAuthoring)}] {authored[i].DisplayName} is " +
+                            $"a {authored[i].Category} status and carries no element, so no " +
+                            "element can leave it behind. Listed as a default and ignored.",
+                            context);
+                        continue;
+                    }
 
                     int element = (int)authored[i].Element;
                     if (element < 0 || element >= ElementMask.Count)
