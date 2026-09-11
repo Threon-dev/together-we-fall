@@ -87,19 +87,35 @@ namespace TogetherWeFall.EditorTools
             GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(
                 SceneBuildUtility.CreateMaterial("ElementZone", Color.white));
 
-            SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
+            // The starter set and the wider library as one list. The database
+            // is what "exists" means for a skill, so a library asset missing
+            // from it is a gem that sits in a socket and casts nothing.
+            SkillDefinition[] skills =
+                BuildLibraryFactory.WithLibrary(SkillContentFactory.CreateStarterSkills());
             ElementReactionTable reactionTable = ElementContentFactory.CreateReactionTable();
 
             // The gem that casts the zone skill, added to the chest table if it
             // is not already there. Without it the zone skill exists in the
             // database and nothing can ever cast it.
-            ElementContentFactory.CreateZoneGem(skills[skills.Length - 1], lootTable);
+            //
+            // Named rather than counted: it used to reach for the last skill in
+            // the array, and the array has since grown two welded attacks on the
+            // end — so the gem was one rebuild away from casting a weapon bolt
+            // under the right name.
+            ElementContentFactory.CreateZoneGem(
+                SkillContentFactory.CreateZoneSkill(), lootTable);
 
             // The trigger gem, the conditional support and the two keystone
             // rings, added to the same table for the same reason: a mechanism
             // that exists in the code and in no item is a mechanism nobody can
             // reach.
             SkillContentFactory.CreateBuildContent(lootTable);
+
+            // The library: a gem for every skill above, the supports that ask a
+            // question before they act, and the four-link staff to put them in.
+            // Without a weapon that links four holes, most of the combinations
+            // the gems were written for cannot be assembled at all.
+            BuildLibraryFactory.CreateGems(lootTable);
 
             // Every weapon gets the attack it is born with, where it does not
             // have one yet. This is what makes equipping a sword mean something

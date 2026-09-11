@@ -128,31 +128,7 @@ namespace TogetherWeFall.EditorTools
                     skill.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Stun);
                 });
 
-            // The only skill that leaves something behind. It exists to be flown
-            // through: a wall of fire is where a projectile picks an element up,
-            // and without one in the game the carried half of the reaction system
-            // has nothing to demonstrate itself with.
-            SkillDefinition wall =
-                Skill("CinderWall", "Cinder Wall", skill =>
-                {
-                    skill.Effect = SkillEffectKind.PersistentZone;
-                    skill.DamageType = DamageType.Fire;
-
-                    // Per pulse, not per cast. Low on purpose: what a zone is for
-                    // is the ignite it keeps applying and the element it hands
-                    // out, not the damage.
-                    skill.BaseDamage = 9f;
-                    skill.Cooldown = 4f;
-                    skill.Range = 14f;
-                    skill.Radius = 3f;
-                    skill.ZoneDuration = 6f;
-                    skill.ZoneTickInterval = 0.5f;
-
-                    // No supports. Increased area is the one that reads on a zone
-                    // and it is a gem the player can socket themselves — which is
-                    // the whole point of gems being the build.
-                    skill.Modifiers = System.Array.Empty<SkillModifier>();
-                });
+            SkillDefinition wall = CreateZoneSkill();
 
             // The two a weapon is born with. Created here rather than beside
             // the gems because they are the same kind of thing — a skill asset —
@@ -216,6 +192,43 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
+        /// The zone skill, create-or-load, named rather than counted.
+        ///
+        /// Public for the same reason CreateDefaultAttacks is: another caller
+        /// needs this exact asset — the gem factory, which has to point a gem at
+        /// it. It used to reach for it by position in the array above, and the
+        /// array has since grown two welded attacks on the end, so "the last
+        /// skill" quietly became the weapon bolt. A name cannot drift like that.
+        /// </summary>
+        public static SkillDefinition CreateZoneSkill()
+        {
+            // The only skill that leaves something behind. It exists to be flown
+            // through: a wall of fire is where a projectile picks an element up,
+            // and without one in the game the carried half of the reaction system
+            // has nothing to demonstrate itself with.
+            return Skill("CinderWall", "Cinder Wall", skill =>
+            {
+                skill.Effect = SkillEffectKind.PersistentZone;
+                skill.DamageType = DamageType.Fire;
+
+                // Per pulse, not per cast. Low on purpose: what a zone is for
+                // is the ignite it keeps applying and the element it hands
+                // out, not the damage.
+                skill.BaseDamage = 9f;
+                skill.Cooldown = 4f;
+                skill.Range = 14f;
+                skill.Radius = 3f;
+                skill.ZoneDuration = 6f;
+                skill.ZoneTickInterval = 0.5f;
+
+                // No supports. Increased area is the one that reads on a zone
+                // and it is a gem the player can socket themselves — which is
+                // the whole point of gems being the build.
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+            });
+        }
+
+        /// <summary>
         /// The two gems and the two rings that make the newer half of the model
         /// reachable without authoring anything by hand.
         ///
@@ -268,9 +281,6 @@ namespace TogetherWeFall.EditorTools
             SupportGem(
                 "GemKindledChain", "Kindled Chain Support", kindledChain, ItemRarity.Rare, table);
 
-            KeystoneRing(
-                "StormcallersCoil", "Stormcallers Coil", KeystoneEffect.AoeToChain, table);
-
             // The same mechanism as Kindled Chain, asking about the wider set.
             // Together they are the argument for two condition values rather
             // than one: fire is something a target carries AND something a shot
@@ -297,6 +307,64 @@ namespace TogetherWeFall.EditorTools
             // never under the other.
             KeystoneRing(
                 "FrozenHourglass", "Frozen Hourglass", KeystoneEffect.SlowsAlsoWeaken, table);
+
+            // The fourth keystone, and the only one of the implemented set that
+            // had no item to reach it by. It spends the mark that fed a reaction
+            // every time, whatever the rule says — so the chill that used to pay
+            // out on every bolt now pays once, and a build that lives on
+            // reactions has to keep re-marking instead of standing still.
+            //
+            // It is the natural enemy of the conditional supports: a gem that
+            // only acts against burning bodies finds fewer of them when every
+            // reaction eats the burn.
+            KeystoneRing(
+                "GluttonsMark", "Gluttons Mark", KeystoneEffect.ReactionsAlwaysConsume, table);
+
+            // NoManaCostDoubleCooldown stays deliberately item-less. There is no
+            // mana, so today it is the downside with none of the upside, and an
+            // item nobody would wear is worse than an effect waiting for one.
+        }
+
+        /// <summary>
+        /// An active gem: an ordinary item that happens to carry a skill.
+        ///
+        /// The counterpart of SupportGem below, and written once here rather
+        /// than per skill because "what a gem is" must not differ between one
+        /// skill and the next — a gem authored two cells wide, or landing in
+        /// the wrong slot mask, would be a build rule invented by accident.
+        ///
+        /// Rarity is the caller's, because it is the only thing about a gem
+        /// that is content rather than shape: a gem that casts a wall of fire
+        /// is not the same find as one that casts a spark.
+        /// </summary>
+        internal static ItemDefinition ActiveGem(
+            string assetName,
+            string displayName,
+            SkillDefinition skill,
+            ItemRarity rarity,
+            LootTable table)
+        {
+            ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
+                assetName, ItemFolder, out bool created);
+
+            if (created)
+            {
+                var serialized = new SerializedObject(gem);
+                serialized.FindProperty("_displayName").stringValue = displayName;
+                serialized.FindProperty("_rarity").enumValueIndex = (int)rarity;
+
+                // Main hand, like every gem: the slot mask is what stops a gem
+                // being worn as a helmet, and a gem is never worn at all.
+                serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.MainHand;
+                serialized.FindProperty("_gemKind").enumValueIndex = (int)GemKind.Active;
+                serialized.FindProperty("_gemSkill").objectReferenceValue = skill;
+                serialized.FindProperty("_gridWidth").intValue = 1;
+                serialized.FindProperty("_gridHeight").intValue = 1;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            SceneBuildUtility.EnsureInLootTable(table, gem);
+            return gem;
         }
 
         /// <summary>
@@ -305,7 +373,7 @@ namespace TogetherWeFall.EditorTools
         /// One cell, like every other gem, because a gem competes for bag space
         /// with the loot it is meant to help you take.
         /// </summary>
-        private static ItemDefinition SupportGem(
+        internal static ItemDefinition SupportGem(
             string assetName,
             string displayName,
             SkillModifier support,
@@ -365,7 +433,7 @@ namespace TogetherWeFall.EditorTools
             return ring;
         }
 
-        private static SkillModifier Modifier(
+        internal static SkillModifier Modifier(
             string assetName,
             SkillModifierKind kind,
             float value,
@@ -407,7 +475,7 @@ namespace TogetherWeFall.EditorTools
             return modifier;
         }
 
-        private static SkillDefinition Skill(
+        internal static SkillDefinition Skill(
             string assetName, string displayName, System.Action<SkillFields> fill)
         {
             SkillDefinition skill = SceneBuildUtility.CreateOrLoadConfig<SkillDefinition>(
@@ -476,7 +544,7 @@ namespace TogetherWeFall.EditorTools
         /// SerializedProperty lines per skill inline would bury which numbers
         /// were chosen under how they are stored.
         /// </summary>
-        private sealed class SkillFields
+        internal sealed class SkillFields
         {
             public SkillEffectKind Effect = SkillEffectKind.Projectile;
             public DamageType DamageType = DamageType.Physical;

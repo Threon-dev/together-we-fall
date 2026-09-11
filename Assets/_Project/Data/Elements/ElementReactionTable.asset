@@ -12,13 +12,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b56e178cdc6c43a469f3ba569be22dd5, type: 3}
   m_Name: ElementReactionTable
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ElementReactionTable
+  _statuses:
+  - {fileID: 11400000, guid: d7a60f7230a8594469f1e8ff787cefc0, type: 2}
+  - {fileID: 11400000, guid: 13fdf3e475d97d64399574c7e31f2641, type: 2}
+  - {fileID: 11400000, guid: 7b0cd860c116b374f84f4c726c7e3f05, type: 2}
+  - {fileID: 11400000, guid: c9e20898e0388b542bed04f0623e85bd, type: 2}
+  - {fileID: 11400000, guid: 47ca11c74d28a904ea3daf0ee0ea2e8c, type: 2}
+  - {fileID: 11400000, guid: cc0845a050d6ca84a8713206aee4011e, type: 2}
+  - {fileID: 11400000, guid: 50452f16036125e49b0dbfd84be2b34d, type: 2}
+  - {fileID: 11400000, guid: cd61540e4dcd5ef4894dcbbffc17468b, type: 2}
+  - {fileID: 11400000, guid: eb4d6ca77f626a048a785dbe3d9aa424, type: 2}
+  - {fileID: 11400000, guid: 7cebbcd6c84404c428e6638df81d291e, type: 2}
+  - {fileID: 11400000, guid: 525bd9d0cc36c1f4598e081c34a80f64, type: 2}
+  - {fileID: 11400000, guid: 83a23128db80bba43b489ab7f7ac2644, type: 2}
+  - {fileID: 11400000, guid: 45a5af88719a45f45a88fd0726f4655b, type: 2}
+  - {fileID: 11400000, guid: 04ed4b2fcd4c3db4b9440c0bf8b4d104, type: 2}
+  - {fileID: 11400000, guid: 3308e47f3bcaf4740a5700b13098b604, type: 2}
   _defaultStatuses:
   - {fileID: 11400000, guid: d7a60f7230a8594469f1e8ff787cefc0, type: 2}
   - {fileID: 11400000, guid: 13fdf3e475d97d64399574c7e31f2641, type: 2}
   - {fileID: 11400000, guid: 7b0cd860c116b374f84f4c726c7e3f05, type: 2}
+  - {fileID: 11400000, guid: 47ca11c74d28a904ea3daf0ee0ea2e8c, type: 2}
   _rules:
   - {fileID: 11400000, guid: a4ce61ff0d1e75c4f8e58bbcf9a7d1e7, type: 2}
   - {fileID: 11400000, guid: 8b6bbf1f9ce500746a0d6595639cbf89, type: 2}
   - {fileID: 11400000, guid: a865dde57ee989743b245b8cec73c19a, type: 2}
   - {fileID: 11400000, guid: 7ca3fa327c597a94995942d45e5c5932, type: 2}
   - {fileID: 11400000, guid: 9d4132fa3793cca4888727f91777b114, type: 2}
+  - {fileID: 11400000, guid: ff4dc03280fed594f9ed49a7fd2fa752, type: 2}

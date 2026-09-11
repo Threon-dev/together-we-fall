@@ -16,6 +16,15 @@ MonoBehaviour:
   _rarity: 1
   _slot: 0
   _isTwoHanded: 1
+  _baseStats: []
+  _affixes: []
+  _keystone: 0
+  _gemKind: 0
+  _gemSkill: {fileID: 0}
+  _gemSupport: {fileID: 0}
+  _innateSkill: {fileID: 11400000, guid: f5c4a9839765d0a43b3427d890064343, type: 2}
+  _socketCount: 0
+  _linkGroups: 
   _gridWidth: 2
   _gridHeight: 3
   _canRotate: 1

@@ -3,7 +3,6 @@ using UnityEditor;
 using UnityEngine;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Config;
-using TogetherWeFall.Equipment;
 using TogetherWeFall.Loot;
 
 namespace TogetherWeFall.EditorTools
@@ -52,6 +51,14 @@ namespace TogetherWeFall.EditorTools
             // light, in an element nothing else in the game deals.
             StatusEffectDefinition scorch = Status(StatusEffectType.Scorch);
 
+            // Chaos marks with poison, which is what makes a chaos zone worth
+            // standing in front of: the cloud pulses every second and a half,
+            // and poison is the one burn that stacks its duration rather than
+            // refreshing it, so the mark is built up by staying rather than by
+            // being hit hardest. Nothing dealt chaos before the library below,
+            // which is why this element had no default until now.
+            StatusEffectDefinition poison = Status(StatusEffectType.Poison);
+
             var rules = new List<ElementReactionRule>
             {
                 // The classic: burn the charge off a shocked target.
@@ -84,7 +91,20 @@ namespace TogetherWeFall.EditorTools
                 // just arrived are not interchangeable.
                 Rule("ReactionIgnitedByLightning", DamageType.Fire, DamageType.Lightning,
                     ElementReactionKind.ApplyStatus, multiplier: 1f, consumes: true,
-                    resultStatus: scorch)
+                    resultStatus: scorch),
+
+                // Fire onto poison detonates it. The blast is small on purpose —
+                // a poison cloud covers a crowd, so a generous radius here would
+                // be one shot into a cloud clearing the room, and the reaction
+                // blast is flagged FromReaction and so cannot chain into itself.
+                //
+                // It is worth the asset because it is the one reaction reachable
+                // from two skills nobody has to arrange: the cloud poisons a
+                // crowd on its own, and every fire skill in the library sets it
+                // off. TUNE: radius and multiplier both.
+                Rule("ReactionPoisonedByFire", DamageType.Chaos, DamageType.Fire,
+                    ElementReactionKind.Explosion, multiplier: 1.8f, consumes: true,
+                    radius: 2f)
             };
 
             ElementReactionTable table =
@@ -101,7 +121,7 @@ namespace TogetherWeFall.EditorTools
             WriteList(serialized.FindProperty("_statuses"), AllStatuses());
 
             WriteList(serialized.FindProperty("_defaultStatuses"),
-                new Object[] { ignite, shock, chill });
+                new Object[] { ignite, shock, chill, poison });
 
             SerializedProperty ruleList = serialized.FindProperty("_rules");
             ruleList.arraySize = rules.Count;
@@ -125,29 +145,8 @@ namespace TogetherWeFall.EditorTools
         /// expect to find one.
         /// </summary>
         public static ItemDefinition CreateZoneGem(SkillDefinition zoneSkill, LootTable table)
-        {
-            ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                "GemCinderWall", ItemFolder, out bool created);
-
-            if (created)
-            {
-                var serialized = new SerializedObject(gem);
-                serialized.FindProperty("_displayName").stringValue = "Cinder Wall Gem";
-                serialized.FindProperty("_rarity").enumValueIndex = (int)ItemRarity.Uncommon;
-
-                // A gem is an ordinary item: it takes a cell in the bag, it drops,
-                // and it is lost on death like everything else.
-                serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.MainHand;
-                serialized.FindProperty("_gemKind").enumValueIndex = (int)GemKind.Active;
-                serialized.FindProperty("_gemSkill").objectReferenceValue = zoneSkill;
-                serialized.FindProperty("_gridWidth").intValue = 1;
-                serialized.FindProperty("_gridHeight").intValue = 1;
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            SceneBuildUtility.EnsureInLootTable(table, gem);
-            return gem;
-        }
+            => SkillContentFactory.ActiveGem(
+                "GemCinderWall", "Cinder Wall Gem", zoneSkill, ItemRarity.Uncommon, table);
 
         /// <summary>
         /// Every status the game has, in one array, for the table to reference.

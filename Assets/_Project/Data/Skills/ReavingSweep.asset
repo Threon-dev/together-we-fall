@@ -21,8 +21,11 @@ MonoBehaviour:
   _radius: 4.5
   _arcDegrees: 140
   _projectileSpeed: 26
+  _zoneDuration: 5
+  _zoneTickInterval: 0.5
   _baseChains: 0
   _chainRange: 8
   _chainDelay: 0.07
+  _appliedStatus: {fileID: 11400000, guid: 50452f16036125e49b0dbfd84be2b34d, type: 2}
   _modifiers:
   - {fileID: 11400000, guid: 0dffee6f3cc4f174f899b3df079e16f7, type: 2}

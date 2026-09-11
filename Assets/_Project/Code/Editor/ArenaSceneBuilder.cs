@@ -116,7 +116,11 @@ namespace TogetherWeFall.EditorTools
             GameObject lootItemPrefab =
                 SceneBuildUtility.CreateLootItemPrefab(lootConfig, lootItemMaterial);
 
-            SkillDefinition[] skills = SkillContentFactory.CreateStarterSkills();
+            // The starter set and the wider library as one list. The database
+            // is what "exists" means for a skill, so a library asset missing
+            // from it is a gem that sits in a socket and casts nothing.
+            SkillDefinition[] skills =
+                BuildLibraryFactory.WithLibrary(SkillContentFactory.CreateStarterSkills());
             ElementReactionTable reactionTable = ElementContentFactory.CreateReactionTable();
 
             // The same table, the same gems, the same keystones as the dungeon.
@@ -124,8 +128,20 @@ namespace TogetherWeFall.EditorTools
             // item database is baked FROM the table, and a rig whose item set
             // differs from the game measures a game nobody plays.
             LootTable lootTable = ItemContentFactory.CreateOrLoadTreasureTable();
-            ElementContentFactory.CreateZoneGem(skills[skills.Length - 1], lootTable);
+
+            // The gem that casts the zone skill, named rather than counted.
+            // It used to reach for the last skill in the array, and the array
+            // has since grown two welded attacks on the end — so the gem was one
+            // rebuild away from casting a weapon bolt under the right name.
+            ElementContentFactory.CreateZoneGem(
+                SkillContentFactory.CreateZoneSkill(), lootTable);
             SkillContentFactory.CreateBuildContent(lootTable);
+
+            // The library: a gem for every skill above, the supports that ask a
+            // question before they act, and the four-link staff to put them in.
+            // Without a weapon that links four holes, most of the combinations
+            // the gems were written for cannot be assembled at all.
+            BuildLibraryFactory.CreateGems(lootTable);
 
             // Every weapon gets the attack it is born with, where it does not
             // have one yet. This is what makes equipping a sword mean something
