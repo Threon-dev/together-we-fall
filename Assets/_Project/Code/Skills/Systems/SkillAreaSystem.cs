@@ -168,6 +168,12 @@ namespace TogetherWeFall.Skills.Systems
                     Type = area.Type,
                     SourcePlayerId = area.SourcePlayerId,
 
+                    // So a nova leaves an impact on every body it caught, not
+                    // just a ring on the floor. Bounded by the particle pool's
+                    // per-prefab ceiling rather than by a rule here: what a
+                    // crowd costs is a presentation question.
+                    VfxId = area.VfxId,
+
                     // An area effect chains from exactly one of the bodies it
                     // caught, and only when something asked it to. It used to
                     // chain from none of them, which made every chain gem in a

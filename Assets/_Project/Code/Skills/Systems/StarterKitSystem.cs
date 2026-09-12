@@ -12,14 +12,26 @@ namespace TogetherWeFall.Skills.Systems
     /// <summary>
     /// One item a new character is given, in the order it is granted.
     ///
-    /// The first entry is the gear; the rest are gems. Baked beside the
-    /// character sheet, because what a character starts with is authored
-    /// balance rather than something the code should name.
+    /// Baked from the starter kit asset, one entry per copy — a line asking for
+    /// ten coins arrives here as ten of these. Beside the character sheet,
+    /// because what a character starts with is authored content rather than
+    /// something the code should name.
     /// </summary>
     [InternalBufferCapacity(8)]
     public struct StarterItem : IBufferElementData
     {
         public int ItemId;
+
+        /// <summary>
+        /// Whether this copy is worn rather than carried.
+        ///
+        /// A flag per entry, and it replaces the old rule that the FIRST entry
+        /// was the gear and everything after it was luggage. That rule could not
+        /// express "start wearing four pieces of this set", which is the only
+        /// way to look at a set bonus without playing for an hour first — and a
+        /// kit is a test bench before it is content.
+        /// </summary>
+        public bool Worn;
     }
 
     /// <summary>"This character has already been given its kit."</summary>
@@ -40,8 +52,9 @@ namespace TogetherWeFall.Skills.Systems
     ///
     /// The gems go in the bag, not into the holes. Socketing them here would
     /// be deciding somebody's build for them, and the whole point of the model
-    /// is that the arrangement is the player's. The weapon is worn because a
-    /// character with no gear has nowhere to put a gem at all.
+    /// is that the arrangement is the player's. Gear is worn when the kit asks
+    /// for it, because a character with no gear has nowhere to put a gem at
+    /// all.
     ///
     /// Items come from the loot pool like every other item in the game, so the
     /// pool stays the ceiling on how many exist at once.
@@ -96,20 +109,20 @@ namespace TogetherWeFall.Skills.Systems
             // A list filled by Add rather than an array written through its
             // indexer: a using-declared variable is readonly, and writing to one
             // that way does not compile.
-            using var itemIds = new NativeList<int>(kit.Length, Allocator.Temp);
+            using var wanted = new NativeList<StarterItem>(kit.Length, Allocator.Temp);
 
             for (int i = 0; i < kit.Length; i++)
-                itemIds.Add(kit[i].ItemId);
+                wanted.Add(kit[i]);
 
             for (int i = 0; i < characters.Length; i++)
-                Grant(ref state, items, characters[i], itemIds.AsArray());
+                Grant(ref state, items, characters[i], wanted.AsArray());
         }
 
         private void Grant(
             ref SystemState state,
             ItemDatabase items,
             Entity character,
-            in NativeArray<int> itemIds)
+            in NativeArray<StarterItem> wanted)
         {
             EntityManager entityManager = state.EntityManager;
 
@@ -120,33 +133,34 @@ namespace TogetherWeFall.Skills.Systems
             // singleton reference through it safe.
             RefRW<LootRandom> random = SystemAPI.GetSingletonRW<LootRandom>();
 
-            if (free.Length < itemIds.Length)
+            if (free.Length < wanted.Length)
             {
                 UnityEngine.Debug.LogWarning(
                     "[StarterKitSystem] The item pool is too small for the starter kit — " +
-                    $"{free.Length} free, {itemIds.Length} needed.");
+                    $"{free.Length} free, {wanted.Length} needed.");
                 return;
             }
 
             Entity bag = entityManager.GetComponentData<CarriedBag>(character).Container;
-            Entity gear = Entity.Null;
+            bool anyWorn = false;
 
             // Nothing structural happens in this loop, so the buffers taken
             // inside it stay valid for its whole run.
-            for (int i = 0; i < itemIds.Length; i++)
+            for (int i = 0; i < wanted.Length; i++)
             {
                 Entity item = free[i];
 
-                if (items.IndexOf(itemIds[i]) < 0)
+                if (items.IndexOf(wanted[i].ItemId) < 0)
                 {
                     UnityEngine.Debug.LogWarning(
-                        $"[StarterKitSystem] Starter item {itemIds[i]} is not in the database.");
+                        $"[StarterKitSystem] Starter item {wanted[i].ItemId} is not in the " +
+                        "database.");
                     continue;
                 }
 
                 entityManager.SetComponentData(item, new ItemInstance
                 {
-                    ItemId = itemIds[i],
+                    ItemId = wanted[i].ItemId,
                     Rarity = ItemRarity.Common,
 
                     // Everything carried into a dungeon is at risk, found here
@@ -165,19 +179,21 @@ namespace TogetherWeFall.Skills.Systems
                 if (Currency.TryCollect(entityManager, items, character, item))
                     continue;
 
-                if (i == 0)
+                // Worn if the kit asked for it and there is a slot to take it.
+                // Otherwise it falls back to the bag rather than being dropped:
+                // a kit line that cannot be worn is an authoring mistake, and
+                // losing the item as well would hide it.
+                if (wanted[i].Worn && TryWear(entityManager, character, item, items))
                 {
-                    gear = item;
+                    anyWorn = true;
                     continue;
                 }
 
                 PlaceInBag(entityManager, items, bag, item);
             }
 
-            if (gear != Entity.Null)
+            if (anyWorn)
             {
-                Equip(entityManager, character, gear, items);
-
                 // The same arming the equip system does, called by hand because
                 // this path deliberately skips it: the kit hands out gear that
                 // is already owned, so there is no request to send. Without this
@@ -193,7 +209,7 @@ namespace TogetherWeFall.Skills.Systems
             entityManager.AddComponent<StarterKitGranted>(character);
 
             UnityEngine.Debug.Log(
-                $"[StarterKitSystem] Starter kit granted with {itemIds.Length - 1} gems.");
+                $"[StarterKitSystem] Starter kit granted: {wanted.Length} item(s).");
         }
 
         /// <summary>
@@ -237,36 +253,92 @@ namespace TogetherWeFall.Skills.Systems
         }
 
         /// <summary>
-        /// Wears the starter gear, without going through an equip request.
+        /// Wears one piece of the kit, without going through an equip request.
         ///
         /// A request would be the tidier route and would be checked against a
         /// bag the gear is not in — the kit hands things out already owned, so
         /// there is nothing to move and nothing to check.
+        ///
+        /// The slot is the first FREE one the item is allowed in, asked of the
+        /// same EquipmentSlots the host asks: a second ring finds the other
+        /// hand and a third finds nothing. Nothing is ever displaced, because
+        /// the kit runs before anybody could have chosen what to displace.
+        ///
+        /// False when the item cannot be worn — a gem, a full slot, or a hand
+        /// the other hand has taken — and the caller puts it in the bag
+        /// instead, saying so once in the console. A kit line that cannot be
+        /// worn is an authoring mistake, and swallowing the item as well would
+        /// hide it.
         /// </summary>
-        private static void Equip(
-            EntityManager entityManager, Entity character, Entity gear, ItemDatabase items)
+        private static bool TryWear(
+            EntityManager entityManager, Entity character, Entity item, ItemDatabase items)
         {
-            int itemId = entityManager.GetComponentData<ItemInstance>(gear).ItemId;
+            int itemId = entityManager.GetComponentData<ItemInstance>(item).ItemId;
 
             int index = items.IndexOf(itemId);
             if (index < 0)
-                return;
+                return false;
 
+            // By reference: ItemBlob carries a BlobArray, and copying the struct
+            // leaves its affixes pointing at nothing. The values taken out of it
+            // are flat, so they may travel.
             ref ItemBlob blob = ref items.Value.Value.Items[index];
-            int slotIndex = (int)blob.Slot;
+
+            ushort allowed = blob.AllowedSlots;
+            bool twoHanded = blob.IsTwoHanded;
+            GemKind gem = blob.GemKind;
+            FixedString64Bytes name = blob.Name;
+
+            if (gem != GemKind.None)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[StarterKitSystem] The kit asks to wear '{name}', which is a gem — " +
+                    "it goes in the bag. Socketing is the player's job.");
+                return false;
+            }
 
             DynamicBuffer<EquippedItem> slots =
                 entityManager.GetBuffer<EquippedItem>(character);
 
-            if (slotIndex < 0 || slotIndex >= slots.Length)
-                return;
+            if (!EquipmentSlots.TryFirstFree(slots, allowed, out int slotIndex))
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[StarterKitSystem] No free slot for '{name}' — it goes in the bag.");
+                return false;
+            }
+
+            // Both hands, derived from what is worn exactly as the equip system
+            // derives it, so the kit cannot reach a state a player could not:
+            // the off hand is unusable while the main hand needs both, and a
+            // two-handed weapon needs the off hand empty.
+            var target = (EquipmentSlot)slotIndex;
+            int offHand = (int)EquipmentSlot.OffHand;
+
+            if (target == EquipmentSlot.OffHand &&
+                EquipmentSlots.IsOffHandBlocked(slots, items))
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[StarterKitSystem] '{name}' cannot go in the off hand while a " +
+                    "two-handed weapon is worn — it goes in the bag.");
+                return false;
+            }
+
+            if (twoHanded && target == EquipmentSlot.MainHand &&
+                offHand < slots.Length && slots[offHand].HasItem)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[StarterKitSystem] '{name}' needs both hands and the off hand is " +
+                    "taken — it goes in the bag. List it before the off-hand item.");
+                return false;
+            }
 
             EquippedItem slot = slots[slotIndex];
-            slot.Item = gear;
+            slot.Item = item;
             slot.ItemId = itemId;
             slots[slotIndex] = slot;
 
             entityManager.SetComponentEnabled<StatsDirty>(character, true);
+            return true;
         }
 
     }

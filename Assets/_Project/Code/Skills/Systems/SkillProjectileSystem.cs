@@ -361,6 +361,11 @@ namespace TogetherWeFall.Skills.Systems
                         SourcePlayerId = projectile.SourcePlayerId,
                         Delay = 0f,
 
+                        // The look, handed on the same way the single-target
+                        // branch below hands it: a projectile that bursts still
+                        // produces blows, and they are still this skill's.
+                        VfxId = projectile.VfxId,
+
                         // The chain survives the blast now, handed to one body
                         // inside it. A projectile with an impact radius used to
                         // swallow every jump it was carrying — which made the
@@ -417,6 +422,11 @@ namespace TogetherWeFall.Skills.Systems
                     ManaOnKill = projectile.ManaOnKill,
                     CritChance = projectile.CritChance,
                     CritMultiplier = projectile.CritMultiplier,
+
+                    // The look, handed from the thing that flew to the blow it
+                    // became: the impact effect belongs to the skill, and this
+                    // is the last stage that still knows which skill that was.
+                    VfxId = projectile.VfxId,
 
                     // What it picked up on the way. This is the point of the
                     // whole overlap stage: the element gathered in flight arrives

@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Transforms;
 using UnityEngine;
-using UnityEngine.UIElements;
+using TogetherWeFall.UI;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Config;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Vfx
 {
@@ -39,11 +41,33 @@ namespace TogetherWeFall.Vfx
         [Tooltip("Material for the chain lines and blast rings.")]
         [SerializeField] private Material _lineMaterial;
 
-        [Tooltip("Panel the damage numbers are drawn into. Without it everything " +
+        [Tooltip("Canvas the damage numbers are drawn on. Without it everything " +
                  "else still works and the numbers are simply absent.")]
-        [SerializeField] private UIDocument _document;
+        [SerializeField] private Canvas _canvas;
+
+        [Tooltip("Every authored visual set in the project, filled in by the " +
+                 "scene build. A skill whose set is missing from this list " +
+                 "draws the built-in line and ring, exactly as it did before " +
+                 "sets existed.")]
+        [SerializeField] private SkillVfxSet[] _skillVfx = System.Array.Empty<SkillVfxSet>();
 
         private readonly VfxLinePool _pool = new VfxLinePool();
+        private readonly VfxParticlePool _particles = new VfxParticlePool();
+
+        /// <summary>Visual sets by id, the way the simulation refers to them.</summary>
+        private readonly Dictionary<int, SkillVfxSet> _sets = new Dictionary<int, SkillVfxSet>();
+
+        /// <summary>
+        /// Which trail is following which projectile.
+        ///
+        /// Keyed by entity rather than tracked on the projectile, because the
+        /// projectile is a pooled entity that knows nothing about presentation —
+        /// and must not: a build with no presenter fires exactly the same shots.
+        /// </summary>
+        private readonly Dictionary<Entity, VfxParticlePool.Instance> _trails =
+            new Dictionary<Entity, VfxParticlePool.Instance>();
+
+        private readonly List<Entity> _goneTrails = new List<Entity>();
         private readonly DamageNumberPool _numbers = new DamageNumberPool();
         private readonly StatusIconPool _icons = new StatusIconPool();
         private readonly HitStopController _hitStop = new HitStopController();
@@ -52,6 +76,7 @@ namespace TogetherWeFall.Vfx
         private EntityManager _entityManager;
         private EntityQuery _eventsQuery;
         private EntityQuery _afflictedQuery;
+        private EntityQuery _flyingQuery;
         private bool _hasWorld;
 
         private int _deathsInWindow;
@@ -94,16 +119,48 @@ namespace TogetherWeFall.Vfx
                 ComponentType.ReadOnly<StatusVisual>(),
                 ComponentType.ReadOnly<LocalTransform>());
 
+            // Only the ones in the air. ProjectileActive is enableable, so
+            // this query is already the live set: one parked in the pool a
+            // kilometre under the floor is excluded without anything having to
+            // remember to take a marker down.
+            _flyingQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<SkillProjectile>(),
+                ComponentType.ReadOnly<ProjectileActive>(),
+                ComponentType.ReadOnly<LocalTransform>());
+
+            for (int i = 0; i < _skillVfx.Length; i++)
+            {
+                if (_skillVfx[i] == null)
+                    continue;
+
+                // Last one wins and says so. Two sets hashing to one id means
+                // two assets with the same name, which is the same collision the
+                // item database refuses at bake time.
+                if (_sets.ContainsKey(_skillVfx[i].VfxId))
+                {
+                    Debug.LogWarning(
+                        $"[{nameof(VfxPresenter)}] Two visual sets share the id of " +
+                        $"'{_skillVfx[i].name}'. Give them distinct asset names.", this);
+                }
+
+                _sets[_skillVfx[i].VfxId] = _skillVfx[i];
+            }
+
             _pool.Initialize(_config.PoolSize, _lineMaterial, transform);
+            _particles.Initialize(
+                transform,
+                _config.ParticlesPerEffect,
+                _config.ParticleFadeSeconds,
+                _config.ParticleMaxSeconds);
             _hitStop.Configure(
                 _config.HitStopRecoverySeconds,
                 _config.HitStopRecoveryCurve,
                 _config.HitStopCooldownSeconds);
 
-            if (_document == null)
+            if (_canvas == null)
             {
                 Debug.LogWarning(
-                    $"[{nameof(VfxPresenter)}] No UIDocument assigned — damage numbers will " +
+                    $"[{nameof(VfxPresenter)}] No Canvas assigned — damage numbers will " +
                     "not be drawn. Everything else is unaffected.", this);
             }
             _windowRemaining = _config.MassKillWindowSeconds;
@@ -121,19 +178,21 @@ namespace TogetherWeFall.Vfx
 
             float unscaled = Time.unscaledDeltaTime;
 
-            // Built on first use, not in Initialize: a UIDocument fills its root
-            // in OnEnable, and the bootstrap that calls Initialize deliberately
-            // runs before every other component in the scene.
+            // Built on first use rather than in Initialize: the bootstrap that
+            // calls Initialize deliberately runs before every other component in
+            // the scene, and the camera it hands over is one of them.
             EnsureNumbers();
 
             if (_shakeCooldown > 0f)
                 _shakeCooldown -= unscaled;
 
             DrainEvents();
+            DrawTrails();
             DrawStatusMarkers();
             AdvanceMassKillWindow(unscaled);
 
             _pool.Tick(unscaled);
+            _particles.Tick(unscaled);
             _numbers.Tick(unscaled);
             _hitStop.Tick(unscaled);
         }
@@ -180,6 +239,14 @@ namespace TogetherWeFall.Vfx
 
                 case VfxEventKind.ElementBurst:
                     HandleElementBurst(effect);
+                    break;
+
+                case VfxEventKind.SkillCast:
+                    HandleSkillCast(effect);
+                    break;
+
+                case VfxEventKind.SkillHit:
+                    HandleSkillHit(effect);
                     break;
             }
         }
@@ -289,12 +356,10 @@ namespace TogetherWeFall.Vfx
 
         private void EnsureNumbers()
         {
-            if (_numbers.IsReady || _document == null || _camera == null)
+            if (_numbers.IsReady || _canvas == null || _camera == null)
                 return;
 
-            VisualElement root = _document.rootVisualElement;
-            if (root == null)
-                return;
+            var root = (RectTransform)_canvas.transform;
 
             _numbers.Initialize(
                 _config.DamageNumberPoolSize,
@@ -424,8 +489,163 @@ namespace TogetherWeFall.Vfx
             _deathsInWindow = 0;
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // Authored effects
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The flash where a skill went off, from the skill's own visual set.
+        ///
+        /// Nothing else happens here: no shake and no freeze. A cast is the one
+        /// event in the queue that fires as fast as a player can press a key,
+        /// and punctuating each one would leave the camera permanently unsettled
+        /// — the same argument the element burst already makes.
+        /// </summary>
+        private void HandleSkillCast(in VfxEvent effect)
+        {
+            if (!TryGetSet(effect.VfxId, out SkillVfxSet set) || set.Cast == null)
+                return;
+
+            _particles.Play(
+                set.Cast, ToPoint(effect.Position, set.Lift), Facing(effect), set.Scale);
+        }
+
+        /// <summary>
+        /// The effect at the point of impact, from the same set. One per blow,
+        /// which is what the queue already carries.
+        /// </summary>
+        private void HandleSkillHit(in VfxEvent effect)
+        {
+            if (!TryGetSet(effect.VfxId, out SkillVfxSet set) || set.Hit == null)
+                return;
+
+            _particles.Play(
+                set.Hit, ToPoint(effect.Position, set.Lift), Quaternion.identity, set.Scale);
+        }
+
+        /// <summary>
+        /// Keeps one trail on every projectile in the air.
+        ///
+        /// A pull rather than a push, and that is the whole design: a projectile
+        /// is a pooled entity that is fired by raising a flag and retired by
+        /// lowering one, so there is no event to subscribe to and deliberately
+        /// never will be. What there is instead is a query that answers "what is
+        /// flying right now" — so this reads that, rents a trail for anything
+        /// new, moves the ones it already has, and releases the rest.
+        ///
+        /// Released rather than stopped dead: the emission ends and what is
+        /// already in the air fades, which is the difference between a trail
+        /// that lands with its bolt and one that vanishes a frame early.
+        /// </summary>
+        private void DrawTrails()
+        {
+            if (_flyingQuery.IsEmptyIgnoreFilter && _trails.Count == 0)
+                return;
+
+            using NativeArray<Entity> flying = _flyingQuery.ToEntityArray(Allocator.Temp);
+            using NativeArray<SkillProjectile> projectiles =
+                _flyingQuery.ToComponentDataArray<SkillProjectile>(Allocator.Temp);
+            using NativeArray<LocalTransform> transforms =
+                _flyingQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+
+            // Marked before anything is added, so a projectile that is still in
+            // the air keeps the trail it already has and everything else is
+            // released below. A HashSet would do the same; the list is smaller
+            // than the allocation that would save.
+            _goneTrails.Clear();
+
+            foreach (KeyValuePair<Entity, VfxParticlePool.Instance> pair in _trails)
+                _goneTrails.Add(pair.Key);
+
+            for (int i = 0; i < flying.Length; i++)
+            {
+                Entity projectile = flying[i];
+                Vector3 position = transforms[i].Position;
+
+                // Along its own flight, which is the one rotation a trail needs
+                // and the one thing LocalTransform does not carry for a
+                // projectile — the pool never rotates them, because a cube does
+                // not care and a mesh does.
+                Vector3 velocity = projectiles[i].Velocity;
+                Quaternion rotation = velocity.sqrMagnitude > 0.0001f
+                    ? Quaternion.LookRotation(velocity)
+                    : Quaternion.identity;
+
+                if (_trails.TryGetValue(projectile, out VfxParticlePool.Instance live))
+                {
+                    _goneTrails.Remove(projectile);
+                    live.Transform.SetPositionAndRotation(position, rotation);
+                    continue;
+                }
+
+                if (!TryGetSet(projectiles[i].VfxId, out SkillVfxSet set) ||
+                    set.Projectile == null)
+                {
+                    continue;
+                }
+
+                VfxParticlePool.Instance rented =
+                    _particles.Rent(set.Projectile, position, rotation, set.Scale);
+
+                // Null when the ceiling for this prefab is reached. The shot
+                // still flies and still hits; it simply flies bare, which under
+                // the kind of barrage that reaches the ceiling is invisible.
+                if (rented != null)
+                    _trails.Add(projectile, rented);
+            }
+
+            for (int i = 0; i < _goneTrails.Count; i++)
+            {
+                _particles.Release(_trails[_goneTrails[i]]);
+                _trails.Remove(_goneTrails[i]);
+            }
+        }
+
+        /// <summary>The set an event names, or false when nothing names one.</summary>
+        private bool TryGetSet(int vfxId, out SkillVfxSet set)
+        {
+            set = null;
+            return vfxId != 0 && _sets.TryGetValue(vfxId, out set);
+        }
+
+        /// <summary>
+        /// Which way a cast was pointing, carried in the event's far end — the
+        /// field a chain link uses for its other end and nothing else uses at
+        /// all.
+        /// </summary>
+        private static Quaternion Facing(in VfxEvent effect)
+        {
+            Vector3 forward = ToPoint(effect.EndPosition, 0f) - ToPoint(effect.Position, 0f);
+
+            return forward.sqrMagnitude > 0.0001f
+                ? Quaternion.LookRotation(forward)
+                : Quaternion.identity;
+        }
+
+        /// <summary>
+        /// A line's end, lifted to roughly chest height.
+        ///
+        /// The lift belongs to the LINES and to nothing else: a chain drawn
+        /// between two entity origins runs along the floor and reads as a decal
+        /// rather than as lightning between two bodies.
+        /// </summary>
         private static Vector3 ToWorld(Unity.Mathematics.float3 position)
             => new Vector3(position.x, position.y + 0.9f, position.z);
+
+        /// <summary>
+        /// The point the simulation named, plus whatever lift the set asks for.
+        ///
+        /// What every authored effect uses, and the lift is the set's own knob
+        /// rather than a constant here. An impact has to sit exactly where the
+        /// blow landed, and where that is depends on what produced it: a
+        /// projectile hit happens at the height the bolt was flying, while a
+        /// nova's and a chain's happen at a body — and a body's origin is on the
+        /// floor, which is the very reason the chain LINES lift themselves by
+        /// nine tenths of a metre. A prefab whose pivot is not where its effect
+        /// is gets fixed by the same number.
+        /// </summary>
+        private static Vector3 ToPoint(Unity.Mathematics.float3 position, float lift)
+            => new Vector3(position.x, position.y + lift, position.z);
 
         private static Color ToColor(Unity.Mathematics.float4 color)
             => new Color(color.x, color.y, color.z, color.w);
@@ -436,6 +656,11 @@ namespace TogetherWeFall.Vfx
             // otherwise leave the editor running at five percent speed with
             // nothing on screen to explain why.
             _hitStop.Release();
+
+            // Trails are transforms in the scene, not events: left alone they
+            // would hang in the air where the last projectile died.
+            _trails.Clear();
+            _particles.Clear();
 
             if (!_hasWorld)
                 return;
@@ -449,7 +674,10 @@ namespace TogetherWeFall.Vfx
             _hitStop.Release();
 
             if (_hasWorld)
+            {
                 _eventsQuery.Dispose();
+                _flyingQuery.Dispose();
+            }
         }
     }
 }

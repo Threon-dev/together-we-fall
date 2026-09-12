@@ -65,6 +65,29 @@ namespace TogetherWeFall.Equipment
         }
 
         /// <summary>
+        /// The first EMPTY slot in a mask, or false when every one of them is
+        /// taken.
+        ///
+        /// The half of an Auto equip that never swaps: the starter kit hands out
+        /// items nobody owns yet and has nowhere to put a displaced one, so a
+        /// full slot means the item goes in the bag instead. The equip system's
+        /// own Auto keeps its fallback to the lowest allowed slot, because a
+        /// player double-clicking a ring is asking to replace something.
+        /// </summary>
+        public static bool TryFirstFree(
+            Unity.Entities.DynamicBuffer<EquippedItem> slots, ushort mask, out int slot)
+        {
+            for (slot = 0; slot < slots.Length; slot++)
+            {
+                if (Accepts(mask, (EquipmentSlot)slot) && !slots[slot].HasItem)
+                    return true;
+            }
+
+            slot = Count;
+            return false;
+        }
+
+        /// <summary>
         /// What the character is already wearing that this item would replace,
         /// by id, or zero for nothing.
         ///

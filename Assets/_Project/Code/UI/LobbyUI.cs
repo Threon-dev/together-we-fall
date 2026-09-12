@@ -5,7 +5,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using TMPro;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
@@ -62,7 +64,7 @@ namespace TogetherWeFall.UI
         /// <summary>How close to a dummy the meter shows itself.</summary>
         private const float MeterRange = 14f;
 
-        [SerializeField] private UIDocument _document;
+        [SerializeField] private Canvas _canvas;
 
         private PlayerInputReader _input;
         private Transform _player;
@@ -77,15 +79,15 @@ namespace TogetherWeFall.UI
         private EntityQuery _itemSetDatabaseQuery;
         private bool _hasWorld;
 
-        private VisualElement _screen;
-        private VisualElement _panel;
-        private Label _heading;
-        private Label _message;
-        private VisualElement _body;
-        private Label _prompt;
-        private VisualElement _meterPanel;
-        private VisualElement _meterRows;
-        private VisualElement _meterGraph;
+        private RectTransform _screen;
+        private RectTransform _panel;
+        private TextMeshProUGUI _heading;
+        private TextMeshProUGUI _message;
+        private RectTransform _body;
+        private TextMeshProUGUI _prompt;
+        private RectTransform _meterPanel;
+        private RectTransform _meterRows;
+        private RectTransform _meterGraph;
 
         /// <summary>What says what a thing is while the pointer is over it.</summary>
         private TooltipView _tooltips;
@@ -102,7 +104,7 @@ namespace TogetherWeFall.UI
         private float _meterTimer;
         private float _messageTimer;
 
-        private readonly List<VisualElement> _meterBars = new List<VisualElement>();
+        private readonly List<RectTransform> _meterBars = new List<RectTransform>();
 
         /// <summary>
         /// Reused between redraws. A panel that allocates an array four times a
@@ -219,7 +221,7 @@ namespace TogetherWeFall.UI
             _craftSocket = 1;
             _lastSignature = int.MinValue;
 
-            _screen.style.display = DisplayStyle.Flex;
+            _screen.gameObject.SetActive(true);
         }
 
         private void CloseSession()
@@ -230,7 +232,7 @@ namespace TogetherWeFall.UI
             _session = NpcServiceType.None;
             _npc = Entity.Null;
             _craftTarget = Entity.Null;
-            _screen.style.display = DisplayStyle.None;
+            _screen.gameObject.SetActive(false);
             _lastSignature = int.MinValue;
         }
 
@@ -252,7 +254,7 @@ namespace TogetherWeFall.UI
         {
             if (_session != NpcServiceType.None || _player == null)
             {
-                _prompt.style.display = DisplayStyle.None;
+                _prompt.gameObject.SetActive(false);
                 return;
             }
 
@@ -260,12 +262,12 @@ namespace TogetherWeFall.UI
 
             if (nearest == NpcServiceType.None)
             {
-                _prompt.style.display = DisplayStyle.None;
+                _prompt.gameObject.SetActive(false);
                 return;
             }
 
             _prompt.text = $"E — {PromptFor(nearest)}";
-            _prompt.style.display = DisplayStyle.Flex;
+            _prompt.gameObject.SetActive(true);
         }
 
         private NpcServiceType NearestService(out float distanceSq)
@@ -319,84 +321,62 @@ namespace TogetherWeFall.UI
         /// <summary>
         /// Builds the frame the first time it is needed.
         ///
-        /// Lazily rather than in Initialize, because UIDocument fills its root in
-        /// OnEnable and the bootstrap that calls Initialize deliberately runs
-        /// before everything else in the scene.
+        /// Lazily rather than in Initialize, because the bootstrap that calls
+        /// Initialize deliberately runs before everything else in the scene.
         /// </summary>
         private bool EnsureTree()
         {
             if (_panel != null)
                 return true;
 
-            if (_document == null)
+            if (_canvas == null)
                 return false;
 
-            VisualElement root = _document.rootVisualElement;
-            if (root == null)
-                return false;
+            var root = (RectTransform)_canvas.transform;
 
-            _prompt = new Label { text = string.Empty };
-            _prompt.style.position = Position.Absolute;
-            _prompt.style.bottom = 96f;
-            _prompt.style.left = 0f;
-            _prompt.style.right = 0f;
-            _prompt.style.unityTextAlign = TextAnchor.MiddleCenter;
-            _prompt.style.fontSize = 18f;
-            _prompt.style.color = new Color(0.92f, 0.88f, 0.62f);
-            _prompt.style.display = DisplayStyle.None;
-            _prompt.pickingMode = PickingMode.Ignore;
-            root.Add(_prompt);
+            _prompt = Ugui.Text(
+                root, "Prompt", 18f, new Color(0.92f, 0.88f, 0.62f));
+            Ugui.Place(_prompt.rectTransform, left: 0f, right: 0f, bottom: 96f, height: 26f);
+            _prompt.gameObject.SetActive(false);
 
             BuildMeterPanel(root);
 
-            _screen = new VisualElement();
-            _screen.style.position = Position.Absolute;
-            _screen.style.left = 0f;
-            _screen.style.top = 0f;
-            _screen.style.right = 0f;
-            _screen.style.bottom = 0f;
-            _screen.style.justifyContent = Justify.Center;
-            _screen.style.alignItems = Align.Center;
-            _screen.style.display = DisplayStyle.None;
-
             // The wrapper covers the screen, so it must not be what the pointer
-            // finds. Only the panel inside it picks.
-            _screen.pickingMode = PickingMode.Ignore;
+            // finds: a plain node draws nothing and so catches nothing. Only the
+            // panel inside it picks.
+            _screen = Ugui.Node(root, "Service");
 
-            _panel = new VisualElement();
-            _panel.style.paddingLeft = 14f;
-            _panel.style.paddingRight = 14f;
-            _panel.style.paddingTop = 10f;
-            _panel.style.paddingBottom = 12f;
-            _panel.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 0.96f);
-            SetBorder(_panel, new Color(0.30f, 0.32f, 0.38f));
+            _panel = Ugui.Box(
+                _screen, "Panel", new Color(0.06f, 0.07f, 0.09f, 0.96f)).rectTransform;
 
-            _heading = MakeHeading("Lobby");
-            _panel.Add(_heading);
+            // Centred by its anchors and as big as its contents, which is what
+            // the flexbox centring it replaces was for. uGUI has no
+            // justify-content, but it does have "middle of the parent".
+            Ugui.Place(_panel);
+            Ugui.Column(_panel, spacing: 2f, padding: new RectOffset(14, 14, 10, 12));
+            Ugui.Fit(_panel);
 
-            _body = new VisualElement();
-            _body.style.flexDirection = FlexDirection.Row;
-            _panel.Add(_body);
+            _heading = MakeHeading(_panel, "Lobby");
 
-            _message = new Label { text = string.Empty };
-            _message.style.marginTop = 6f;
-            _message.style.fontSize = 12f;
-            _message.style.color = new Color(0.95f, 0.62f, 0.55f);
-            _panel.Add(_message);
+            _body = Ugui.Node(_panel, "Body");
+            Ugui.Row(_body, spacing: 14f);
 
-            var hint = new Label { text = "Esc — close" };
-            hint.style.marginTop = 2f;
-            hint.style.fontSize = 11f;
-            hint.style.color = new Color(0.55f, 0.58f, 0.64f);
-            _panel.Add(hint);
+            _message = Ugui.Text(
+                _panel, "Message", 12f, new Color(0.95f, 0.62f, 0.55f),
+                TextAlignmentOptions.TopLeft);
 
-            _screen.Add(_panel);
+            TextMeshProUGUI hint = Ugui.Text(
+                _panel, "Hint", 11f, new Color(0.55f, 0.58f, 0.64f),
+                TextAlignmentOptions.TopLeft);
+            hint.text = "Esc — close";
+
+            Ugui.Border(_panel, new Color(0.30f, 0.32f, 0.38f), 1f);
+
+            _screen.gameObject.SetActive(false);
 
             // After the panel, so it draws over it. A tooltip behind the thing
             // it describes is the one placement that helps nobody.
             _tooltips = new TooltipView(_screen, RarityColour);
-
-            root.Add(_screen);
 
             return true;
         }
@@ -493,50 +473,47 @@ namespace TogetherWeFall.UI
             return skills.Value.IsCreated;
         }
 
-        private void BuildMeterPanel(VisualElement root)
+        private void BuildMeterPanel(RectTransform root)
         {
-            _meterPanel = new VisualElement();
-            _meterPanel.style.position = Position.Absolute;
-            _meterPanel.style.right = 12f;
-            _meterPanel.style.top = 12f;
-            _meterPanel.style.width = 250f;
-            _meterPanel.style.paddingLeft = 8f;
-            _meterPanel.style.paddingRight = 8f;
-            _meterPanel.style.paddingTop = 6f;
-            _meterPanel.style.paddingBottom = 8f;
-            _meterPanel.style.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 0.86f);
-            _meterPanel.style.display = DisplayStyle.None;
-            SetBorder(_meterPanel, new Color(0.26f, 0.28f, 0.34f));
+            _meterPanel = Ugui.Box(
+                root, "DamageMeter", new Color(0.05f, 0.06f, 0.08f, 0.86f)).rectTransform;
 
-            _meterPanel.Add(MakeHeading("Damage meter"));
+            // Pinned to the corner at a fixed width; only the height follows what
+            // is in it.
+            Ugui.Place(_meterPanel, right: 12f, top: 12f, width: 250f);
+            Ugui.Column(_meterPanel, spacing: 4f, padding: new RectOffset(8, 8, 6, 8));
+            Ugui.Fit(_meterPanel, horizontal: false);
 
-            _meterGraph = new VisualElement();
-            _meterGraph.style.flexDirection = FlexDirection.Row;
-            _meterGraph.style.alignItems = Align.FlexEnd;
-            _meterGraph.style.height = 44f;
-            _meterGraph.style.marginBottom = 4f;
+            MakeHeading(_meterPanel, "Damage meter");
+
+            _meterGraph = Ugui.Node(_meterPanel, "Graph");
+            Ugui.Size(_meterGraph, height: 44f);
+
+            // The bars keep their own heights — that is the whole graph — so the
+            // row spaces them and aligns them to the bottom without touching how
+            // tall each one is.
+            HorizontalLayoutGroup graph = Ugui.Row(_meterGraph, spacing: 1f);
+            graph.childControlHeight = false;
+            graph.childAlignment = TextAnchor.LowerLeft;
 
             for (int i = 0; i < MeterBuckets; i++)
             {
-                var bar = new VisualElement();
-                bar.style.flexGrow = 1f;
-                bar.style.marginRight = 1f;
-                bar.style.height = 1f;
-                bar.style.backgroundColor = new Color(0.45f, 0.72f, 0.95f);
-                _meterGraph.Add(bar);
-                _meterBars.Add(bar);
+                Image bar = Ugui.Box(
+                    _meterGraph, $"Bucket{i}", new Color(0.45f, 0.72f, 0.95f), picks: false);
+
+                Ugui.Size(bar.rectTransform, height: 1f, grow: 1f);
+                _meterBars.Add(bar.rectTransform);
             }
 
-            _meterPanel.Add(_meterGraph);
+            _meterRows = Ugui.Node(_meterPanel, "Rows");
+            Ugui.Column(_meterRows, spacing: 2f);
+            Ugui.Fit(_meterRows, horizontal: false);
 
-            _meterRows = new VisualElement();
-            _meterPanel.Add(_meterRows);
+            Ugui.Button(_meterPanel, "Reset", "Reset", RequestMeterReset);
 
-            var reset = new Button(RequestMeterReset) { text = "Reset" };
-            reset.style.marginTop = 6f;
-            _meterPanel.Add(reset);
+            Ugui.Border(_meterPanel, new Color(0.26f, 0.28f, 0.34f), 1f);
 
-            root.Add(_meterPanel);
+            _meterPanel.gameObject.SetActive(false);
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -578,7 +555,7 @@ namespace TogetherWeFall.UI
             // hang there describing a tile that is no longer under the cursor.
             _tooltips?.Hide();
 
-            _body.Clear();
+            Ugui.Clear(_body);
 
             switch (_session)
             {
@@ -668,7 +645,7 @@ namespace TogetherWeFall.UI
             if (!TryGetVendor(out VendorComponent vendor) ||
                 vendor.StockContainer == Entity.Null)
             {
-                _body.Add(new Label { text = "The shelves are empty." });
+                MakeNote(_body, "The shelves are empty.");
                 return;
             }
 
@@ -681,23 +658,25 @@ namespace TogetherWeFall.UI
                 shelf.Width + bagGrid.Width,
                 math.max(shelf.Height, bagGrid.Height));
 
-            VisualElement left = MakeColumn("For sale");
-            left.Add(BuildGrid(
-                vendor.StockContainer, items, cell,
+            RectTransform left = MakeColumn(_body, "For sale");
+            BuildGrid(
+                left, vendor.StockContainer, items, cell,
                 item => Trade(item, VendorTransactionKind.Buy),
-                item => PriceLabel(items, item, vendor, VendorTransactionKind.Buy)));
-            _body.Add(left);
+                item => PriceLabel(items, item, vendor, VendorTransactionKind.Buy));
 
-            VisualElement right = MakeColumn(
-                $"Your bag — {Currency.Balance(_entityManager, character)} coin");
-            right.Add(BuildGrid(
-                bag, items, cell,
+            RectTransform right = MakeColumn(
+                _body, $"Your bag — {Currency.Balance(_entityManager, character)} coin");
+            BuildGrid(
+                right, bag, items, cell,
                 item => Trade(item, VendorTransactionKind.Sell),
-                item => PriceLabel(items, item, vendor, VendorTransactionKind.Sell)));
-            _body.Add(right);
+                item => PriceLabel(items, item, vendor, VendorTransactionKind.Sell));
 
-            _body.Add(MakeNote(
-                "Double-click an item on the left to buy it, or one in your bag to sell it."));
+            // A third column of the body rather than a line under the bag, which
+            // is where it sat before: the panel is wider than it is tall and this
+            // is the one place with room to spare.
+            MakeNote(
+                _body,
+                "Double-click an item on the left to buy it, or one in your bag to sell it.");
         }
 
         private string PriceLabel(
@@ -766,7 +745,7 @@ namespace TogetherWeFall.UI
         {
             if (!_entityManager.HasComponent<CraftingStation>(_npc))
             {
-                _body.Add(new Label { text = "The forge is cold." });
+                MakeNote(_body, "The forge is cold.");
                 return;
             }
 
@@ -777,42 +756,45 @@ namespace TogetherWeFall.UI
 
             float cell = CellSizeFor(bagGrid.Width + 6, bagGrid.Height);
 
-            VisualElement left = MakeColumn(
-                $"Your bag — {Currency.Balance(_entityManager, character)} coin");
+            RectTransform left = MakeColumn(
+                _body, $"Your bag — {Currency.Balance(_entityManager, character)} coin");
 
-            left.Add(BuildGrid(bag, items, cell, SelectCraftTarget, null));
-            _body.Add(left);
+            BuildGrid(left, bag, items, cell, SelectCraftTarget, null);
 
-            VisualElement right = MakeColumn("Work");
+            RectTransform right = MakeColumn(_body, "Work");
 
             if (_craftTarget == Entity.Null || !_entityManager.Exists(_craftTarget))
             {
-                right.Add(MakeNote("Click an item in your bag to put it on the anvil."));
-                _body.Add(right);
+                MakeNote(right, "Click an item in your bag to put it on the anvil.");
                 return;
             }
 
-            right.Add(new Label { text = NameOf(items, _craftTarget) });
-            right.Add(BuildSocketRow(_craftTarget));
+            Ugui.Text(
+                right, "Target", 13f, new Color(0.88f, 0.89f, 0.92f),
+                TextAlignmentOptions.TopLeft).text = NameOf(items, _craftTarget);
 
-            right.Add(MakeAction(
+            BuildSocketRow(right, _craftTarget);
+
+            MakeAction(
+                right,
                 $"Add socket — {station.AddSocketCost}",
-                () => Craft(CraftOperation.AddSocket, 0)));
+                () => Craft(CraftOperation.AddSocket, 0));
 
-            right.Add(MakeAction(
+            MakeAction(
+                right,
                 $"Link socket {_craftSocket} to {_craftSocket - 1} — {station.LinkSocketCost}",
-                () => Craft(CraftOperation.LinkSocket, _craftSocket)));
+                () => Craft(CraftOperation.LinkSocket, _craftSocket));
 
-            right.Add(MakeAction(
+            MakeAction(
+                right,
                 $"Reroll built-in skills — {station.RerollSkillsCost}",
-                () => Craft(CraftOperation.RerollSkills, 0)));
+                () => Craft(CraftOperation.RerollSkills, 0));
 
-            right.Add(MakeNote(
+            MakeNote(
+                right,
                 "Affixes are authored on the item, not rolled per copy, so there is nothing " +
                 "on this one to reroll. Sockets, links and a weapon's built-in attacks are " +
-                "the parts that belong to this instance."));
-
-            _body.Add(right);
+                "the parts that belong to this instance.");
         }
 
         /// <summary>
@@ -820,16 +802,14 @@ namespace TogetherWeFall.UI
         /// relationship between neighbours. Clicking one picks it as the socket
         /// to pull into the group on its left.
         /// </summary>
-        private VisualElement BuildSocketRow(Entity item)
+        private void BuildSocketRow(RectTransform parent, Entity item)
         {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.marginTop = 4f;
-            row.style.marginBottom = 6f;
-            row.style.flexWrap = Wrap.Wrap;
+            RectTransform row = Ugui.Node(parent, "Sockets");
+            Ugui.Size(row, height: 24f);
+            Ugui.Row(row, spacing: 1f);
 
             if (!_entityManager.HasBuffer<GearSocket>(item))
-                return row;
+                return;
 
             DynamicBuffer<GearSocket> sockets = _entityManager.GetBuffer<GearSocket>(item);
 
@@ -837,25 +817,24 @@ namespace TogetherWeFall.UI
             {
                 GearSocket socket = sockets[i];
 
-                var box = new Label { text = socket.LinkGroup.ToString() };
-                box.style.width = 22f;
-                box.style.height = 22f;
-                box.style.marginRight = 1f;
-                box.style.unityTextAlign = TextAnchor.MiddleCenter;
-                box.style.fontSize = 11f;
-
-                box.style.backgroundColor = socket.IsWelded
+                Image box = Ugui.Box(row, $"Socket{i}", socket.IsWelded
                     ? new Color(0.42f, 0.34f, 0.16f)
                     : socket.InsertedGem != Entity.Null
                         ? new Color(0.20f, 0.34f, 0.44f)
-                        : new Color(0.13f, 0.14f, 0.17f);
+                        : new Color(0.13f, 0.14f, 0.17f));
 
-                SetBorder(box, i == _craftSocket
+                Ugui.Size(box.rectTransform, width: 22f, height: 22f);
+
+                Ugui.Text(
+                    box.rectTransform, "Group", 11f,
+                    new Color(0.82f, 0.84f, 0.88f)).text = socket.LinkGroup.ToString();
+
+                Ugui.Border(box.rectTransform, i == _craftSocket
                     ? new Color(0.90f, 0.80f, 0.35f)
-                    : new Color(0.26f, 0.28f, 0.34f));
+                    : new Color(0.26f, 0.28f, 0.34f), 1f);
 
                 int index = i;
-                box.RegisterCallback<PointerDownEvent>(_ =>
+                Ugui.On(box.rectTransform, EventTriggerType.PointerDown, _ =>
                 {
                     _craftSocket = index;
                     _lastSignature = int.MinValue;
@@ -866,7 +845,7 @@ namespace TogetherWeFall.UI
                 if (socket.IsWelded)
                 {
                     int weldedSkill = socket.WeldedSkillId;
-                    _tooltips.Attach(box, () => DescribeSkillId(weldedSkill));
+                    _tooltips.Attach(box.rectTransform, () => DescribeSkillId(weldedSkill));
                 }
                 else if (socket.InsertedGem != Entity.Null &&
                          _entityManager.HasComponent<ItemInstance>(socket.InsertedGem))
@@ -874,13 +853,9 @@ namespace TogetherWeFall.UI
                     int gemId =
                         _entityManager.GetComponentData<ItemInstance>(socket.InsertedGem).ItemId;
 
-                    _tooltips.Attach(box, () => DescribeItem(gemId));
+                    _tooltips.Attach(box.rectTransform, () => DescribeItem(gemId));
                 }
-
-                row.Add(box);
             }
-
-            return row;
         }
 
         private void SelectCraftTarget(Entity item)
@@ -910,7 +885,7 @@ namespace TogetherWeFall.UI
 
         private void BuildPortal()
         {
-            var column = MakeColumn("Ready to descend");
+            RectTransform column = MakeColumn(_body, "Ready to descend");
 
             int ready = 0;
             bool self = false;
@@ -929,31 +904,32 @@ namespace TogetherWeFall.UI
                 }
             }
 
-            column.Add(new Label { text = $"{ready} of {PlayerCount()} ready" });
+            Ugui.Text(
+                column, "Ready", 13f, new Color(0.88f, 0.89f, 0.92f),
+                TextAlignmentOptions.TopLeft).text = $"{ready} of {PlayerCount()} ready";
 
             bool wantReady = !self;
 
-            column.Add(MakeAction(
+            MakeAction(
+                column,
                 self ? "Not yet" : "I am ready",
-                () => SetReady(wantReady)));
+                () => SetReady(wantReady));
 
-            column.Add(MakeNote(
+            MakeNote(
+                column,
                 "The floor is generated from a seed when everyone has agreed. Nothing about " +
-                "the dungeon travels — every client builds the same floor from the same number."));
-
-            _body.Add(column);
+                "the dungeon travels — every client builds the same floor from the same number.");
         }
 
         private void BuildTraining()
         {
-            VisualElement column = MakeColumn("Training ground");
+            RectTransform column = MakeColumn(_body, "Training ground");
 
-            column.Add(MakeNote(
+            MakeNote(
+                column,
                 "Hit the dummies. The meter on the right splits what lands into what you " +
                 "pressed, what your triggers cast and what your reactions did — which is the " +
-                "only way to see whether a combination is working."));
-
-            _body.Add(column);
+                "only way to see whether a combination is working.");
         }
 
         private void SetReady(bool ready)
@@ -998,11 +974,11 @@ namespace TogetherWeFall.UI
 
             if (_player == null || !TryFindMeter(out Entity dummy))
             {
-                _meterPanel.style.display = DisplayStyle.None;
+                _meterPanel.gameObject.SetActive(false);
                 return;
             }
 
-            _meterPanel.style.display = DisplayStyle.Flex;
+            _meterPanel.gameObject.SetActive(true);
             DrawMeter(dummy);
         }
 
@@ -1036,7 +1012,7 @@ namespace TogetherWeFall.UI
 
         private void DrawMeter(Entity dummy)
         {
-            _meterRows.Clear();
+            Ugui.Clear(_meterRows);
 
             DynamicBuffer<DamageMeterEntry> log =
                 _entityManager.GetBuffer<DamageMeterEntry>(dummy);
@@ -1046,7 +1022,7 @@ namespace TogetherWeFall.UI
             if (log.Length == 0)
             {
                 ClearGraph();
-                _meterRows.Add(MakeNote("Nothing has landed yet."));
+                MakeNote(_meterRows, "Nothing has landed yet.");
                 return;
             }
 
@@ -1083,12 +1059,12 @@ namespace TogetherWeFall.UI
 
             DrawGraph();
 
-            _meterRows.Add(MakeStat("DPS", (total / window).ToString("0.0")));
-            _meterRows.Add(MakeStat("Yours", (mine / window).ToString("0.0")));
-            _meterRows.Add(MakeStat("Pressed", Share(direct, total)));
-            _meterRows.Add(MakeStat("Triggered", Share(trigger, total)));
-            _meterRows.Add(MakeStat("Reactions", Share(reaction, total)));
-            _meterRows.Add(MakeStat("Hits", log.Length.ToString()));
+            MakeStat(_meterRows, "DPS", (total / window).ToString("0.0"));
+            MakeStat(_meterRows, "Yours", (mine / window).ToString("0.0"));
+            MakeStat(_meterRows, "Pressed", Share(direct, total));
+            MakeStat(_meterRows, "Triggered", Share(trigger, total));
+            MakeStat(_meterRows, "Reactions", Share(reaction, total));
+            MakeStat(_meterRows, "Hits", log.Length.ToString());
         }
 
         private static string Share(float part, float total) =>
@@ -1102,14 +1078,24 @@ namespace TogetherWeFall.UI
                 peak = math.max(peak, _buckets[i]);
 
             for (int i = 0; i < _meterBars.Count && i < _buckets.Length; i++)
-                _meterBars[i].style.height = math.max(1f, _buckets[i] / peak * 42f);
+                SetBarHeight(_meterBars[i], math.max(1f, _buckets[i] / peak * 42f));
         }
 
         private void ClearGraph()
         {
             for (int i = 0; i < _meterBars.Count; i++)
-                _meterBars[i].style.height = 1f;
+                SetBarHeight(_meterBars[i], 1f);
         }
+
+        /// <summary>
+        /// The bar's own height, written straight onto the rect.
+        ///
+        /// Not through the LayoutElement: the row deliberately does not control
+        /// its children's height, so the rect is the one place the number lives.
+        /// The width it leaves alone, because the row does own that.
+        /// </summary>
+        private static void SetBarHeight(RectTransform bar, float height) =>
+            bar.sizeDelta = new Vector2(bar.sizeDelta.x, height);
 
         private void RequestMeterReset()
         {
@@ -1131,40 +1117,38 @@ namespace TogetherWeFall.UI
         /// origin, because an item writes itself into every square it covers and
         /// drawing per cell would draw a two-by-three breastplate six times.
         /// </summary>
-        private VisualElement BuildGrid(
+        private void BuildGrid(
+            RectTransform parent,
             Entity container,
             ItemDatabase items,
             float cell,
             Action<Entity> onActivate,
             Func<Entity, string> badge)
         {
-            var root = new VisualElement();
-            root.style.position = Position.Relative;
+            RectTransform root = Ugui.Node(parent, "Grid");
 
             if (container == Entity.Null || !_entityManager.HasBuffer<InventoryCell>(container))
-                return root;
+                return;
 
             InventoryGridComponent grid =
                 _entityManager.GetComponentData<InventoryGridComponent>(container);
             DynamicBuffer<InventoryCell> cells = _entityManager.GetBuffer<InventoryCell>(container);
 
             float step = cell + CellGap;
-            root.style.width = grid.Width * step;
-            root.style.height = grid.Height * step;
+
+            // The grid is the one child of a column whose size is arithmetic
+            // rather than content, so it has to be told — a layout group asks
+            // every child how big it is and collapses the ones that do not know.
+            Ugui.Size(root, grid.Width * step, grid.Height * step);
 
             for (int y = 0; y < grid.Height; y++)
             {
                 for (int x = 0; x < grid.Width; x++)
                 {
-                    var square = new VisualElement();
-                    square.style.position = Position.Absolute;
-                    square.style.left = x * step;
-                    square.style.top = y * step;
-                    square.style.width = cell;
-                    square.style.height = cell;
-                    square.style.backgroundColor = new Color(0.12f, 0.13f, 0.16f);
-                    square.pickingMode = PickingMode.Ignore;
-                    root.Add(square);
+                    Image square = Ugui.Box(
+                        root, "Cell", new Color(0.12f, 0.13f, 0.16f), picks: false);
+
+                    Ugui.TopLeft(square.rectTransform, x * step, y * step, cell, cell);
                 }
             }
 
@@ -1193,14 +1177,14 @@ namespace TogetherWeFall.UI
                     continue;
                 }
 
-                root.Add(MakeTile(
-                    item, items, id, placement, width, height, cell, step, onActivate, badge));
+                MakeTile(
+                    root, item, items, id, placement, width, height, cell, step,
+                    onActivate, badge);
             }
-
-            return root;
         }
 
-        private VisualElement MakeTile(
+        private void MakeTile(
+            RectTransform parent,
             Entity item,
             ItemDatabase items,
             int itemId,
@@ -1212,25 +1196,21 @@ namespace TogetherWeFall.UI
             Action<Entity> onActivate,
             Func<Entity, string> badge)
         {
-            var tile = new VisualElement();
-            tile.style.position = Position.Absolute;
-            tile.style.left = placement.OriginX * step;
-            tile.style.top = placement.OriginY * step;
-            tile.style.width = width * cell + (width - 1) * CellGap;
-            tile.style.height = height * cell + (height - 1) * CellGap;
-            tile.style.justifyContent = Justify.Center;
-            tile.style.alignItems = Align.Center;
-
             ItemRarity rarity = RarityOf(items, itemId);
-            tile.style.backgroundColor = Tint(rarity);
-            SetBorder(tile, RarityColour(rarity));
 
-            var label = new Label { text = ShortName(NameOf(items, item)) };
-            label.style.fontSize = math.clamp(cell * 0.32f, 8f, 12f);
-            label.style.unityTextAlign = TextAnchor.MiddleCenter;
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.pickingMode = PickingMode.Ignore;
-            tile.Add(label);
+            Image tile = Ugui.Box(parent, "Item", Tint(rarity));
+
+            Ugui.TopLeft(
+                tile.rectTransform,
+                placement.OriginX * step,
+                placement.OriginY * step,
+                width * cell + (width - 1) * CellGap,
+                height * cell + (height - 1) * CellGap);
+
+            TextMeshProUGUI label = Ugui.Text(
+                tile.rectTransform, "Name", math.clamp(cell * 0.32f, 8f, 12f),
+                new Color(0.88f, 0.89f, 0.92f), wrap: true);
+            label.text = ShortName(NameOf(items, item));
 
             if (badge != null)
             {
@@ -1238,51 +1218,49 @@ namespace TogetherWeFall.UI
 
                 if (!string.IsNullOrEmpty(text))
                 {
-                    var price = new Label { text = text };
-                    price.style.fontSize = 10f;
-                    price.style.color = new Color(0.94f, 0.86f, 0.45f);
-                    price.pickingMode = PickingMode.Ignore;
-                    tile.Add(price);
+                    TextMeshProUGUI price = Ugui.Text(
+                        tile.rectTransform, "Price", 10f, new Color(0.94f, 0.86f, 0.45f),
+                        TextAlignmentOptions.Bottom);
+                    price.text = text;
                 }
             }
 
+            Ugui.Border(tile.rectTransform, RarityColour(rarity), 1f);
+
             int capturedId = itemId;
-            _tooltips.Attach(tile, () => DescribeItem(capturedId));
+            _tooltips.Attach(tile.rectTransform, () => DescribeItem(capturedId));
 
             if (onActivate == null)
-                return tile;
+                return;
 
             // A double-click to trade, a single one to select. Two meanings on
             // one tile rather than two panels, and the destructive one is the
             // one that needs saying twice.
             bool needsDouble = _session == NpcServiceType.Vendor;
 
-            tile.RegisterCallback<PointerDownEvent>(evt =>
+            Ugui.On(tile.rectTransform, EventTriggerType.PointerDown, data =>
             {
-                if (needsDouble && evt.clickCount < 2)
+                if (needsDouble && data.clickCount < 2)
                     return;
 
                 onActivate(item);
             });
-
-            return tile;
         }
 
         /// <summary>
         /// How big a cell may be so that the whole panel fits on this screen.
         ///
-        /// Computed from the resolved size of the root rather than from the
-        /// reference resolution: panel settings that match on width give a
-        /// logical height of 1200/aspect, which is 675 on 16:9 and 338 on 32:9,
-        /// and a layout built against 800 goes off the bottom of exactly the
-        /// monitors people own.
+        /// Computed from the canvas's own rect rather than from the reference
+        /// resolution: a scaler that matches on width gives a logical height of
+        /// 1200/aspect, which is 675 on 16:9 and 338 on 32:9, and a layout built
+        /// against 800 goes off the bottom of exactly the monitors people own.
         /// </summary>
         private float CellSizeFor(int columns, int rows)
         {
-            VisualElement root = _document.rootVisualElement;
+            Rect root = ((RectTransform)_canvas.transform).rect;
 
-            float width = root.resolvedStyle.width;
-            float height = root.resolvedStyle.height;
+            float width = root.width;
+            float height = root.height;
 
             if (width <= 1f || height <= 1f)
                 return MaxCellSize;
@@ -1452,74 +1430,70 @@ namespace TogetherWeFall.UI
         // Small builders
         // ─────────────────────────────────────────────────────────────────
 
-        private static VisualElement MakeColumn(string heading)
+        /// <summary>
+        /// One column of the body, as wide as the widest thing in it.
+        ///
+        /// The 420-pixel ceiling is gone: uGUI has no max-width, and the only
+        /// thing that used to hit it was a note, which now takes the column's
+        /// own width instead of setting it.
+        /// </summary>
+        private static RectTransform MakeColumn(RectTransform parent, string heading)
         {
-            var column = new VisualElement();
-            column.style.marginRight = 14f;
-            column.style.maxWidth = 420f;
-            column.Add(MakeHeading(heading));
+            RectTransform column = Ugui.Node(parent, heading);
+            Ugui.Column(column, spacing: 4f);
+            Ugui.Fit(column);
+
+            MakeHeading(column, heading);
             return column;
         }
 
-        private static Label MakeHeading(string text)
+        private static TextMeshProUGUI MakeHeading(RectTransform parent, string text)
         {
-            var label = new Label { text = text };
-            label.style.unityFontStyleAndWeight = FontStyle.Bold;
-            label.style.fontSize = 14f;
-            label.style.marginBottom = 4f;
-            label.style.color = new Color(0.86f, 0.88f, 0.92f);
+            TextMeshProUGUI label = Ugui.Text(
+                parent, "Heading", 14f, new Color(0.86f, 0.88f, 0.92f),
+                TextAlignmentOptions.TopLeft, bold: true);
+
+            label.text = text;
             return label;
         }
 
-        private static Label MakeNote(string text)
+        private static TextMeshProUGUI MakeNote(RectTransform parent, string text)
         {
-            var label = new Label { text = text };
-            label.style.marginTop = 6f;
-            label.style.fontSize = 11f;
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.style.maxWidth = 320f;
-            label.style.color = new Color(0.58f, 0.61f, 0.67f);
+            TextMeshProUGUI label = Ugui.Text(
+                parent, "Note", 11f, new Color(0.58f, 0.61f, 0.67f),
+                TextAlignmentOptions.TopLeft, wrap: true);
+
+            label.text = text;
+
+            // Wide enough to read, and the column is as wide as this unless
+            // something in it is wider — a grid usually is.
+            Ugui.Size(label.rectTransform, width: 320f);
             return label;
         }
 
-        private static Button MakeAction(string text, Action action)
+        private static void MakeAction(RectTransform parent, string text, Action action) =>
+            Ugui.Button(parent, "Action", text, action);
+
+        /// <summary>
+        /// A name on the left and a number on the right. The name takes the
+        /// slack, which is how uGUI spells space-between.
+        /// </summary>
+        private static void MakeStat(RectTransform parent, string label, string value)
         {
-            var button = new Button(action) { text = text };
-            button.style.marginTop = 4f;
-            button.style.marginLeft = 0f;
-            button.style.marginRight = 0f;
-            return button;
-        }
+            RectTransform row = Ugui.Node(parent, label);
+            Ugui.Size(row, height: 15f);
+            Ugui.Row(row);
 
-        private static VisualElement MakeStat(string label, string value)
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.justifyContent = Justify.SpaceBetween;
+            TextMeshProUGUI name = Ugui.Text(
+                row, "Name", 11f, new Color(0.62f, 0.65f, 0.70f),
+                TextAlignmentOptions.Left);
+            name.text = label;
+            Ugui.Size(name.rectTransform, grow: 1f);
 
-            var name = new Label { text = label };
-            name.style.fontSize = 11f;
-            name.style.color = new Color(0.62f, 0.65f, 0.70f);
-
-            var amount = new Label { text = value };
-            amount.style.fontSize = 11f;
-            amount.style.color = new Color(0.90f, 0.92f, 0.96f);
-
-            row.Add(name);
-            row.Add(amount);
-            return row;
-        }
-
-        private static void SetBorder(VisualElement element, Color colour)
-        {
-            element.style.borderLeftWidth = 1f;
-            element.style.borderRightWidth = 1f;
-            element.style.borderTopWidth = 1f;
-            element.style.borderBottomWidth = 1f;
-            element.style.borderLeftColor = colour;
-            element.style.borderRightColor = colour;
-            element.style.borderTopColor = colour;
-            element.style.borderBottomColor = colour;
+            TextMeshProUGUI amount = Ugui.Text(
+                row, "Value", 11f, new Color(0.90f, 0.92f, 0.96f),
+                TextAlignmentOptions.Right);
+            amount.text = value;
         }
 
         private static Color RarityColour(ItemRarity rarity)

@@ -111,7 +111,14 @@
 - Системи: `Code/Equipment/Systems/` — `EquipmentSystem`, `PlayerStatsSystem`,
   `SocketSystem`, `SetBonusEvaluationSystem`.
 - База персонажа: `Code/Equipment/Authoring/CharacterStatsAuthoring.cs` ←
-  `Data/CharacterConfig.asset`.
+  `Data/CharacterConfig.asset` (стати, розмір сумки) **і**
+  `Data/StarterKitConfig.asset` (стартовий набір, окреме поле `_starterKit`).
+- Стартовий набір: `Code/Config/StarterKitConfig.cs` (`StarterKitEntry`,
+  `StarterKitPlacement`) → буфер `StarterItem` (`Worn`-прапорець на запис) →
+  `Code/Skills/Systems/StarterKitSystem.cs` (`TryWear` бере перший вільний
+  дозволений слот через `EquipmentSlots.TryFirstFree`). Заповнюють асет
+  `BuildLibraryFactory.GrantTestKit` і `LobbyContentFactory.GrantStarterCoins`
+  через спільний `SceneBuildUtility.AppendKitEntry`.
 
 ## Сети екіпіровки
 - Дані: `Code/Config/ItemSetDefinition.cs` (`SetBonusThreshold`),
@@ -249,18 +256,66 @@
 
 ## UI-екрани
 - `Code/UI/InventoryUI.cs` — сітка, екіпіровка, отвори; читає ECS, пише запит.
+  Слоти екіпіровки — квадрати навколо портрета (`Doll` — таблиця «яка рейка,
+  який рядок»; `DollCorner` — арифметика по ній). Рейка 2 — рядок зброї
+  згори, рейки 0/1 — лівий і правий стовпці під ним. Стати — під портретом.
+- **Поки панель тримає ввід, персонаж не обертається.** `GameBootstrap`
+  будує `CreateUiCaptureProbe()` один раз і віддає його і
+  `PlayerActionPublisher` (глушить касти), і `PlayerMotor` (пропускає
+  `FaceAim`). Ходьба не глушиться.
+- Портрет персонажа: `Code/Player/CharacterPortrait.cs` — камера-дитина
+  гравця, рендерить у `RenderTexture` **лише шар `Character`** (шар додає
+  `SceneBuildUtility.EnsureLayer` при збірці сцени, гравцеві ставить
+  `CreatePlayer`). Вмикається лише поки панель відкрита; `SetAspect` не дає
+  розтягнути людину під форму рамки.
 - `Code/UI/LobbyUI.cs` — промпт NPC, крамниця, кузня, портал, метр урону.
 - `Code/UI/PlayerHud.cs` — колби й бар скілів.
 - Тултіп: `Code/UI/ItemTooltip.cs` (`ItemTooltip.Text` — текст про предмет) +
   `Code/UI/TooltipView.cs` (малювання). Обидві панелі беруть ту саму пару.
-- Тема й панель: `Assets/_Project/UI/RuntimePanelSettings.asset`, `RuntimeTheme.tss`.
-- Усе на UI Toolkit і збирається кодом — `.uxml`/`.uss` у проєкті немає.
+- **Усе на uGUI + TextMeshPro.** UI Toolkit у проєкті більше немає ніде:
+  кожен екран тримає `Canvas` у `[SerializeField]` замість `UIDocument`.
+  Збирається кодом — ні `.uxml`, ні префабів панелей.
+- Хелпер: `Code/UI/Ugui.cs` — **перша зупинка, коли треба щось намалювати**:
+  - `Node`/`Box`/`Text`/`Button`/`Border`/`Clear`/`Fade` — елементи;
+  - `Place` (чотири краї, як `position: absolute`), `TopLeft` (пікселі від
+    лівого-верхнього, y вниз — цим думає сітка), `Point`/`Contains`
+    (екранна точка → локальні пікселі; заміна `WorldToLocal`/`worldBound`);
+  - `Column`/`Row`/`Fit`/`Size` — flexbox через `LayoutGroup` +
+    `ContentSizeFitter` + `LayoutElement`;
+  - `On(rect, EventTriggerType, handler)` — заміна `RegisterCallback<T>`;
+  - генерація закруглених 9-slice спрайтів (`Rounded`).
+- Canvas на екран, не спільний: `SceneBuildUtility.CreateUiCanvas` —
+  масштаб 1200×800 по ширині, як було в `PanelSettings`. Порядок:
+  Vfx `-2`, HUD `-1`, лоббі `0`, інвентар `1`, завіса `10`.
+  `raycasts: false` не додає `GraphicRaycaster` — і це заміна
+  `pickingMode = Ignore` на всьому дереві одразу.
+- `EventSystem` + `InputSystemUIInputModule` створює
+  `SceneBuildUtility.EnsureEventSystem` — один на сцену, без нього панелі
+  малюються, але нічого не клікається.
+- **Драг інвентаря більше не на подіях.** `PointerDown` лише починає його
+  (`Ugui.On`), а далі `InventoryUI.StepDrag` щокадру читає
+  `PlayerInputReader.PointerPosition` / `WasCastPressed(1)` /
+  `WasCastReleased(0)`. Причина — у `docs/pitfalls.md`: у uGUI drag-події
+  починаються тільки після кількох пікселів руху.
+- Залишки від UI Toolkit, які нікуди не підключені:
+  `Assets/_Project/UI/RuntimePanelSettings.asset`, `RuntimeTheme.tss`.
 
 ## VFX і презентація
-- Шов: `Code/Vfx/Components/VfxComponents.cs` — `VfxEventKind`, `VfxEvent`.
+- Шов: `Code/Vfx/Components/VfxComponents.cs` — `VfxEventKind`, `VfxEvent`
+  (+ `VfxId` для авторованих сетів).
 - Презентер: `Code/Vfx/VfxPresenter.cs` (лише читає ECS) + пули
-  `Code/Vfx/VfxLinePool.cs`, `DamageNumberPool.cs`, `StatusIconPool.cs`,
-  `HitStopController.cs` (**єдине місце з `Time.timeScale`**).
+  `Code/Vfx/VfxLinePool.cs`, `VfxParticlePool.cs`, `DamageNumberPool.cs`,
+  `StatusIconPool.cs`, `HitStopController.cs`
+  (**єдине місце з `Time.timeScale`**).
+- **Авторовані ефекти на скіл**: `Code/Config/SkillVfxSet.cs` (cast /
+  projectile / hit + scale) ← ассети `Data/Vfx/*.asset`; `SkillDefinition._vfx`
+  → `SkillBlob.VfxId` → `ResolvedSkill.VfxId` →
+  `SkillProjectile.VfxId` / `PendingHit.VfxId` → `VfxEvent.VfxId`.
+  Каст оголошує `SkillCastSystem` (`CastVfxPoint`), удар — `SkillHitSystem.Apply`,
+  трейл тягне `VfxPresenter.DrawTrails` запитом `ProjectileActive` (події на це
+  немає й не буде — снаряд це прапорець у пулі).
+  Контент і список для презентера: `Code/Editor/SkillVfxContentFactory.cs`
+  (шлях до паку — одна константа `Pack`).
 - Системи: `Code/Vfx/Systems/` — `VfxEventRegistry`, `DamageNumber`, `StatusTint`.
 - Дані: `Data/VfxConfig.asset`.
 

@@ -1,7 +1,8 @@
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.UI;
+using TogetherWeFall.UI;
 
 namespace TogetherWeFall.Curtain
 {
@@ -18,23 +19,23 @@ namespace TogetherWeFall.Curtain
     /// request queue rather than setting the state — the same shape as the
     /// inventory panel appending an EquipRequest. Asking is not deciding.
     ///
-    /// A UI Toolkit element rather than a full-screen quad or a post effect:
-    /// the panel already exists, a coloured rectangle is what a curtain is, and
+    /// A canvas image rather than a full-screen quad or a post effect: the
+    /// canvas already exists, a coloured rectangle is what a curtain is, and
     /// this way it covers the UI as well as the world. A shader would cover
     /// only the world, which is the wrong half.
     /// </summary>
     [DefaultExecutionOrder(300)]
     public sealed class CurtainPresenter : MonoBehaviour
     {
-        [Tooltip("Panel the curtain is drawn into. Without it the fades still " +
+        [Tooltip("Canvas the curtain is drawn on. Without it the fades still " +
                  "happen in the simulation and simply cannot be seen.")]
-        [SerializeField] private UIDocument _document;
+        [SerializeField] private Canvas _canvas;
 
         private EntityManager _entityManager;
         private EntityQuery _curtainQuery;
         private bool _hasWorld;
 
-        private VisualElement _screen;
+        private Image _screen;
         private bool _visible;
 
         public void Initialize()
@@ -57,10 +58,10 @@ namespace TogetherWeFall.Curtain
                 ComponentType.ReadOnly<CurtainSingleton>(),
                 ComponentType.ReadOnly<CurtainState>());
 
-            if (_document == null)
+            if (_canvas == null)
             {
                 Debug.LogWarning(
-                    $"[{nameof(CurtainPresenter)}] No UIDocument assigned — fades will run " +
+                    $"[{nameof(CurtainPresenter)}] No Canvas assigned — fades will run " +
                     "unseen. Everything else is unaffected.", this);
             }
 
@@ -105,56 +106,48 @@ namespace TogetherWeFall.Curtain
             if (shouldShow != _visible)
             {
                 _visible = shouldShow;
-                _screen.style.display = shouldShow ? DisplayStyle.Flex : DisplayStyle.None;
 
-                // Only when it appears. Other panels are built lazily and would
-                // otherwise end up on top of a curtain that was already there.
-                if (shouldShow)
-                    _screen.BringToFront();
+                // The object rather than the component, so a hidden curtain
+                // costs the canvas nothing at all. There is no bring-to-front
+                // any more: the curtain owns its own canvas and that canvas
+                // sorts above every other one, which is a thing said once at
+                // build time instead of every time it appears.
+                _screen.gameObject.SetActive(shouldShow);
             }
 
             if (!shouldShow)
                 return;
 
             float4 colour = state.Colour;
-            _screen.style.backgroundColor =
-                new Color(colour.x, colour.y, colour.z, state.Opacity);
+            _screen.color = new Color(colour.x, colour.y, colour.z, state.Opacity);
         }
 
         /// <summary>
-        /// Builds the element on first use.
+        /// Builds the image on first use.
         ///
-        /// Lazily rather than in Initialize because a UIDocument fills its root
-        /// in OnEnable, and the bootstrap that calls Initialize deliberately
-        /// runs before every other component in the scene.
+        /// A canvas has its rect from the moment it exists, so this no longer
+        /// has to wait the way it did under UI Toolkit — but it still builds on
+        /// first paint rather than in Initialize, because that is one less order
+        /// to depend on and the bootstrap calls Initialize before every other
+        /// component in the scene.
+        ///
+        /// A curtain is something to look at, not something to click on. Nothing
+        /// here turns raycasts off, because the canvas it is built on has no
+        /// raycaster at all — see the scene builder. Whether input should be
+        /// suppressed while the screen is black is a decision for whoever asked
+        /// for the fade, not a side effect of it being drawn.
         /// </summary>
         private bool EnsureScreen()
         {
             if (_screen != null)
                 return true;
 
-            if (_document == null)
+            if (_canvas == null)
                 return false;
 
-            VisualElement root = _document.rootVisualElement;
-            if (root == null)
-                return false;
+            _screen = Ugui.Box(_canvas.transform, "Curtain", Color.clear);
+            _screen.gameObject.SetActive(false);
 
-            _screen = new VisualElement();
-            _screen.style.position = Position.Absolute;
-            _screen.style.left = 0f;
-            _screen.style.top = 0f;
-            _screen.style.right = 0f;
-            _screen.style.bottom = 0f;
-            _screen.style.display = DisplayStyle.None;
-
-            // A curtain is something to look at, not something to click on.
-            // Whether input should be suppressed while the screen is black is a
-            // decision for whoever asked for the fade, not a side effect of it
-            // being drawn.
-            _screen.pickingMode = PickingMode.Ignore;
-
-            root.Add(_screen);
             return true;
         }
 

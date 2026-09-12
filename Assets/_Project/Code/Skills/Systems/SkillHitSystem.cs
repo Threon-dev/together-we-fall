@@ -213,6 +213,27 @@ namespace TogetherWeFall.Skills.Systems
                 dealt = amount;
             }
 
+            // The impact effect, once per blow and only for a skill that names
+            // one. Announced whether or not the target survived — and whether or
+            // not it was still there: a bolt striking the spot where something
+            // just died should still land visibly, because from where the player
+            // is sitting it did.
+            //
+            // Inside Apply rather than at the projectile's impact, because this
+            // is the stage every blow passes through: a fork, a chain jump and a
+            // zone pulse all arrive here and all get the same treatment for
+            // free.
+            if (hit.VfxId != 0)
+            {
+                vfx.Add(new VfxEvent
+                {
+                    Kind = VfxEventKind.SkillHit,
+                    Position = hit.Origin,
+                    Color = DamageTypePalette.For(hit.Type),
+                    VfxId = hit.VfxId
+                });
+            }
+
             if (hit.ChainsRemaining <= 0)
                 return dealt;
 

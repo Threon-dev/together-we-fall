@@ -1,0 +1,70 @@
+using UnityEngine;
+
+namespace TogetherWeFall.Config
+{
+    /// <summary>
+    /// What one skill looks like: the flash where it is cast, the thing that
+    /// flies, and what happens where it lands.
+    ///
+    /// Three prefabs rather than three fields on SkillDefinition, and one asset
+    /// per skill rather than a table somewhere central: a visual set is the
+    /// thing a designer swaps twenty times while looking for the right fireball,
+    /// and swapping it should not mean editing the skill's damage in the same
+    /// inspector. Any of the three may be empty — a melee swing has no
+    /// projectile, and a skill with no set at all draws exactly what it drew
+    /// before this existed.
+    ///
+    /// The prefabs are ordinary GameObjects with particle systems on them,
+    /// because that is what the packs ship. They never reach a system: the
+    /// simulation carries the id of the set and a presenter does the looking up,
+    /// which is the same seam every other effect in this game crosses.
+    /// </summary>
+    [CreateAssetMenu(
+        fileName = "SkillVfxSet",
+        menuName = "Together We Fall/Skill VFX Set")]
+    public sealed class SkillVfxSet : ScriptableObject
+    {
+        [Tooltip("Played once where the skill goes off — a muzzle flash, a nova, " +
+                 "the swing itself. For an area skill this is the effect: the " +
+                 "blast has no projectile and needs nothing else.")]
+        [SerializeField] private GameObject _cast;
+
+        [Tooltip("Follows the projectile for as long as it flies. This is where " +
+                 "a trail belongs: it is one instance moving, not an effect " +
+                 "replayed per frame. Empty for anything that does not fly.")]
+        [SerializeField] private GameObject _projectile;
+
+        [Tooltip("Played at the point of impact, once per blow — so a fork hits " +
+                 "twice and a chain plays once per jump.")]
+        [SerializeField] private GameObject _hit;
+
+        [Tooltip("Scale for all three, for a pack authored at a different size " +
+                 "than this game's metre. One is the prefab as it is.")]
+        [SerializeField, Range(0.1f, 8f)] private float _scale = 1f;
+
+        [Tooltip("Raises the cast and hit effects off the point the simulation " +
+                 "named. Zero is exactly there, which is right for a projectile " +
+                 "impact: it happens at the height the bolt was flying. Bodies " +
+                 "stand on the floor, though, so an effect that should land on " +
+                 "a chest — a nova's hit, a chain's jump — wants about 0.9. " +
+                 "It is also the knob for a prefab whose pivot is not where its " +
+                 "effect is, which is most of what differs between packs.")]
+        [SerializeField, Range(-1f, 3f)] private float _lift;
+
+        public GameObject Cast => _cast;
+        public GameObject Projectile => _projectile;
+        public GameObject Hit => _hit;
+        public float Scale => Mathf.Max(0.01f, _scale);
+        public float Lift => _lift;
+
+        /// <summary>
+        /// The id the simulation refers to this set by.
+        ///
+        /// FNV over the asset name, the same hash items and skills use and for
+        /// the same reason: the skill database and the presenter's list are
+        /// filled by two different things that share no ordering, so an index
+        /// would rot the first time somebody reordered either one.
+        /// </summary>
+        public int VfxId => ItemDefinition.ComputeId(name);
+    }
+}

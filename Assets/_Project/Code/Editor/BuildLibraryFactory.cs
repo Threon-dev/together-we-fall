@@ -1047,7 +1047,7 @@ namespace TogetherWeFall.EditorTools
             LootTable table = ItemContentFactory.CreateOrLoadTreasureTable();
             CreateGems(table);
 
-            var config = SceneBuildUtility.CreateOrLoadConfig<CharacterConfig>("CharacterConfig");
+            var kit = SceneBuildUtility.CreateOrLoadConfig<StarterKitConfig>("StarterKitConfig");
 
             // The staff first, because it is the thing everything else goes
             // into, and then every support gem in the game.
@@ -1112,8 +1112,8 @@ namespace TogetherWeFall.EditorTools
                 "GemReactiveCascade", "GemEchoNova"
             };
 
-            var serialized = new SerializedObject(config);
-            SerializedProperty items = serialized.FindProperty("_starterItems");
+            var serialized = new SerializedObject(kit);
+            SerializedProperty entries = serialized.FindProperty("_entries");
             int added = 0;
 
             for (int i = 0; i < wanted.Length; i++)
@@ -1121,11 +1121,13 @@ namespace TogetherWeFall.EditorTools
                 var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(
                     $"{ItemFolder}/{wanted[i]}.asset");
 
-                if (item == null || Contains(items, item))
+                if (item == null || Contains(entries, item))
                     continue;
 
-                items.arraySize++;
-                items.GetArrayElementAtIndex(items.arraySize - 1).objectReferenceValue = item;
+                // In the bag, one copy each: which of these ends up worn or
+                // socketed is the question the kit exists to let somebody
+                // answer by hand, so it hands out the parts and no build.
+                SceneBuildUtility.AppendKitEntry(entries, item, worn: false, count: 1);
                 added++;
             }
 
@@ -1133,16 +1135,25 @@ namespace TogetherWeFall.EditorTools
             AssetDatabase.SaveAssets();
 
             Debug.Log(
-                $"[BuildLibraryFactory] Test kit: {added} item(s) added to the starter kit. " +
-                "Rebuild the scene so the skill database contains the library.");
+                $"[BuildLibraryFactory] Test kit: {added} item(s) added to {kit.name}. " +
+                "Edit that asset to change what a character starts with; rebuild the scene so " +
+                "the skill database contains the library.");
         }
 
-        private static bool Contains(SerializedProperty array, Object value)
+        /// <summary>
+        /// Whether a kit already lists this item, whatever it asks be done with
+        /// it. Each element is an entry with an item inside rather than the item
+        /// itself, so the reference is one level down.
+        /// </summary>
+        private static bool Contains(SerializedProperty entries, Object value)
         {
-            for (int i = 0; i < array.arraySize; i++)
+            for (int i = 0; i < entries.arraySize; i++)
             {
-                if (array.GetArrayElementAtIndex(i).objectReferenceValue == value)
+                if (entries.GetArrayElementAtIndex(i)
+                        .FindPropertyRelative("_item").objectReferenceValue == value)
+                {
                     return true;
+                }
             }
 
             return false;

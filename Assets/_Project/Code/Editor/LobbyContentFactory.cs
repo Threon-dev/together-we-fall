@@ -67,30 +67,31 @@ namespace TogetherWeFall.EditorTools
         ///
         /// Additive and idempotent: a kit that already mentions the coin is left
         /// alone, so rebuilding the scene twice does not make anybody rich. It
-        /// writes to the shared CharacterConfig, which means a character in the
-        /// arena starts with coins too — harmless, since a coin is an item like
-        /// any other and there is nobody there to spend it on.
+        /// writes to the shared starter kit, which means a character in the
+        /// arena starts with coins too — harmless, since money is a number and
+        /// there is nobody there to spend it on.
+        ///
+        /// One line with a count rather than ten lines, which is what this was:
+        /// the amount is now a field somebody can type over.
         /// </summary>
-        public static void GrantStarterCoins(CharacterConfig config, ItemDefinition coin)
+        public static void GrantStarterCoins(StarterKitConfig kit, ItemDefinition coin)
         {
-            if (config == null || coin == null)
+            if (kit == null || coin == null)
                 return;
 
-            var serialized = new SerializedObject(config);
-            SerializedProperty kit = serialized.FindProperty("_starterItems");
+            var serialized = new SerializedObject(kit);
+            SerializedProperty entries = serialized.FindProperty("_entries");
 
-            for (int i = 0; i < kit.arraySize; i++)
+            for (int i = 0; i < entries.arraySize; i++)
             {
-                if (kit.GetArrayElementAtIndex(i).objectReferenceValue == coin)
+                if (entries.GetArrayElementAtIndex(i)
+                        .FindPropertyRelative("_item").objectReferenceValue == coin)
+                {
                     return;
+                }
             }
 
-            int start = kit.arraySize;
-            kit.arraySize = start + StarterCoinCount;
-
-            for (int i = 0; i < StarterCoinCount; i++)
-                kit.GetArrayElementAtIndex(start + i).objectReferenceValue = coin;
-
+            SceneBuildUtility.AppendKitEntry(entries, coin, worn: false, count: StarterCoinCount);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

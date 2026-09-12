@@ -551,6 +551,37 @@ namespace TogetherWeFall.Skills.Systems
         }
 
         /// <summary>
+        /// Where a cast visually starts.
+        ///
+        /// The muzzle for something that flies, the ground for something that
+        /// is left behind, and the aimed point for a blast — which is the one
+        /// case where the effect is nowhere near the hand that cast it. Each
+        /// branch below computes this for its own purposes anyway; this is the
+        /// same arithmetic in one place, so the flash cannot end up somewhere
+        /// the skill did not.
+        /// </summary>
+        private static float3 CastVfxPoint(
+            in ResolvedSkill skill, in CastContext context, float3 direction)
+        {
+            switch (skill.Effect)
+            {
+                case SkillEffectKind.Projectile:
+                    return context.Origin + direction * MuzzleOffset;
+
+                case SkillEffectKind.AreaBurst:
+                    return ClampToRange(context.Origin, context.AimPoint, skill.Range);
+
+                case SkillEffectKind.PersistentZone:
+                    return OnGround(
+                        ClampToRange(context.Origin, context.AimPoint, skill.Range),
+                        context.AimPoint);
+
+                default:
+                    return context.Origin;
+            }
+        }
+
+        /// <summary>
         /// Produces one instance of the skill. Returns whether anything actually
         /// came of it, which is what decides if the cooldown is charged.
         /// </summary>
@@ -565,6 +596,34 @@ namespace TogetherWeFall.Skills.Systems
             NativeList<ZoneSpawn> zones,
             NativeList<VfxEvent> effects)
         {
+            // Announced before anything is produced, once per cast, at the
+            // point the effect visually starts. Before, because every branch
+            // below may refuse — and a cast that produced nothing still went
+            // off as far as the player's hand is concerned: the flash is the
+            // feedback that the key was heard.
+            //
+            // Skipped entirely by a skill with no visual set, which is every
+            // skill until somebody authors one.
+            if (skill.VfxId != 0)
+            {
+                float3 point = CastVfxPoint(skill, context, direction);
+
+                effects.Add(new VfxEvent
+                {
+                    Kind = VfxEventKind.SkillCast,
+                    Position = point,
+
+                    // The far end carries the facing, which is the one thing a
+                    // muzzle flash and a directional slash both need. Reusing
+                    // the chain link's field rather than adding a rotation to
+                    // every event in the queue for the sake of two kinds.
+                    EndPosition = point + direction,
+                    Color = DamageTypePalette.For(skill.Type),
+                    Magnitude = skill.Radius,
+                    VfxId = skill.VfxId
+                });
+            }
+
             switch (skill.Effect)
             {
                 case SkillEffectKind.Projectile:
@@ -605,7 +664,12 @@ namespace TogetherWeFall.Skills.Systems
                             // And the status it marks whatever it hits with, if
                             // the skill names one. A fork inherits it for free,
                             // because a fork copies this struct.
-                            AppliedStatus = skill.AppliedStatus
+                            AppliedStatus = skill.AppliedStatus,
+
+                            // The look it flies with, and the look of the blow it
+                            // becomes. Inherited by a fork like everything else
+                            // in this struct.
+                            VfxId = skill.VfxId
                         }
                     });
                     return true;
@@ -785,6 +849,7 @@ namespace TogetherWeFall.Skills.Systems
                 Damage = skill.Damage,
                 Type = skill.Type,
                 SourcePlayerId = context.PlayerId,
+                VfxId = skill.VfxId,
                 ChainsRemaining = skill.Chains,
                 ChainRange = skill.ChainRange,
                 ChainDelay = skill.ChainDelay,
@@ -842,6 +907,10 @@ namespace TogetherWeFall.Skills.Systems
             Damage = skill.Damage,
             Type = skill.Type,
             SourcePlayerId = context.PlayerId,
+
+            // For the blows this blast produces. Its own effect went out with
+            // the cast announcement, once, where it went off.
+            VfxId = skill.VfxId,
             Delay = 0f,
 
             // Handed to one body inside the blast rather than to all of them.

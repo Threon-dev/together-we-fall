@@ -26,10 +26,18 @@ Unity **6000.3.18f1**, URP 17.3. Точні версії пакетів:
 | `com.unity.entities.graphics` | 1.4.21 |
 | `com.unity.ai.navigation` | 2.0.14 |
 | `com.unity.inputsystem` | 1.20.0 |
+| `com.unity.ugui` | 2.0.0 (разом з TextMeshPro) |
 | `com.unity.addressables` | 2.9.1 (встановлений, ще не використовується) |
 
 `activeInputHandler` — **New**. Legacy `UnityEngine.Input` кине виняток
 у рантаймі, а не впаде на компіляції.
+
+**UI — звичайний uGUI + TextMeshPro, і збирається з коду.** UI Toolkit
+у проєкті немає: ні `UIDocument`, ні `PanelSettings`, ні `.uxml`. Префабів
+панелей теж немає — екран будує свій `MonoBehaviour` через хелпер
+`Code/UI/Ugui.cs`. Перед тим, як малювати щось нове, дивитись туди.
+TextMeshPro вимагає одноразового `Window → TextMeshPro → Import TMP
+Essential Resources` — без нього жоден лейбл не видно (`docs/scenes.md`).
 
 `Assets/Photon/Fusion` лишився з попереднього прототипу. Не використовується,
 але й не видалений — не чіпати без запиту.

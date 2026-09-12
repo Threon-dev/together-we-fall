@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using TMPro;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Lobby;
@@ -106,6 +108,19 @@ namespace TogetherWeFall.UI
         /// <summary>Ten slots, two to a line.</summary>
         private const int SlotRows = (EquipmentSlots.Count + 1) / 2;
 
+        /// <summary>
+        /// How many squares are stacked down each side of the character.
+        ///
+        /// Four and four, with the two weapons in a row underneath, which is
+        /// exactly the ten slots a character has. The fifth row is why the
+        /// sidebar's height budget did not have to change: it was already
+        /// measured for five rows of slots when they were a two-column list.
+        /// </summary>
+        private const int DollRails = 4;
+
+        /// <summary>Space between the squares, and between them and the portrait.</summary>
+        private const float DollGap = 4f;
+
         /// <summary>Side of one socket cell, and the gap between linked ones.</summary>
         private const float SocketCellSize = 20f;
 
@@ -118,18 +133,32 @@ namespace TogetherWeFall.UI
         private const int BarSlotCount = 4;
 
         /// <summary>
+        /// Height of one line in the character column.
+        ///
+        /// A number rather than "whatever the text needs", because the two-per
+        /// -line flow has to know where the next line starts before the text has
+        /// been measured.
+        /// </summary>
+        private const float StatRowHeight = 17f;
+
+        /// <summary>
         /// How much of the screen the panel may take. Not all of it: a panel
         /// flush against the edges reads as a broken full-screen mode rather
         /// than as a window.
         /// </summary>
         private const float ScreenFraction = 0.9f;
 
-        [SerializeField] private UIDocument _document;
+        [SerializeField] private Canvas _canvas;
 
         [Tooltip("Width of the character column beside the bag. The bag takes " +
                  "whatever is left, so this is the one number that decides how " +
                  "the two share a landscape screen.")]
         [SerializeField, Range(180, 420)] private int _sidebarWidth = 280;
+
+        [Tooltip("Optional. The camera that draws the character between the " +
+                 "equipment squares. Without it the frame is simply empty and " +
+                 "everything else works.")]
+        [SerializeField] private CharacterPortrait _portrait;
 
         private PlayerInputReader _input;
         private EntityManager _entityManager;
@@ -149,21 +178,50 @@ namespace TogetherWeFall.UI
         private float _slotBoxHeight = MaxSlotBoxHeight;
         private Vector2 _lastRootSize;
 
-        private VisualElement _screen;
-        private VisualElement _panel;
-        private VisualElement _sidebar;
-        private VisualElement _bagColumn;
-        private VisualElement _socketList;
-        private VisualElement _barList;
-        private VisualElement _statsList;
-        private VisualElement _slotList;
-        private VisualElement _gridRoot;
-        private VisualElement _cellLayer;
-        private VisualElement _itemLayer;
-        private VisualElement _highlight;
-        private VisualElement _ghost;
-        private Label _ghostLabel;
-        private Label _message;
+        private RectTransform _screen;
+        private RectTransform _panel;
+        private RectTransform _sidebar;
+        private RectTransform _bagColumn;
+        private RectTransform _dollRoot;
+        private RectTransform _socketList;
+        private RectTransform _barList;
+        private RectTransform _statsList;
+        private RectTransform _slotList;
+        private RectTransform _gridRoot;
+        private RectTransform _cellLayer;
+        private RectTransform _itemLayer;
+        private Image _highlight;
+        private Image _ghost;
+        private TextMeshProUGUI _ghostLabel;
+        private TextMeshProUGUI _message;
+
+        /// <summary>
+        /// The ghost's frame, which is a child rather than a style in uGUI — so
+        /// re-colouring it for a different item means replacing it.
+        /// </summary>
+        private Image _ghostBorder;
+
+        /// <summary>
+        /// Where the next stat row goes, while the stats are being filled.
+        ///
+        /// uGUI has no flex-wrap, so the two-per-line the sidebar wants is a
+        /// cursor rather than a style. Fields rather than locals because the rows
+        /// are added by four different methods — the purse, the keystone, the
+        /// sets and the stats themselves — and they all share one flow.
+        /// </summary>
+        private float _statsY;
+        private bool _statsRight;
+
+        /// <summary>
+        /// The frame the character is drawn in, and the image inside it.
+        ///
+        /// Built once and only ever moved, unlike the squares around them: the
+        /// portrait is a texture that does not change when a ring does, and
+        /// throwing a RawImage away on every refresh would mean rebinding the
+        /// render target sixty times a bag.
+        /// </summary>
+        private RectTransform _portraitFrame;
+        private RawImage _portraitImage;
 
         /// <summary>What says what a thing is while the pointer is over it.</summary>
         private TooltipView _tooltips;
@@ -237,16 +295,41 @@ namespace TogetherWeFall.UI
             if (_input.WasInventoryTogglePressed())
                 Toggle();
 
+            if (!_visible)
+                return;
+
+            WatchScreenSize();
+
+            // Driven from here rather than from pointer events on the dragged
+            // element, which is what UI Toolkit's pointer capture was for. uGUI
+            // has its own drag protocol, but it only starts firing after the
+            // cursor has travelled a few pixels — so a slow, short drag would
+            // silently do nothing. A position read every frame has no threshold.
+            if (_drag.Active)
+                StepDrag();
+
             // Never while a drag is in flight: a rebuild destroys the element
-            // the pointer is holding, and the capture goes with it.
-            if (_visible && !_drag.Active)
+            // the pointer is holding.
+            if (!_drag.Active)
                 RefreshIfChanged();
         }
 
         private void Toggle()
         {
             _visible = !_visible;
-            _screen.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
+            _screen.gameObject.SetActive(_visible);
+
+            // The portrait camera costs a render pass, so it runs only while
+            // somebody is looking at it — and the render target is made on the
+            // first look rather than on the first frame of the scene, which is
+            // why the texture is hung here instead of when the frame was built.
+            if (_portrait != null)
+            {
+                _portrait.SetShown(_visible);
+
+                if (_visible && _portraitImage != null)
+                    _portraitImage.texture = _portrait.Texture;
+            }
 
             if (!_visible)
                 CancelDrag();
@@ -263,172 +346,162 @@ namespace TogetherWeFall.UI
         /// <summary>
         /// Builds the panel the first time it is needed.
         ///
-        /// Lazily rather than in Initialize because UIDocument populates its root
-        /// in OnEnable, and the bootstrap that calls Initialize deliberately runs
-        /// before every other component in the scene.
+        /// Lazily rather than in Initialize because the bootstrap that calls
+        /// Initialize deliberately runs before every other component in the
+        /// scene.
         /// </summary>
         private bool EnsureTree()
         {
             if (_panel != null)
                 return true;
 
-            if (_document == null)
+            if (_canvas == null)
                 return false;
 
-            VisualElement root = _document.rootVisualElement;
-            if (root == null)
-                return false;
+            // A full-screen wrapper that draws nothing, so it cannot be what the
+            // pointer finds. Only the panel inside it picks.
+            _screen = Ugui.Node((RectTransform)_canvas.transform, "Inventory");
 
-            // A full-screen wrapper that centres the panel with flexbox rather
-            // than with a percentage translate. Flexbox centring is the same in
-            // every Unity version; percentage transforms are not.
-            _screen = new VisualElement();
-            _screen.style.position = Position.Absolute;
-            _screen.style.left = 0f;
-            _screen.style.top = 0f;
-            _screen.style.right = 0f;
-            _screen.style.bottom = 0f;
-            _screen.style.justifyContent = Justify.Center;
-            _screen.style.alignItems = Align.Center;
-            _screen.style.display = DisplayStyle.None;
+            _panel = Ugui.Box(
+                _screen, "Panel", new Color(0.06f, 0.07f, 0.09f, 0.95f)).rectTransform;
 
-            // The wrapper covers the screen, so it must not be what the pointer
-            // finds. Only the panel inside it picks.
-            _screen.pickingMode = PickingMode.Ignore;
-
-            _panel = new VisualElement();
-            _panel.style.flexDirection = FlexDirection.Row;
-            _panel.style.paddingLeft = 12f;
-            _panel.style.paddingRight = 12f;
-            _panel.style.paddingTop = 10f;
-            _panel.style.paddingBottom = 12f;
-            _panel.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 0.95f);
+            // Centred by its anchors and as big as its contents. That is what
+            // the flexbox centring it replaces was for; uGUI has no
+            // justify-content, but the middle of the parent is one anchor.
+            Ugui.Place(_panel);
+            Ugui.Row(_panel, spacing: ColumnGap, padding: new RectOffset(12, 12, 10, 12));
+            Ugui.Fit(_panel);
 
             // Two columns, because the screen is wider than it is tall. Stacked
             // vertically the panel is the sum of its parts; side by side it is
             // the taller of them, and that is the difference between fitting on
             // a 16:9 screen and not.
-            _sidebar = new VisualElement();
-            _sidebar.style.width = _sidebarWidth;
-            _sidebar.style.flexShrink = 0f;
-            _sidebar.style.marginRight = ColumnGap;
-            _panel.Add(_sidebar);
+            _sidebar = Ugui.Node(_panel, "Sidebar");
+            Ugui.Column(_sidebar, spacing: 4f);
+            Ugui.Fit(_sidebar, horizontal: false);
+            Ugui.Size(_sidebar, width: _sidebarWidth);
 
-            _bagColumn = new VisualElement();
-            _panel.Add(_bagColumn);
+            _bagColumn = Ugui.Node(_panel, "Bag");
+            Ugui.Column(_bagColumn, spacing: 4f);
+            Ugui.Fit(_bagColumn);
 
-            _sidebar.Add(MakeHeading("Character"));
+            MakeHeading(_sidebar, "Character");
+
+            _dollRoot = MakeSection(_sidebar);
+            BuildPortraitFrame();
+
+            // Over the frame, so a square on the rail is never hidden by it, and
+            // a separate node so that clearing the squares cannot take the
+            // portrait with them.
+            _slotList = Ugui.Node(_dollRoot, "Slots");
+
+            // Under the character, not above them: the sheet is what the gear
+            // around the portrait adds up to, and a column of numbers between
+            // the title and the doll would separate the two things that explain
+            // each other. No heading of its own — a row saying "Strength 12"
+            // does not need to be told it is a stat.
             _statsList = MakeSection(_sidebar);
-
-            // Two stats per line. Eight of them in a single column is the
-            // tallest thing in the panel, and height is the scarce direction.
-            _statsList.style.flexDirection = FlexDirection.Row;
-            _statsList.style.flexWrap = Wrap.Wrap;
-
-            _sidebar.Add(MakeHeading("Equipped"));
-            _slotList = MakeSection(_sidebar);
 
             // The hotkeys go in the sidebar and the sockets under the bag, so
             // the two new sections land in different columns. Stacking both on
             // one would put the panel back over the edge of a short screen,
             // which is the failure this layout already had to stop having once.
-            _sidebar.Add(MakeHeading("Skill bar"));
+            MakeHeading(_sidebar, "Skill bar");
             _barList = MakeSection(_sidebar);
-            _barList.style.flexDirection = FlexDirection.Row;
+            Ugui.Row(_barList, spacing: 3f);
+            Ugui.Size(_barList, height: BarBoxHeight);
 
-            _bagColumn.Add(MakeHeading("Bag"));
+            MakeHeading(_bagColumn, "Bag");
 
-            _gridRoot = new VisualElement();
-            _gridRoot.style.position = Position.Relative;
-            _bagColumn.Add(_gridRoot);
-
-            _cellLayer = new VisualElement();
-            _cellLayer.style.position = Position.Absolute;
-            _cellLayer.style.left = 0f;
-            _cellLayer.style.top = 0f;
+            _gridRoot = Ugui.Node(_bagColumn, "Grid");
 
             // The background must not swallow pointer events: the item layer
             // above it is what a drag talks to.
-            _cellLayer.pickingMode = PickingMode.Ignore;
-            _gridRoot.Add(_cellLayer);
+            _cellLayer = Ugui.Node(_gridRoot, "Cells");
 
-            _highlight = new VisualElement();
-            _highlight.style.position = Position.Absolute;
-            _highlight.style.display = DisplayStyle.None;
-            _highlight.pickingMode = PickingMode.Ignore;
-            _cellLayer.Add(_highlight);
+            // Between the two layers, deliberately: over the empty squares so it
+            // can be seen, under the items so one never hides the square it is
+            // about to land on. Being a sibling of the cell layer rather than a
+            // child of it is also what keeps a grid rebuild from destroying it.
+            _highlight = Ugui.Box(_gridRoot, "Highlight", Color.clear, picks: false);
+            _highlight.gameObject.SetActive(false);
 
-            _itemLayer = new VisualElement();
-            _itemLayer.style.position = Position.Absolute;
-            _itemLayer.style.left = 0f;
-            _itemLayer.style.top = 0f;
-            _gridRoot.Add(_itemLayer);
+            _itemLayer = Ugui.Node(_gridRoot, "Items");
+
+            MakeHeading(_bagColumn, "Sockets");
+            _socketList = MakeSection(_bagColumn);
+            Ugui.Column(_socketList, spacing: 4f);
+            Ugui.Fit(_socketList, horizontal: false);
+
+            _message = Ugui.Text(
+                _bagColumn, "Message", 12f, new Color(0.72f, 0.55f, 0.45f),
+                TextAlignmentOptions.TopLeft, wrap: true);
 
             // What follows the cursor during a drag.
             //
             // A separate element rather than moving the item itself, because a
             // drag can start in either column: an equipment slot lives inside
-            // the sidebar and moving it would clip against that column's bounds,
-            // while reparenting it mid-drag would take the pointer capture with
-            // it. One ghost serves both, and the thing being dragged just dims
-            // in place.
-            _ghost = new VisualElement();
-            _ghost.style.position = Position.Absolute;
-            _ghost.style.display = DisplayStyle.None;
-            _ghost.style.justifyContent = Justify.Center;
-            _ghost.style.alignItems = Align.Center;
-            _ghost.style.borderTopWidth = 1f;
-            _ghost.style.borderBottomWidth = 1f;
-            _ghost.style.borderLeftWidth = 1f;
-            _ghost.style.borderRightWidth = 1f;
-            _ghost.style.opacity = 0.85f;
-            _ghost.pickingMode = PickingMode.Ignore;
+            // the sidebar and moving it would be clipped by that column's own
+            // layout. One ghost serves both, and the thing being dragged just
+            // dims in place.
+            //
+            // On the wrapper rather than inside the panel, and last, so it draws
+            // over both columns and no layout group can take hold of it.
+            _ghost = Ugui.Box(_screen, "Ghost", Color.clear, picks: false);
+            _ghost.gameObject.SetActive(false);
 
-            _ghostLabel = new Label(string.Empty);
-            _ghostLabel.style.fontSize = 11;
-            _ghostLabel.style.whiteSpace = WhiteSpace.Normal;
-            _ghostLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-            _ghostLabel.pickingMode = PickingMode.Ignore;
-            _ghost.Add(_ghostLabel);
+            _ghostLabel = Ugui.Text(
+                _ghost.rectTransform, "Name", 11f, Color.white, wrap: true);
 
-            _panel.Add(_ghost);
+            // Made once and re-coloured per item. A frame is a child in uGUI, and
+            // replacing it every time something is picked up would leave the old
+            // one drawing for the rest of the frame.
+            _ghostBorder = Ugui.Border(_ghost.rectTransform, Color.white, 1f);
 
-            _bagColumn.Add(MakeHeading("Sockets"));
-            _socketList = MakeSection(_bagColumn);
-
-            _message = new Label(string.Empty);
-            _message.style.color = new Color(0.72f, 0.55f, 0.45f);
-            _message.style.fontSize = 12;
-            _message.style.marginTop = 6f;
-            _message.style.whiteSpace = WhiteSpace.Normal;
-            _bagColumn.Add(_message);
-
-            _screen.Add(_panel);
+            Ugui.Fade(_ghost.rectTransform, 0.85f);
 
             // After the panel, so it draws over it. A tooltip behind the thing
             // it describes is the one placement that helps nobody.
             _tooltips = new TooltipView(_screen, RarityColour);
 
-            root.Add(_screen);
-
-            // The panel is sized from the screen, so it has to be told when the
-            // screen changes. A resolution change mid-session is rare; a first
-            // layout that arrives after this method is not.
-            root.RegisterCallback<GeometryChangedEvent>(OnRootResized);
-
+            _screen.gameObject.SetActive(false);
             return true;
         }
 
         /// <summary>
-        /// Forces a re-layout when the window changes size.
+        /// The window the character is drawn in.
         ///
-        /// Guarded on the size actually differing, so that geometry events
-        /// caused by the panel's own contents cannot start a rebuild that
-        /// causes another one.
+        /// The frame exists whether or not anything fills it: a panel with a
+        /// hole where the character should be reads as broken, and a dark
+        /// bordered box reads as a portrait nobody has taken yet.
         /// </summary>
-        private void OnRootResized(GeometryChangedEvent evt)
+        private void BuildPortraitFrame()
         {
-            var size = new Vector2(evt.newRect.width, evt.newRect.height);
+            _portraitFrame = Ugui.Box(
+                _dollRoot, "Portrait", new Color(0.09f, 0.10f, 0.13f, 1f),
+                picks: false).rectTransform;
+
+            if (_portrait != null)
+            {
+                RectTransform image = Ugui.Node(_portraitFrame, "Character");
+                _portraitImage = image.gameObject.AddComponent<RawImage>();
+                _portraitImage.raycastTarget = false;
+            }
+
+            Ugui.Border(_portraitFrame, new Color(0.20f, 0.22f, 0.27f), 1f);
+        }
+
+        /// <summary>
+        /// Redraws the panel when the window changes size.
+        ///
+        /// Polled once a frame while the panel is open rather than waiting for a
+        /// layout event: the canvas rect is one field, the comparison is two
+        /// floats, and a geometry callback that fires for the panel's own
+        /// contents was a rebuild that caused another one.
+        /// </summary>
+        private void WatchScreenSize()
+        {
+            Vector2 size = ((RectTransform)_canvas.transform).rect.size;
 
             if (size == _lastRootSize)
                 return;
@@ -454,7 +527,7 @@ namespace TogetherWeFall.UI
         /// squares that say where it may land.
         /// </summary>
         private void AttachTooltip(
-            VisualElement element, System.Func<ItemTooltip.Text> describe)
+            RectTransform element, System.Func<ItemTooltip.Text> describe)
             => _tooltips.Attach(element, () => _drag.Active ? default : describe());
 
         /// <summary>
@@ -616,36 +689,29 @@ namespace TogetherWeFall.UI
             _builtHeight = grid.Height;
             _builtCellSize = _cellSize;
 
-            _cellLayer.Clear();
-            _cellLayer.Add(_highlight);
-
             float width = grid.Width * _cellSize;
             float height = grid.Height * _cellSize;
 
-            // No width is set on the panel at all any more. It is a row of two
-            // columns and flexbox already knows how wide that is; a number here
-            // could only ever disagree with the grid it is supposed to contain.
-            _gridRoot.style.width = width;
-            _gridRoot.style.height = height;
-            _cellLayer.style.width = width;
-            _cellLayer.style.height = height;
-            _itemLayer.style.width = width;
-            _itemLayer.style.height = height;
+            // The one size in the panel that is arithmetic rather than content,
+            // so it is the one a layout group has to be told: a group asks every
+            // child how big it is and collapses the ones with no answer.
+            Ugui.Size(_gridRoot, width, height);
+            Ugui.TopLeft(_cellLayer, 0f, 0f, width, height);
+            Ugui.TopLeft(_itemLayer, 0f, 0f, width, height);
+
+            Ugui.Clear(_cellLayer);
 
             for (int y = 0; y < grid.Height; y++)
             {
                 for (int x = 0; x < grid.Width; x++)
                 {
-                    var cell = new VisualElement();
-                    cell.style.position = Position.Absolute;
-                    cell.style.left = x * _cellSize;
-                    cell.style.top = y * _cellSize;
-                    cell.style.width = _cellSize - CellGap;
-                    cell.style.height = _cellSize - CellGap;
-                    cell.style.backgroundColor = new Color(0.12f, 0.13f, 0.16f, 1f);
-                    cell.pickingMode = PickingMode.Ignore;
+                    Image cell = Ugui.Box(
+                        _cellLayer, "Cell", new Color(0.12f, 0.13f, 0.16f, 1f), picks: false);
 
-                    _cellLayer.Add(cell);
+                    Ugui.TopLeft(
+                        cell.rectTransform,
+                        x * _cellSize, y * _cellSize,
+                        _cellSize - CellGap, _cellSize - CellGap);
                 }
             }
         }
@@ -669,10 +735,12 @@ namespace TogetherWeFall.UI
             if (grid.Width <= 0 || grid.Height <= 0)
                 return;
 
-            VisualElement root = _document != null ? _document.rootVisualElement : null;
+            Rect root = _canvas != null
+                ? ((RectTransform)_canvas.transform).rect
+                : new Rect(0f, 0f, float.NaN, float.NaN);
 
-            float rootWidth = root != null ? root.resolvedStyle.width : float.NaN;
-            float rootHeight = root != null ? root.resolvedStyle.height : float.NaN;
+            float rootWidth = root.width;
+            float rootHeight = root.height;
 
             // Before the first layout the root has no size yet. Start at the
             // largest cell; the geometry callback will correct it on the frame
@@ -916,7 +984,10 @@ namespace TogetherWeFall.UI
 
         private void RebuildStats(Entity character, in PlayerStats stats)
         {
-            _statsList.Clear();
+            Ugui.Clear(_statsList);
+
+            _statsY = 0f;
+            _statsRight = false;
 
             AddGoldRow(character);
             AddKeystoneRow(character);
@@ -926,16 +997,51 @@ namespace TogetherWeFall.UI
             {
                 var stat = (StatKind)s;
 
-                VisualElement row =
-                    MakeRow(stat.ToString(), $"{stats.Final.Get(stat):0.##}", null);
-
-                // Just under half, so two sit on a line with the wrap having
-                // somewhere to round to.
-                row.style.width = Length.Percent(48f);
-                row.style.marginRight = Length.Percent(2f);
-
-                _statsList.Add(row);
+                // Two to a line. Eight of them in a single column is the tallest
+                // thing in the panel, and height is the scarce direction.
+                FlowStatRow(
+                    MakeRow(_statsList, stat.ToString(), $"{stats.Final.Get(stat):0.##}"),
+                    half: true);
             }
+
+            // The list is absolutely positioned inside, so nothing else can work
+            // out how tall it ended up.
+            Ugui.Size(_statsList, height: _statsY + (_statsRight ? StatRowHeight : 0f));
+        }
+
+        /// <summary>
+        /// Puts one row on the current line, or starts a new one.
+        ///
+        /// The wrap UI Toolkit did with percentage widths and flex-wrap, spelled
+        /// out: half-width rows pair up, full-width rows always take a line of
+        /// their own, and a full-width row after a lone half-width one starts
+        /// below it rather than beside it.
+        /// </summary>
+        private void FlowStatRow(RectTransform row, bool half)
+        {
+            float full = _sidebarWidth;
+            float halfWidth = (full - 4f) * 0.5f;
+
+            if (!half)
+            {
+                if (_statsRight)
+                {
+                    _statsY += StatRowHeight;
+                    _statsRight = false;
+                }
+
+                Ugui.TopLeft(row, 0f, _statsY, full, StatRowHeight);
+                _statsY += StatRowHeight;
+                return;
+            }
+
+            Ugui.TopLeft(
+                row, _statsRight ? halfWidth + 4f : 0f, _statsY, halfWidth, StatRowHeight);
+
+            if (_statsRight)
+                _statsY += StatRowHeight;
+
+            _statsRight = !_statsRight;
         }
 
         /// <summary>
@@ -951,11 +1057,9 @@ namespace TogetherWeFall.UI
         /// </summary>
         private void AddGoldRow(Entity character)
         {
-            VisualElement row = MakeRow(
-                "Gold", Currency.Balance(_entityManager, character).ToString(), null);
-
-            row.style.width = Length.Percent(98f);
-            _statsList.Add(row);
+            FlowStatRow(
+                MakeRow(_statsList, "Gold", Currency.Balance(_entityManager, character).ToString()),
+                half: false);
         }
 
         /// <summary>
@@ -1029,10 +1133,7 @@ namespace TogetherWeFall.UI
                     : $"{status.CurrentEquippedCount}/{set.MemberItemIds.Length} · " +
                       "no bonus yet";
 
-                VisualElement row = MakeRow(set.SetName.ToString(), detail, null);
-                row.style.width = Length.Percent(98f);
-
-                _statsList.Add(row);
+                FlowStatRow(MakeRow(_statsList, set.SetName.ToString(), detail), half: false);
             }
         }
 
@@ -1051,132 +1152,229 @@ namespace TogetherWeFall.UI
                 ? $"{keystone.Effect} (+{keystone.Ignored} ignored)"
                 : keystone.Effect.ToString();
 
-            VisualElement row = MakeRow("Keystone", detail, null);
-            row.style.width = Length.Percent(98f);
-
-            _statsList.Add(row);
+            FlowStatRow(MakeRow(_statsList, "Keystone", detail), half: false);
         }
 
         /// <summary>
-        /// Draws the equipment slots as boxes rather than rows.
+        /// Draws the equipment slots as squares around the character.
         ///
-        /// A box is a target you can drop onto and a handle you can drag from,
-        /// which a row of text with a button beside it is not. They are laid out
-        /// two to a line for the same reason the stats are: height is the scarce
-        /// direction on a landscape screen.
+        /// A square is a target you can drop onto and a handle you can drag
+        /// from, which a row of text with a button beside it is not — and once
+        /// they are squares, where each one sits can say what it is. A helmet
+        /// above a chest above a belt is a sentence the player reads without
+        /// being told; ten labelled boxes in a two-column list is a form.
+        ///
+        /// The character in the middle is the whole point of the arrangement,
+        /// which is why the rails are four and four rather than five and five:
+        /// there has to be something between them worth looking at.
         /// </summary>
         private void RebuildSlots(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
         {
-            _slotList.Clear();
+            Ugui.Clear(_slotList);
             _slotTargets.Clear();
-
-            _slotList.style.flexDirection = FlexDirection.Row;
-            _slotList.style.flexWrap = Wrap.Wrap;
 
             // Asked once for the whole rebuild. It is a property of the main
             // hand, not of the off hand, so asking per slot would be asking the
             // same question ten times.
             bool offHandBlocked = EquipmentSlots.IsOffHandBlocked(slots, items);
 
+            // Square, not a wide box: the size the sidebar's height budget
+            // already worked out for one row of slots is also how wide a rail
+            // may be, because two rails and a portrait have to fit across it.
+            float square = _slotBoxHeight;
+            float step = square + DollGap;
+            float rails = DollRails * step - DollGap;
+
+            float frameWidth = _sidebarWidth - 2f * (square + DollGap);
+            Ugui.TopLeft(_portraitFrame, square + DollGap, step, frameWidth, rails);
+
+            if (_portrait != null && rails > 1f)
+                _portrait.SetAspect(frameWidth / rails);
+
             for (int i = 0; i < slots.Length; i++)
             {
                 EquippedItem slot = slots[i];
                 bool blocked = slot.Slot == EquipmentSlot.OffHand && offHandBlocked;
 
-                VisualElement box = MakeSlotBox(slot, items, blocked, out Color border);
-                _slotList.Add(box);
+                SlotBox box = MakeSlotBox(slot, items, blocked);
+                Vector2 corner = DollCorner(slot.Slot, square, step);
+
+                Ugui.TopLeft(box.Rect, corner.x, corner.y, square, square);
 
                 _slotTargets.Add(new SlotTarget
                 {
-                    Element = box,
+                    Element = box.Rect,
+                    Border = box.Border,
                     Slot = slot.Slot,
                     Blocked = blocked,
-                    DefaultBorder = border
+                    DefaultBorder = box.BorderColour
                 });
+            }
+
+            Ugui.Size(_dollRoot, height: (DollRails + 1) * step - DollGap);
+        }
+
+        /// <summary>
+        /// Where one slot's square goes, in pixels from the block's top-left.
+        ///
+        /// The table below is the layout; this is only arithmetic on it.
+        /// </summary>
+        private Vector2 DollCorner(EquipmentSlot slot, float square, float step)
+        {
+            SlotPlace place = Doll[(int)slot];
+
+            switch (place.Rail)
+            {
+                // The rails start one row down, because the weapons are above
+                // them and above the portrait.
+                case 0:
+                    return new Vector2(0f, (place.Index + 1) * step);
+
+                case 1:
+                    return new Vector2(_sidebarWidth - square, (place.Index + 1) * step);
+
+                default:
+                    // The weapons sit in a row of their own across the top,
+                    // centred on the portrait rather than on a rail.
+                    float left = (_sidebarWidth - (2f * square + DollGap)) * 0.5f;
+                    return new Vector2(left + place.Index * step, 0f);
             }
         }
 
-        private VisualElement MakeSlotBox(
-            in EquippedItem slot, ItemDatabase items, bool blocked, out Color border)
+        /// <summary>
+        /// Which rail each slot hangs on, in the buffer's own order.
+        ///
+        /// The weapons crown the whole thing, main hand left and off hand right,
+        /// because they are the two the player changes most and the two a build
+        /// is named after. Under them the body reads top to bottom on the left —
+        /// head, chest, hands — and the small things on the right: neck, waist,
+        /// feet. The rings close both rails on the same line, one either side,
+        /// so the pair reads as a pair rather than as two entries in a list.
+        /// </summary>
+        private static readonly SlotPlace[] Doll =
         {
-            var box = new VisualElement();
-            box.style.width = Length.Percent(48f);
-            box.style.marginRight = Length.Percent(2f);
-            box.style.marginBottom = 4f;
-            box.style.height = _slotBoxHeight;
-            box.style.paddingLeft = 4f;
-            box.style.paddingRight = 4f;
-            box.style.justifyContent = Justify.Center;
-            box.style.borderTopWidth = 1f;
-            box.style.borderBottomWidth = 1f;
-            box.style.borderLeftWidth = 1f;
-            box.style.borderRightWidth = 1f;
+            new SlotPlace(2, 0), // MainHand
+            new SlotPlace(2, 1), // OffHand
+            new SlotPlace(0, 0), // Helmet
+            new SlotPlace(0, 1), // Chest
+            new SlotPlace(0, 2), // Gloves
+            new SlotPlace(1, 2), // Boots
+            new SlotPlace(0, 3), // Ring1
+            new SlotPlace(1, 3), // Ring2
+            new SlotPlace(1, 0), // Amulet
+            new SlotPlace(1, 1)  // Belt
+        };
 
-            var name = new Label(slot.Slot.ToString());
-            name.style.fontSize = 10;
-            name.style.color = new Color(0.50f, 0.55f, 0.62f);
-            name.pickingMode = PickingMode.Ignore;
-            box.Add(name);
+        /// <summary>One square's place: which rail, and how far down it.</summary>
+        private readonly struct SlotPlace
+        {
+            /// <summary>Nought is the left rail, one the right, two the row on top.</summary>
+            public readonly int Rail;
+            public readonly int Index;
 
-            var value = new Label(blocked ? "two-handed" : slot.HasItem
-                ? NameOf(items, slot.ItemId)
-                : "empty");
-            value.style.fontSize = 11;
-            value.style.whiteSpace = WhiteSpace.Normal;
-            value.pickingMode = PickingMode.Ignore;
-            box.Add(value);
-
-            if (blocked)
+            public SlotPlace(int rail, int index)
             {
-                border = new Color(0.32f, 0.24f, 0.24f);
-                box.style.backgroundColor = new Color(0.10f, 0.09f, 0.09f, 1f);
-                SetBorder(box, border);
-                value.style.color = new Color(0.55f, 0.45f, 0.42f);
-                return box;
+                Rail = rail;
+                Index = index;
             }
+        }
 
-            if (!slot.HasItem)
+        /// <summary>
+        /// What an empty square says.
+        ///
+        /// Short enough to fit one, which the enum's own names are not: "MainHand"
+        /// in forty pixels is two lines of nothing.
+        /// </summary>
+        private static string ShortSlotName(EquipmentSlot slot)
+        {
+            switch (slot)
             {
-                border = new Color(0.20f, 0.22f, 0.27f);
-                box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);
-                SetBorder(box, border);
-                value.style.color = new Color(0.45f, 0.47f, 0.52f);
-                return box;
+                case EquipmentSlot.MainHand: return "Main";
+                case EquipmentSlot.OffHand: return "Off";
+                case EquipmentSlot.Helmet: return "Helm";
+                case EquipmentSlot.Chest: return "Chest";
+                case EquipmentSlot.Gloves: return "Glove";
+                case EquipmentSlot.Boots: return "Boots";
+                case EquipmentSlot.Ring1: return "Ring";
+                case EquipmentSlot.Ring2: return "Ring";
+                case EquipmentSlot.Amulet: return "Amul";
+                default: return "Belt";
             }
+        }
 
-            ItemRarity rarity = RarityOf(items, slot.ItemId);
-            border = RarityColour(rarity);
+        /// <summary>Enough of a name to recognise it in a square. The tooltip has the rest.</summary>
+        private static string Shorten(string name) =>
+            string.IsNullOrEmpty(name) || name.Length <= 12 ? name : name.Substring(0, 12);
 
-            box.style.backgroundColor = Tint(rarity);
-            SetBorder(box, border);
-            value.style.color = border;
+        /// <summary>What MakeSlotBox hands back: the box, and the frame to recolour.</summary>
+        private struct SlotBox
+        {
+            public RectTransform Rect;
+            public Image Border;
+            public Color BorderColour;
+        }
+
+        private SlotBox MakeSlotBox(in EquippedItem slot, ItemDatabase items, bool blocked)
+        {
+            Color background = blocked
+                ? new Color(0.10f, 0.09f, 0.09f, 1f)
+                : !slot.HasItem
+                    ? new Color(0.10f, 0.11f, 0.14f, 1f)
+                    : Tint(RarityOf(items, slot.ItemId));
+
+            Color border = blocked
+                ? new Color(0.32f, 0.24f, 0.24f)
+                : !slot.HasItem
+                    ? new Color(0.20f, 0.22f, 0.27f)
+                    : RarityColour(RarityOf(items, slot.ItemId));
+
+            Color valueColour = blocked
+                ? new Color(0.55f, 0.45f, 0.42f)
+                : !slot.HasItem
+                    ? new Color(0.45f, 0.47f, 0.52f)
+                    : border;
+
+            Image box = Ugui.Box(_slotList, slot.Slot.ToString(), background);
+
+            // One line, not two. A square forty pixels across has room for what
+            // is in it OR what belongs in it, and which of those the player
+            // wants is decided by whether the square is empty. The full answer
+            // is a hover away, and always was.
+            TextMeshProUGUI name = Ugui.Text(
+                box.rectTransform, "Label", 9f, valueColour, wrap: true);
+
+            name.text = blocked ? "2H" : slot.HasItem
+                ? Shorten(NameOf(items, slot.ItemId))
+                : ShortSlotName(slot.Slot);
+
+            Ugui.Place(name.rectTransform, left: 2f, right: 2f, top: 2f, bottom: 2f);
+
+            var result = new SlotBox
+            {
+                Rect = box.rectTransform,
+                Border = Ugui.Border(box.rectTransform, border, 1f),
+                BorderColour = border
+            };
+
+            if (blocked || !slot.HasItem)
+                return result;
 
             EquippedItem captured = slot;
 
-            box.RegisterCallback<PointerDownEvent>(evt => BeginSlotDrag(evt, box, captured, items));
-            box.RegisterCallback<PointerDownEvent>(OnDragRotate);
-            box.RegisterCallback<PointerMoveEvent>(OnDragMove);
-            box.RegisterCallback<PointerUpEvent>(OnDragEnd);
+            Ugui.On(box.rectTransform, EventTriggerType.PointerDown,
+                data => BeginSlotDrag(data, box.rectTransform, captured, items));
 
             // Double click takes it off, mirroring the double click that puts it
             // on. No target, so the host finds the room.
-            box.RegisterCallback<ClickEvent>(evt =>
+            Ugui.On(box.rectTransform, EventTriggerType.PointerClick, data =>
             {
-                if (evt.clickCount >= 2)
+                if (data.clickCount >= 2)
                     SendUnequip(captured.Slot, false, 0, 0, false);
             });
 
-            AttachTooltip(box, () => DescribeItem(captured.ItemId, false));
+            AttachTooltip(box.rectTransform, () => DescribeItem(captured.ItemId, false));
 
-            return box;
-        }
-
-        private static void SetBorder(VisualElement element, Color colour)
-        {
-            element.style.borderTopColor = colour;
-            element.style.borderBottomColor = colour;
-            element.style.borderLeftColor = colour;
-            element.style.borderRightColor = colour;
+            return result;
         }
 
         /// <summary>
@@ -1192,7 +1390,7 @@ namespace TogetherWeFall.UI
             DynamicBuffer<InventoryCell> cells,
             ItemDatabase items)
         {
-            _itemLayer.Clear();
+            Ugui.Clear(_itemLayer);
 
             _seen.Clear();
 
@@ -1220,13 +1418,13 @@ namespace TogetherWeFall.UI
                     continue;
                 }
 
-                _itemLayer.Add(MakeItem(
+                MakeItem(
                     bag, item, instance, placement, width, height,
-                    NameOf(items, instance.ItemId), items));
+                    NameOf(items, instance.ItemId), items);
             }
         }
 
-        private VisualElement MakeItem(
+        private void MakeItem(
             Entity bag,
             Entity item,
             in ItemInstance instance,
@@ -1236,34 +1434,22 @@ namespace TogetherWeFall.UI
             string label,
             ItemDatabase items)
         {
-            var element = new VisualElement();
-            element.style.position = Position.Absolute;
-            element.style.left = placement.OriginX * _cellSize;
-            element.style.top = placement.OriginY * _cellSize;
-            element.style.width = width * _cellSize - CellGap;
-            element.style.height = height * _cellSize - CellGap;
-            element.style.backgroundColor = Tint(instance.Rarity);
-            element.style.borderTopWidth = 1f;
-            element.style.borderBottomWidth = 1f;
-            element.style.borderLeftWidth = 1f;
-            element.style.borderRightWidth = 1f;
-
             Color border = RarityColour(instance.Rarity);
-            element.style.borderTopColor = border;
-            element.style.borderBottomColor = border;
-            element.style.borderLeftColor = border;
-            element.style.borderRightColor = border;
 
-            element.style.justifyContent = Justify.Center;
-            element.style.alignItems = Align.Center;
+            Image element = Ugui.Box(_itemLayer, label, Tint(instance.Rarity));
 
-            var text = new Label(label);
-            text.style.color = border;
-            text.style.fontSize = 11;
-            text.style.whiteSpace = WhiteSpace.Normal;
-            text.style.unityTextAlign = TextAnchor.MiddleCenter;
-            text.pickingMode = PickingMode.Ignore;
-            element.Add(text);
+            Ugui.TopLeft(
+                element.rectTransform,
+                placement.OriginX * _cellSize,
+                placement.OriginY * _cellSize,
+                width * _cellSize - CellGap,
+                height * _cellSize - CellGap);
+
+            TextMeshProUGUI text = Ugui.Text(
+                element.rectTransform, "Name", 11f, border, wrap: true);
+            text.text = label;
+
+            Ugui.Border(element.rectTransform, border, 1f);
 
             Entity capturedBag = bag;
             Entity capturedItem = item;
@@ -1272,27 +1458,21 @@ namespace TogetherWeFall.UI
 
             ItemDatabase capturedItems = items;
 
-            element.RegisterCallback<PointerDownEvent>(evt => BeginDrag(
-                evt, element, capturedBag, capturedItem, capturedId,
+            Ugui.On(element.rectTransform, EventTriggerType.PointerDown, data => BeginDrag(
+                data, element.rectTransform, capturedBag, capturedItem, capturedId,
                 capturedItems, capturedPlacement));
 
-            element.RegisterCallback<PointerDownEvent>(OnDragRotate);
-            element.RegisterCallback<PointerMoveEvent>(OnDragMove);
-            element.RegisterCallback<PointerUpEvent>(OnDragEnd);
-
-            AttachTooltip(element, () => DescribeItem(capturedId, true));
+            AttachTooltip(element.rectTransform, () => DescribeItem(capturedId, true));
 
             // Double click equips, the way it does in every game this one is
             // trying to feel like. No slot travels with it, so the host picks —
             // an empty allowed slot first, which is what makes double-clicking
             // a second ring fill the other hand instead of replacing the first.
-            element.RegisterCallback<ClickEvent>(evt =>
+            Ugui.On(element.rectTransform, EventTriggerType.PointerClick, data =>
             {
-                if (evt.clickCount >= 2)
+                if (data.clickCount >= 2)
                     SendEquipAuto(capturedItem);
             });
-
-            return element;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1303,18 +1483,18 @@ namespace TogetherWeFall.UI
         /// Starts a drag from an item lying in the bag.
         /// </summary>
         private void BeginDrag(
-            PointerDownEvent evt,
-            VisualElement element,
+            PointerEventData data,
+            RectTransform element,
             Entity bag,
             Entity item,
             int itemId,
             ItemDatabase items,
             in ItemGridPlacement placement)
         {
-            if (evt.button != 0 || _drag.Active)
+            if (data.button != PointerEventData.InputButton.Left || _drag.Active)
                 return;
 
-            StartDrag(evt, element, items, itemId, item, bag, placement.IsRotated);
+            StartDrag(element, items, itemId, item, bag, placement.IsRotated);
 
             _drag.Corner = new Vector2(
                 placement.OriginX * _cellSize, placement.OriginY * _cellSize);
@@ -1323,9 +1503,7 @@ namespace TogetherWeFall.UI
 
             // Grabbed where the player actually took hold of it, so the square
             // it lands on is the one they are looking at.
-            _drag.GrabOffset = evt.localPosition;
-
-            evt.StopPropagation();
+            _drag.GrabOffset = Ugui.Point(element, data.position);
         }
 
         /// <summary>
@@ -1337,33 +1515,34 @@ namespace TogetherWeFall.UI
         /// have grabbed.
         /// </summary>
         private void BeginSlotDrag(
-            PointerDownEvent evt, VisualElement box, EquippedItem slot, ItemDatabase items)
+            PointerEventData data, RectTransform box, EquippedItem slot, ItemDatabase items)
         {
-            if (evt.button != 0 || _drag.Active || !slot.HasItem)
+            if (data.button != PointerEventData.InputButton.Left || _drag.Active || !slot.HasItem)
                 return;
 
             if (!TryGetCharacter(out _, out Entity bag))
                 return;
 
-            StartDrag(evt, box, items, slot.ItemId, slot.Item, bag, false);
+            StartDrag(box, items, slot.ItemId, slot.Item, bag, false);
 
             _drag.Source2 = DragSource.EquipmentSlot;
             _drag.SourceSlot = slot.Slot;
 
             if (GridFit.TryGetFootprint(items, slot.ItemId, false, out int width, out int height))
                 _drag.GrabOffset = new Vector2(width * _cellSize, height * _cellSize) * 0.5f;
-
-            evt.StopPropagation();
         }
 
         /// <summary>
-        /// Everything the two entry points share: what is being dragged, the
-        /// ghost that shows it, and the pointer capture that keeps the events
-        /// coming to one element.
+        /// Everything the entry points share: what is being dragged, and the
+        /// ghost that shows it.
+        ///
+        /// No pointer capture any more. From here on the drag is stepped from
+        /// Update, reading the pointer out of the input reader — so nothing
+        /// depends on events continuing to reach the element that was pressed,
+        /// which is what capture bought under UI Toolkit.
         /// </summary>
         private void StartDrag(
-            PointerDownEvent evt,
-            VisualElement source,
+            RectTransform source,
             ItemDatabase items,
             int itemId,
             Entity item,
@@ -1379,7 +1558,6 @@ namespace TogetherWeFall.UI
                 ItemId = itemId,
                 AllowedSlots = AllowedSlotsOf(items, itemId),
                 Rotated = rotated,
-                PointerId = evt.pointerId,
 
                 // Asked once here rather than at every hover: a pointer move
                 // touches every socket cell on screen, and none of them should
@@ -1388,21 +1566,18 @@ namespace TogetherWeFall.UI
                 IsActiveGem = GemKindOf(items, itemId) == GemKind.Active
             };
 
-            source.CapturePointer(evt.pointerId);
-            source.style.opacity = 0.35f;
+            Ugui.Fade(source, 0.35f);
 
-            // Pointer capture means the elements underneath stop seeing the
-            // cursor, so the leave event that would normally hide this never
-            // arrives.
+            // The pointer is about to stop being over what it grabbed, and a
+            // tooltip left behind would describe the hole the item came out of.
             HideTooltip();
 
             ShapeGhost(items);
 
-            _ghost.style.display = DisplayStyle.Flex;
-            _ghost.BringToFront();
+            _ghost.gameObject.SetActive(true);
+            _ghost.rectTransform.SetAsLastSibling();
 
-            _highlight.style.display = DisplayStyle.Flex;
-            _highlight.BringToFront();
+            _highlight.gameObject.SetActive(true);
         }
 
         /// <summary>Sizes and colours the ghost for what is currently being dragged.</summary>
@@ -1417,50 +1592,60 @@ namespace TogetherWeFall.UI
             ItemRarity rarity = RarityOf(items, _drag.ItemId);
             Color border = RarityColour(rarity);
 
-            _ghost.style.width = width * _cellSize - CellGap;
-            _ghost.style.height = height * _cellSize - CellGap;
-            _ghost.style.backgroundColor = Tint(rarity);
-            SetBorder(_ghost, border);
+            _drag.GhostSize = new Vector2(
+                width * _cellSize - CellGap, height * _cellSize - CellGap);
+
+            _ghost.color = Tint(rarity);
+            _ghostBorder.color = border;
 
             _ghostLabel.text = NameOf(items, _drag.ItemId);
-            _ghostLabel.style.color = border;
+            _ghostLabel.color = border;
         }
 
-        private void OnDragMove(PointerMoveEvent evt)
+        /// <summary>
+        /// One frame of a drag in flight: where the ghost goes, what it would
+        /// land on, and the two buttons that end or turn it.
+        ///
+        /// All of it read from the input reader rather than from pointer events,
+        /// which is what replaced the capture. The release is checked last, so a
+        /// drop uses the position the ghost was actually drawn at this frame.
+        /// </summary>
+        private void StepDrag()
         {
-            if (!_drag.Active)
-                return;
+            Vector2 pointer = _input.PointerPosition;
 
-            MoveGhost(evt.position);
-            UpdateTargets(evt.position);
+            MoveGhost(pointer);
+            UpdateTargets(pointer);
 
-            evt.StopPropagation();
+            // The other mouse button, while this one is held. Free, because
+            // casting is suppressed for as long as the panel is open.
+            if (_input.WasCastPressed(1))
+                OnDragRotate();
+
+            if (_input.WasCastReleased(0))
+                OnDragEnd(pointer);
         }
 
         private void MoveGhost(Vector2 pointer)
         {
-            Vector2 corner = (Vector2)_panel.WorldToLocal(pointer) - _drag.GrabOffset;
+            Vector2 corner = Ugui.Point(_screen, pointer) - _drag.GrabOffset;
 
-            _ghost.style.left = corner.x;
-            _ghost.style.top = corner.y;
+            Ugui.TopLeft(
+                _ghost.rectTransform, corner.x, corner.y,
+                _drag.GhostSize.x, _drag.GhostSize.y);
         }
 
         /// <summary>
         /// Right button while dragging turns the item on its side.
         ///
-        /// Not a key, deliberately. Pointer capture guarantees this event
-        /// reaches the element being dragged; a keyboard shortcut in a runtime
-        /// UI Toolkit panel depends on that panel holding focus, which is one
-        /// more thing that can quietly not be true. Casting is suppressed while
-        /// the panel is open, so the button is free.
+        /// Not a key, deliberately. The button is read from the same input reader
+        /// the game reads, so it arrives wherever the cursor happens to be; a
+        /// keyboard shortcut would depend on who holds focus, which is one more
+        /// thing that can quietly not be true. Casting is suppressed while the
+        /// panel is open, so the button is free.
         /// </summary>
-        private void OnDragRotate(PointerDownEvent evt)
+        private void OnDragRotate()
         {
-            if (!_drag.Active || evt.button != 1)
-                return;
-
-            evt.StopPropagation();
-
             if (!TryGetItems(out ItemDatabase items) || !GridFit.CanRotate(items, _drag.ItemId))
             {
                 ShowMessage("That item cannot be turned.");
@@ -1485,7 +1670,7 @@ namespace TogetherWeFall.UI
         /// </summary>
         private void UpdateTargets(Vector2 pointer)
         {
-            Vector2 corner = (Vector2)_gridRoot.WorldToLocal(pointer) - _drag.GrabOffset;
+            Vector2 corner = Ugui.Point(_gridRoot, pointer) - _drag.GrabOffset;
 
             _drag.Corner = corner;
             UpdateHighlight(corner);
@@ -1495,14 +1680,14 @@ namespace TogetherWeFall.UI
                 SlotTarget target = _slotTargets[i];
                 Color colour = target.DefaultBorder;
 
-                if (target.Element.worldBound.Contains(pointer))
+                if (Ugui.Contains(target.Element, pointer))
                 {
                     colour = SlotAccepts(target)
                         ? new Color(0.35f, 0.80f, 0.40f)
                         : new Color(0.85f, 0.30f, 0.30f);
                 }
 
-                SetBorder(target.Element, colour);
+                target.Border.color = colour;
             }
 
             for (int i = 0; i < _socketTargets.Count; i++)
@@ -1510,7 +1695,7 @@ namespace TogetherWeFall.UI
                 SocketTarget target = _socketTargets[i];
                 Color colour = target.DefaultBorder;
 
-                if (target.Element.worldBound.Contains(pointer))
+                if (Ugui.Contains(target.Element, pointer))
                 {
                     // A gem out of the bag, into a hole that is free. A gem
                     // already in a socket moves by coming out first, which is
@@ -1523,7 +1708,7 @@ namespace TogetherWeFall.UI
                         : new Color(0.85f, 0.30f, 0.30f);
                 }
 
-                SetBorder(target.Element, colour);
+                target.Border.color = colour;
             }
 
             for (int i = 0; i < _barTargets.Count; i++)
@@ -1531,7 +1716,7 @@ namespace TogetherWeFall.UI
                 BarTarget target = _barTargets[i];
                 Color colour = target.DefaultBorder;
 
-                if (target.Element.worldBound.Contains(pointer))
+                if (Ugui.Contains(target.Element, pointer))
                 {
                     // Only an active gem, and only one already in a socket: a
                     // hotkey points at a hole, so there has to be a hole.
@@ -1542,7 +1727,7 @@ namespace TogetherWeFall.UI
                         : new Color(0.85f, 0.30f, 0.30f);
                 }
 
-                SetBorder(target.Element, colour);
+                target.Border.color = colour;
             }
         }
 
@@ -1596,11 +1781,14 @@ namespace TogetherWeFall.UI
             // be a client whose bugs look like the host's.
             bool fits = GridFit.Fits(cells, grid, x, y, width, height, _drag.Item);
 
-            _highlight.style.left = Mathf.Clamp(x, 0, Mathf.Max(0, grid.Width - 1)) * _cellSize;
-            _highlight.style.top = Mathf.Clamp(y, 0, Mathf.Max(0, grid.Height - 1)) * _cellSize;
-            _highlight.style.width = width * _cellSize - CellGap;
-            _highlight.style.height = height * _cellSize - CellGap;
-            _highlight.style.backgroundColor = fits
+            Ugui.TopLeft(
+                _highlight.rectTransform,
+                Mathf.Clamp(x, 0, Mathf.Max(0, grid.Width - 1)) * _cellSize,
+                Mathf.Clamp(y, 0, Mathf.Max(0, grid.Height - 1)) * _cellSize,
+                width * _cellSize - CellGap,
+                height * _cellSize - CellGap);
+
+            _highlight.color = fits
                 ? new Color(0.30f, 0.75f, 0.35f, 0.35f)
                 : new Color(0.85f, 0.25f, 0.25f, 0.35f);
         }
@@ -1613,13 +1801,8 @@ namespace TogetherWeFall.UI
         /// unequip that lands where the player pointed; and from the bag onto
         /// the grid is an ordinary placement.
         /// </summary>
-        private void OnDragEnd(PointerUpEvent evt)
+        private void OnDragEnd(Vector2 pointer)
         {
-            if (!_drag.Active || evt.button != 0)
-                return;
-
-            evt.StopPropagation();
-
             Entity item = _drag.Item;
             Entity bag = _drag.Bag;
             DragSource source = _drag.Source2;
@@ -1632,13 +1815,13 @@ namespace TogetherWeFall.UI
             int sourceSocket = _drag.SourceSocket;
             bool isActiveGem = _drag.IsActiveGem;
 
-            bool overGrid = _gridRoot.worldBound.Contains(evt.position);
+            bool overGrid = Ugui.Contains(_gridRoot, pointer);
             EquipmentSlot slot = default;
-            bool overSlot = TryFindSlotUnder(evt.position, ref slot);
+            bool overSlot = TryFindSlotUnder(pointer, ref slot);
 
             bool overSocket = TryFindSocketUnder(
-                evt.position, out Entity socketGear, out int socketIndex);
-            bool overBar = TryFindBarUnder(evt.position, out int barIndex);
+                pointer, out Entity socketGear, out int socketIndex);
+            bool overBar = TryFindBarUnder(pointer, out int barIndex);
 
             CancelDrag();
 
@@ -1732,22 +1915,19 @@ namespace TogetherWeFall.UI
                 return;
 
             if (_drag.Source != null)
-            {
-                _drag.Source.ReleasePointer(_drag.PointerId);
-                _drag.Source.style.opacity = 1f;
-            }
+                Ugui.Fade(_drag.Source, 1f);
 
             for (int i = 0; i < _slotTargets.Count; i++)
-                SetBorder(_slotTargets[i].Element, _slotTargets[i].DefaultBorder);
+                _slotTargets[i].Border.color = _slotTargets[i].DefaultBorder;
 
             for (int i = 0; i < _socketTargets.Count; i++)
-                SetBorder(_socketTargets[i].Element, _socketTargets[i].DefaultBorder);
+                _socketTargets[i].Border.color = _socketTargets[i].DefaultBorder;
 
             for (int i = 0; i < _barTargets.Count; i++)
-                SetBorder(_barTargets[i].Element, _barTargets[i].DefaultBorder);
+                _barTargets[i].Border.color = _barTargets[i].DefaultBorder;
 
-            _ghost.style.display = DisplayStyle.None;
-            _highlight.style.display = DisplayStyle.None;
+            _ghost.gameObject.SetActive(false);
+            _highlight.gameObject.SetActive(false);
 
             _drag = default;
             _lastSignature = int.MinValue;
@@ -1760,7 +1940,7 @@ namespace TogetherWeFall.UI
 
             for (int i = 0; i < _socketTargets.Count; i++)
             {
-                if (!_socketTargets[i].Element.worldBound.Contains(position))
+                if (!Ugui.Contains(_socketTargets[i].Element, position))
                     continue;
 
                 gear = _socketTargets[i].Gear;
@@ -1777,7 +1957,7 @@ namespace TogetherWeFall.UI
 
             for (int i = 0; i < _barTargets.Count; i++)
             {
-                if (!_barTargets[i].Element.worldBound.Contains(position))
+                if (!Ugui.Contains(_barTargets[i].Element, position))
                     continue;
 
                 barIndex = _barTargets[i].BarSlotIndex;
@@ -1791,7 +1971,7 @@ namespace TogetherWeFall.UI
         {
             for (int i = 0; i < _slotTargets.Count; i++)
             {
-                if (!_slotTargets[i].Element.worldBound.Contains(position))
+                if (!Ugui.Contains(_slotTargets[i].Element, position))
                     continue;
 
                 slot = _slotTargets[i].Slot;
@@ -1816,7 +1996,7 @@ namespace TogetherWeFall.UI
         /// </summary>
         private void RebuildSockets(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
         {
-            _socketList.Clear();
+            Ugui.Clear(_socketList);
             _socketTargets.Clear();
 
             for (int i = 0; i < slots.Length; i++)
@@ -1832,39 +2012,44 @@ namespace TogetherWeFall.UI
                 if (sockets.Length == 0)
                     continue;
 
-                _socketList.Add(MakeSocketRow(gear, sockets, items, NameOf(items, slots[i].ItemId)));
+                MakeSocketRow(gear, sockets, items, NameOf(items, slots[i].ItemId));
             }
 
             if (_socketList.childCount == 0)
-                _socketList.Add(MakeRow("Nothing worn has sockets", string.Empty, null));
+            {
+                Ugui.Size(
+                    MakeRow(_socketList, "Nothing worn has sockets", string.Empty),
+                    height: StatRowHeight);
+            }
         }
 
-        private VisualElement MakeSocketRow(
+        private void MakeSocketRow(
             Entity gear, DynamicBuffer<GearSocket> sockets, ItemDatabase items, string label)
         {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.alignItems = Align.Center;
-            row.style.marginBottom = 4f;
+            RectTransform row = Ugui.Node(_socketList, label);
+            Ugui.Size(row, height: SocketCellSize);
 
-            var name = new Label(label);
-            name.style.fontSize = 11;
-            name.style.color = new Color(0.66f, 0.68f, 0.72f);
-            name.style.width = 96f;
-            name.pickingMode = PickingMode.Ignore;
-            row.Add(name);
+            // The cells and the links between them have different heights and
+            // both are meant to sit on the row's centre line, so the row spaces
+            // them without touching how tall they are.
+            HorizontalLayoutGroup group = Ugui.Row(row, spacing: 1f);
+            group.childControlHeight = false;
+            group.childAlignment = TextAnchor.MiddleLeft;
+
+            TextMeshProUGUI name = Ugui.Text(
+                row, "Gear", 11f, new Color(0.66f, 0.68f, 0.72f), TextAlignmentOptions.Left);
+            name.text = label;
+            Ugui.Size(name.rectTransform, width: 96f, height: SocketCellSize);
 
             for (int i = 0; i < sockets.Length; i++)
             {
                 // The bar goes BEFORE the cell it links backwards to, so the
                 // row reads left to right the way the link does.
                 if (i > 0)
-                    row.Add(MakeLink(sockets[i - 1].LinkGroup == sockets[i].LinkGroup));
+                    MakeLink(row, sockets[i - 1].LinkGroup == sockets[i].LinkGroup);
 
-                row.Add(MakeSocketCell(gear, sockets[i], items));
+                MakeSocketCell(row, gear, sockets[i], items);
             }
-
-            return row;
         }
 
         /// <summary>
@@ -1872,36 +2057,25 @@ namespace TogetherWeFall.UI
         /// a group. An unlinked pair still gets the element, transparent, so the
         /// cells stay on the same pitch whether they are joined or not.
         /// </summary>
-        private static VisualElement MakeLink(bool linked)
+        private static void MakeLink(RectTransform parent, bool linked)
         {
-            var link = new VisualElement();
-            link.style.width = LinkBarWidth;
-            link.style.height = 3f;
-            link.pickingMode = PickingMode.Ignore;
-
-            link.style.backgroundColor = linked
+            Image link = Ugui.Box(parent, "Link", linked
                 ? new Color(0.75f, 0.70f, 0.42f)
-                : new Color(0f, 0f, 0f, 0f);
+                : new Color(0f, 0f, 0f, 0f), picks: false);
 
-            return link;
+            Ugui.Size(link.rectTransform, width: LinkBarWidth, height: 3f);
         }
 
-        private VisualElement MakeSocketCell(Entity gear, GearSocket socket, ItemDatabase items)
+        private void MakeSocketCell(
+            RectTransform parent, Entity gear, GearSocket socket, ItemDatabase items)
         {
-            var cell = new VisualElement();
-            cell.style.width = SocketCellSize;
-            cell.style.height = SocketCellSize;
-            cell.style.justifyContent = Justify.Center;
-            cell.style.alignItems = Align.Center;
-            cell.style.borderTopWidth = 1f;
-            cell.style.borderBottomWidth = 1f;
-            cell.style.borderLeftWidth = 1f;
-            cell.style.borderRightWidth = 1f;
+            Image cell = Ugui.Box(parent, $"Socket{socket.SocketIndex}", Color.clear);
+            Ugui.Size(cell.rectTransform, width: SocketCellSize, height: SocketCellSize);
 
             Color border = new Color(0.30f, 0.32f, 0.38f);
-            var mark = new Label(string.Empty);
-            mark.style.fontSize = 10;
-            mark.pickingMode = PickingMode.Ignore;
+
+            TextMeshProUGUI mark = Ugui.Text(
+                cell.rectTransform, "Mark", 10f, new Color(0.82f, 0.84f, 0.88f));
 
             if (socket.IsWelded)
             {
@@ -1910,24 +2084,22 @@ namespace TogetherWeFall.UI
                 // its own, because "A" would promise a gem the player could pull
                 // out and put somewhere else.
                 border = new Color(0.62f, 0.58f, 0.42f);
-                cell.style.backgroundColor = new Color(0.20f, 0.18f, 0.12f, 1f);
+                cell.color = new Color(0.20f, 0.18f, 0.12f, 1f);
 
                 mark.text = "W";
-                mark.style.color = border;
+                mark.color = border;
 
                 int capturedSocket = socket.SocketIndex;
                 ItemDatabase capturedDatabase = items;
                 Entity capturedWeapon = gear;
 
-                cell.RegisterCallback<PointerDownEvent>(evt => BeginWeldedDrag(
-                    evt, cell, capturedWeapon, capturedSocket, capturedDatabase));
-                cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
-                cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+                Ugui.On(cell.rectTransform, EventTriggerType.PointerDown, data => BeginWeldedDrag(
+                    data, cell.rectTransform, capturedWeapon, capturedSocket, capturedDatabase));
 
                 // A welded skill has no gem to describe, so the tooltip comes
                 // from the skill database instead. Same box, same words.
                 int capturedSkill = socket.WeldedSkillId;
-                AttachTooltip(cell, () => DescribeSkillId(capturedSkill));
+                AttachTooltip(cell.rectTransform, () => DescribeSkillId(capturedSkill));
             }
             else if (!socket.IsEmpty &&
                 GemSockets.TryDescribeGem(
@@ -1938,7 +2110,7 @@ namespace TogetherWeFall.UI
                 ItemRarity rarity = RarityOf(items, itemId);
 
                 border = RarityColour(rarity);
-                cell.style.backgroundColor = Tint(rarity);
+                cell.color = Tint(rarity);
 
                 // One letter, because a socket cell is twenty pixels across
                 // and that is what fits. An active gem says so; a support says
@@ -1957,7 +2129,7 @@ namespace TogetherWeFall.UI
                 mark.text = kind == GemKind.Active
                     ? passive ? "P" : "A"
                     : SkillModifiers.Marker(SkillModifiers.PhaseOf(support.Kind));
-                mark.style.color = border;
+                mark.color = border;
 
                 // A support that cannot act on what it is linked to is drawn
                 // grey and marked with a dash instead of its phase.
@@ -1970,10 +2142,10 @@ namespace TogetherWeFall.UI
                     !SupportIsLive(support, gear, socket.LinkGroup, items))
                 {
                     border = new Color(0.34f, 0.34f, 0.36f);
-                    cell.style.backgroundColor = new Color(0.11f, 0.11f, 0.12f, 1f);
+                    cell.color = new Color(0.11f, 0.11f, 0.12f, 1f);
 
                     mark.text = "–";
-                    mark.style.color = border;
+                    mark.color = border;
                 }
 
                 Entity capturedGem = socket.InsertedGem;
@@ -1981,37 +2153,32 @@ namespace TogetherWeFall.UI
                 ItemDatabase capturedItems = items;
                 Entity capturedGear = gear;
 
-                cell.RegisterCallback<PointerDownEvent>(evt => BeginSocketDrag(
-                    evt, cell, capturedGear, capturedIndex, capturedGem, capturedItems));
-                cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
-                cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+                Ugui.On(cell.rectTransform, EventTriggerType.PointerDown, data => BeginSocketDrag(
+                    data, cell.rectTransform, capturedGear, capturedIndex, capturedGem,
+                    capturedItems));
 
                 // The letter in the cell says which kind of gem it is; the
                 // tooltip is where the rest of the sentence lives — including
                 // what this gem is doing for the skill it happens to be linked
                 // to, which is a question only a socketed gem can answer.
                 int capturedGroup = socket.LinkGroup;
-                AttachTooltip(cell, () =>
+                AttachTooltip(cell.rectTransform, () =>
                     DescribeSocketedGem(itemId, capturedGear, capturedGroup, capturedIndex));
             }
             else
             {
-                cell.style.backgroundColor = new Color(0.09f, 0.10f, 0.13f, 1f);
+                cell.color = new Color(0.09f, 0.10f, 0.13f, 1f);
             }
-
-            SetBorder(cell, border);
-            cell.Add(mark);
 
             _socketTargets.Add(new SocketTarget
             {
-                Element = cell,
+                Element = cell.rectTransform,
+                Border = Ugui.Border(cell.rectTransform, border, 1f),
                 Gear = gear,
                 SocketIndex = socket.SocketIndex,
                 IsEmpty = socket.IsEmpty,
                 DefaultBorder = border
             });
-
-            return cell;
         }
 
         /// <summary>
@@ -2023,7 +2190,7 @@ namespace TogetherWeFall.UI
         /// </summary>
         private void RebuildBar(Entity character, ItemDatabase items)
         {
-            _barList.Clear();
+            Ugui.Clear(_barList);
             _barTargets.Clear();
 
             if (_skillDatabaseQuery.IsEmptyIgnoreFilter)
@@ -2039,26 +2206,18 @@ namespace TogetherWeFall.UI
                 _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true);
 
             for (int i = 0; i < bar.Length && i < BarSlotCount; i++)
-                _barList.Add(MakeBarBox(i, bar[i], worn, items, skills));
+                MakeBarBox(i, bar[i], worn, items, skills);
         }
 
-        private VisualElement MakeBarBox(
+        private void MakeBarBox(
             int index,
             in SkillSlot slot,
             DynamicBuffer<EquippedItem> worn,
             ItemDatabase items,
             SkillDatabase skills)
         {
-            var box = new VisualElement();
-            box.style.flexGrow = 1f;
-            box.style.height = BarBoxHeight;
-            box.style.marginRight = 3f;
-            box.style.justifyContent = Justify.Center;
-            box.style.alignItems = Align.Center;
-            box.style.borderTopWidth = 1f;
-            box.style.borderBottomWidth = 1f;
-            box.style.borderLeftWidth = 1f;
-            box.style.borderRightWidth = 1f;
+            Image box = Ugui.Box(_barList, $"Key{index}", new Color(0.10f, 0.11f, 0.14f, 1f));
+            Ugui.Size(box.rectTransform, height: BarBoxHeight, grow: 1f);
 
             Color border = new Color(0.24f, 0.26f, 0.32f);
             string text = HotkeyName(index);
@@ -2093,35 +2252,27 @@ namespace TogetherWeFall.UI
                 }
 
                 int capturedSkill = skillIndex;
-                AttachTooltip(box, () => DescribeSkillIndex(capturedSkill));
+                AttachTooltip(box.rectTransform, () => DescribeSkillIndex(capturedSkill));
             }
 
-            box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);
-            SetBorder(box, border);
-
-            var label = new Label(text);
-            label.style.fontSize = 10;
-            label.style.color = border;
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.style.unityTextAlign = TextAnchor.MiddleCenter;
-            label.pickingMode = PickingMode.Ignore;
-            box.Add(label);
+            TextMeshProUGUI label = Ugui.Text(
+                box.rectTransform, "Label", 10f, border, wrap: true);
+            label.text = text;
 
             int captured = index;
-            box.RegisterCallback<ClickEvent>(evt =>
+            Ugui.On(box.rectTransform, EventTriggerType.PointerClick, data =>
             {
-                if (evt.clickCount >= 2)
+                if (data.clickCount >= 2)
                     SendClearBar(captured);
             });
 
             _barTargets.Add(new BarTarget
             {
-                Element = box,
+                Element = box.rectTransform,
+                Border = Ugui.Border(box.rectTransform, border, 1f),
                 BarSlotIndex = index,
                 DefaultBorder = border
             });
-
-            return box;
         }
 
         /// <summary>
@@ -2147,13 +2298,13 @@ namespace TogetherWeFall.UI
         /// remove a welded socket, and says so.
         /// </summary>
         private void BeginWeldedDrag(
-            PointerDownEvent evt,
-            VisualElement cell,
+            PointerEventData data,
+            RectTransform cell,
             Entity gear,
             int socketIndex,
             ItemDatabase items)
         {
-            if (evt.button != 0 || _drag.Active)
+            if (data.button != PointerEventData.InputButton.Left || _drag.Active)
                 return;
 
             if (!TryGetCharacter(out _, out Entity bag))
@@ -2167,7 +2318,7 @@ namespace TogetherWeFall.UI
             // follows the pointer at all.
             int gearId = _entityManager.GetComponentData<ItemInstance>(gear).ItemId;
 
-            StartDrag(evt, cell, items, gearId, Entity.Null, bag, false);
+            StartDrag(cell, items, gearId, Entity.Null, bag, false);
 
             // Set after the fact, because both are read off the item id and the
             // id here belongs to the sword rather than to the attack in it. What
@@ -2179,19 +2330,17 @@ namespace TogetherWeFall.UI
             _drag.Source2 = DragSource.Socket;
             _drag.SourceGear = gear;
             _drag.SourceSocket = socketIndex;
-
-            evt.StopPropagation();
         }
 
         private void BeginSocketDrag(
-            PointerDownEvent evt,
-            VisualElement cell,
+            PointerEventData data,
+            RectTransform cell,
             Entity gear,
             int socketIndex,
             Entity gem,
             ItemDatabase items)
         {
-            if (evt.button != 0 || _drag.Active)
+            if (data.button != PointerEventData.InputButton.Left || _drag.Active)
                 return;
 
             if (!TryGetCharacter(out _, out Entity bag))
@@ -2199,7 +2348,7 @@ namespace TogetherWeFall.UI
 
             int itemId = _entityManager.GetComponentData<ItemInstance>(gem).ItemId;
 
-            StartDrag(evt, cell, items, itemId, gem, bag, false);
+            StartDrag(cell, items, itemId, gem, bag, false);
 
             _drag.Source2 = DragSource.Socket;
             _drag.SourceGear = gear;
@@ -2207,8 +2356,6 @@ namespace TogetherWeFall.UI
 
             if (GridFit.TryGetFootprint(items, itemId, false, out int width, out int height))
                 _drag.GrabOffset = new Vector2(width * _cellSize, height * _cellSize) * 0.5f;
-
-            evt.StopPropagation();
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -2536,49 +2683,47 @@ namespace TogetherWeFall.UI
         // on a stylesheet that may or may not have been imported.
         // ─────────────────────────────────────────────────────────────────
 
-        private static VisualElement MakeSection(VisualElement parent)
+        /// <summary>
+        /// A block inside a column.
+        ///
+        /// Deliberately without a LayoutElement of its own: a LayoutElement
+        /// OUTRANKS a layout group when the parent asks how tall a child is, so
+        /// one left at zero would collapse a section that measures itself. The
+        /// sections whose rows are placed by hand call Size when they know.
+        /// </summary>
+        private static RectTransform MakeSection(RectTransform parent) =>
+            Ugui.Node(parent, "Section");
+
+        private static void MakeHeading(RectTransform parent, string text)
         {
-            var section = new VisualElement();
-            section.style.marginBottom = 8f;
-            parent.Add(section);
-            return section;
+            TextMeshProUGUI heading = Ugui.Text(
+                parent, "Heading", 15f, new Color(0.62f, 0.72f, 0.85f),
+                TextAlignmentOptions.TopLeft, bold: true);
+
+            heading.text = text;
+            Ugui.Size(heading.rectTransform, height: 19f);
         }
 
-        private static Label MakeHeading(string text)
+        /// <summary>
+        /// A name on the left and a value on the right. The name takes the slack,
+        /// which is how uGUI spells space-between.
+        /// </summary>
+        private static RectTransform MakeRow(RectTransform parent, string label, string detail)
         {
-            var heading = new Label(text);
-            heading.style.color = new Color(0.62f, 0.72f, 0.85f);
-            heading.style.fontSize = 15;
-            heading.style.unityFontStyleAndWeight = FontStyle.Bold;
-            heading.style.marginBottom = 4f;
-            return heading;
-        }
+            RectTransform row = Ugui.Node(parent, label);
+            Ugui.Row(row, spacing: 6f);
 
-        private static VisualElement MakeRow(string label, string detail, Button action)
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.justifyContent = Justify.SpaceBetween;
-            row.style.alignItems = Align.Center;
-            row.style.marginBottom = 2f;
-
-            var name = new Label(label);
-            name.style.color = new Color(0.88f, 0.89f, 0.92f);
-            name.style.fontSize = 13;
-            name.style.flexGrow = 1f;
-            row.Add(name);
+            TextMeshProUGUI name = Ugui.Text(
+                row, "Name", 13f, new Color(0.88f, 0.89f, 0.92f), TextAlignmentOptions.Left);
+            name.text = label;
+            Ugui.Size(name.rectTransform, grow: 1f);
 
             if (!string.IsNullOrEmpty(detail))
             {
-                var value = new Label(detail);
-                value.style.color = new Color(0.66f, 0.68f, 0.72f);
-                value.style.fontSize = 13;
-                value.style.marginRight = 6f;
-                row.Add(value);
+                TextMeshProUGUI value = Ugui.Text(
+                    row, "Value", 13f, new Color(0.66f, 0.68f, 0.72f), TextAlignmentOptions.Right);
+                value.text = detail;
             }
-
-            if (action != null)
-                row.Add(action);
 
             return row;
         }
@@ -2605,6 +2750,9 @@ namespace TogetherWeFall.UI
 
         private void OnDestroy()
         {
+            if (_portrait != null)
+                _portrait.SetShown(false);
+
             if (!_hasWorld)
                 return;
 
@@ -2626,7 +2774,15 @@ namespace TogetherWeFall.UI
         /// <summary>One socket cell, and the hole it stands for.</summary>
         private struct SocketTarget
         {
-            public VisualElement Element;
+            public RectTransform Element;
+
+            /// <summary>
+            /// The frame to recolour while a drag hovers it. A border is a child
+            /// in uGUI, so the target has to hold on to it — finding it again by
+            /// name on every pointer move would be a search per socket per frame.
+            /// </summary>
+            public Image Border;
+
             public Entity Gear;
             public int SocketIndex;
             public bool IsEmpty;
@@ -2636,14 +2792,16 @@ namespace TogetherWeFall.UI
         /// <summary>One hotkey box.</summary>
         private struct BarTarget
         {
-            public VisualElement Element;
+            public RectTransform Element;
+            public Image Border;
             public int BarSlotIndex;
             public Color DefaultBorder;
         }
 
         private struct SlotTarget
         {
-            public VisualElement Element;
+            public RectTransform Element;
+            public Image Border;
             public EquipmentSlot Slot;
 
             /// <summary>Unusable because the main hand needs both hands.</summary>
@@ -2671,11 +2829,11 @@ namespace TogetherWeFall.UI
             public bool Active;
 
             /// <summary>
-            /// The element holding the pointer capture. Not the thing that
-            /// moves — the ghost does that — but the thing every pointer event
-            /// is routed to until the button comes up.
+            /// What was picked up. Not the thing that moves — the ghost does
+            /// that — but the thing that dims in place until the button comes up,
+            /// and the thing to undim when it does.
             /// </summary>
-            public VisualElement Source;
+            public RectTransform Source;
 
             /// <summary>
             /// Where this started. It decides what a drop means on every target,
@@ -2703,8 +2861,15 @@ namespace TogetherWeFall.UI
             public ushort AllowedSlots;
 
             public bool Rotated;
-            public int PointerId;
             public Vector2 GrabOffset;
+
+            /// <summary>
+            /// How big the ghost is, worked out when the item was picked up or
+            /// turned. Kept because moving it writes its size as well as its
+            /// position, and reading that back off the rect every frame would be
+            /// asking uGUI what we just told it.
+            /// </summary>
+            public Vector2 GhostSize;
 
             /// <summary>Top-left of the ghost, in grid-local pixels.</summary>
             public Vector2 Corner;

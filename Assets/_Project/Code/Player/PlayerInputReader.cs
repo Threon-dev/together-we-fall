@@ -188,21 +188,63 @@ namespace TogetherWeFall.Player
         /// </summary>
         public bool IsCastHeld(int slotIndex)
         {
-            if (!_initialized)
-                return false;
-
-            switch (slotIndex)
-            {
-                case 0: return _primaryCastAction.IsPressed();
-                case 1: return _secondaryCastAction.IsPressed();
-                case 2: return _thirdCastAction.IsPressed();
-                case 3: return _fourthCastAction.IsPressed();
-                default: return false;
-            }
+            InputAction action = CastAction(slotIndex);
+            return action != null && action.IsPressed();
         }
 
         /// <summary>How many cast slots this reader has bindings for.</summary>
         public int CastSlotCount => 4;
+
+        /// <summary>
+        /// Where the pointer is, in screen pixels.
+        ///
+        /// For the inventory panel, which drags things: a drag is a position
+        /// every frame rather than an event, and the panel would otherwise have
+        /// to read the mouse itself. Devices are read in one file in this
+        /// project, and a panel is not that file.
+        ///
+        /// The same binding the aim uses, so a drag and a cast agree about where
+        /// the cursor is.
+        /// </summary>
+        public Vector2 PointerPosition =>
+            _initialized ? _pointerAction.ReadValue<Vector2>() : Vector2.zero;
+
+        /// <summary>
+        /// Whether a cast button went down or came up this frame.
+        ///
+        /// Beside IsCastHeld rather than instead of it: gameplay wants the held
+        /// state, and a drag wants the two edges — the button coming up is the
+        /// drop, and the other button going down while it is held is a rotate.
+        /// Same bindings either way, so a panel cannot disagree with the game
+        /// about which button is which.
+        /// </summary>
+        public bool WasCastPressed(int slotIndex)
+        {
+            InputAction action = CastAction(slotIndex);
+            return action != null && action.WasPressedThisFrame();
+        }
+
+        /// <inheritdoc cref="WasCastPressed"/>
+        public bool WasCastReleased(int slotIndex)
+        {
+            InputAction action = CastAction(slotIndex);
+            return action != null && action.WasReleasedThisFrame();
+        }
+
+        private InputAction CastAction(int slotIndex)
+        {
+            if (!_initialized)
+                return null;
+
+            switch (slotIndex)
+            {
+                case 0: return _primaryCastAction;
+                case 1: return _secondaryCastAction;
+                case 2: return _thirdCastAction;
+                case 3: return _fourthCastAction;
+                default: return null;
+            }
+        }
 
         /// <summary>
         /// What the player actually presses for a cast slot.

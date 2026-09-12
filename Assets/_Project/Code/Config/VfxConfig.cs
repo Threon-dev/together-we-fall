@@ -124,6 +124,23 @@ namespace TogetherWeFall.Config
                  "of times a second must never allocate.")]
         [SerializeField, Range(8, 512)] private int _poolSize = 96;
 
+        [Header("Authored effects")]
+        [Tooltip("How many copies of ONE particle prefab may be alive at once. " +
+                 "Past it the oldest one-shot is taken back rather than a new " +
+                 "one made — a trail on a projectile is never stolen. Per " +
+                 "prefab, so importing a pack of forty does not multiply this.")]
+        [SerializeField, Range(2, 64)] private int _particlesPerEffect = 16;
+
+        [Tooltip("How long a trail is left to fade after the thing carrying it " +
+                 "is gone. It stops emitting immediately; this is only how long " +
+                 "what is already in the air has to die out.")]
+        [SerializeField, Range(0.05f, 3f)] private float _particleFadeSeconds = 0.6f;
+
+        [Tooltip("Ceiling on a one-shot's own duration. A looping prefab " +
+                 "answers with its loop and would otherwise never come back, so " +
+                 "this is the number that makes a mistake in the pack survivable.")]
+        [SerializeField, Range(0.2f, 12f)] private float _particleMaxSeconds = 4f;
+
         public int StatusIconBudget => _statusIconBudget;
         public float StatusIconRange => _statusIconRange;
         public int StatusIconFontSize => _statusIconFontSize;
@@ -158,5 +175,9 @@ namespace TogetherWeFall.Config
         public float MassKillCooldownSeconds => _massKillCooldownSeconds;
 
         public int PoolSize => _poolSize;
+
+        public int ParticlesPerEffect => _particlesPerEffect;
+        public float ParticleFadeSeconds => _particleFadeSeconds;
+        public float ParticleMaxSeconds => _particleMaxSeconds;
     }
 }

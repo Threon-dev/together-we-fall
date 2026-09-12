@@ -19,7 +19,15 @@ namespace TogetherWeFall.Equipment.Authoring
     {
         [SerializeField] private CharacterConfig _config;
 
+        [Tooltip("What a new character is handed. Its own asset because it is a " +
+                 "test dial rather than balance: duplicate it and point a scene " +
+                 "at the copy to try a loadout without touching the sheet " +
+                 "everybody plays with. Leave it empty for a character that " +
+                 "starts with nothing.")]
+        [SerializeField] private StarterKitConfig _starterKit;
+
         public CharacterConfig Config => _config;
+        public StarterKitConfig StarterKit => _starterKit;
 
         private sealed class CharacterStatsBaker : Baker<CharacterStatsAuthoring>
         {
@@ -66,19 +74,39 @@ namespace TogetherWeFall.Equipment.Authoring
                 // Item ids rather than references: a system cannot hold a
                 // managed asset, and the id is the same one the item database
                 // is addressed by.
+                //
+                // The buffer is added even with no kit assigned, because it is
+                // what StarterKitSystem requires to run at all — an empty one is
+                // a character who starts with nothing, which is a legitimate
+                // way to test.
                 DynamicBuffer<StarterItem> kit = AddBuffer<StarterItem>(entity);
-                ItemDefinition[] starter = authoring.Config.StarterItems;
 
-                if (starter == null)
+                if (authoring.StarterKit == null)
                     return;
 
-                for (int i = 0; i < starter.Length; i++)
+                DependsOn(authoring.StarterKit);
+
+                StarterKitEntry[] entries = authoring.StarterKit.Entries;
+
+                for (int i = 0; i < entries.Length; i++)
                 {
-                    if (starter[i] == null)
+                    if (entries[i]?.Item == null)
                         continue;
 
-                    DependsOn(starter[i]);
-                    kit.Add(new StarterItem { ItemId = starter[i].ItemId });
+                    DependsOn(entries[i].Item);
+
+                    // A count is flattened here rather than carried into the
+                    // simulation: the kit hands out one entity per copy, so ten
+                    // coins are ten items whichever end of the pipe counts them,
+                    // and the system stays a loop with no arithmetic in it.
+                    var granted = new StarterItem
+                    {
+                        ItemId = entries[i].Item.ItemId,
+                        Worn = entries[i].Placement == StarterKitPlacement.Worn
+                    };
+
+                    for (int copy = 0; copy < entries[i].Count; copy++)
+                        kit.Add(granted);
                 }
             }
         }

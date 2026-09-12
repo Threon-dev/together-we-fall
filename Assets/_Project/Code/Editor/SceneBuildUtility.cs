@@ -1,7 +1,8 @@
-using System.IO;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.UI;
 using TogetherWeFall.Audio;
 using TogetherWeFall.Bootstrap;
 using TogetherWeFall.CameraRig;
@@ -41,7 +42,6 @@ namespace TogetherWeFall.EditorTools
         public const string ArtFolder = "Assets/_Project/Art";
         public const string DataFolder = "Assets/_Project/Data";
         public const string PrefabFolder = "Assets/_Project/Prefabs";
-        public const string UiFolder = "Assets/_Project/UI";
 
         public static void CreateLighting()
         {
@@ -73,10 +73,119 @@ namespace TogetherWeFall.EditorTools
             controller.radius = 0.5f;
             controller.center = Vector3.zero;
 
+            // Its own layer, so the portrait camera can be pointed at the
+            // character and see nothing else. Recursive because the capsule will
+            // one day be a model with limbs, and a portrait that quietly renders
+            // only the root is the sort of empty box nobody debugs.
+            SetLayerRecursively(player, EnsureLayer(CharacterLayer));
+
             player.AddComponent<PlayerInputReader>();
             player.AddComponent<PlayerPositionPublisher>();
             player.AddComponent<PlayerActionPublisher>();
             return player.AddComponent<PlayerMotor>();
+        }
+
+        /// <summary>
+        /// The camera that draws the character into the inventory panel.
+        ///
+        /// A child of the player, so it turns with them and always frames the
+        /// front, and culled to the character's layer, so the world it is
+        /// standing in is never drawn behind them. It is off until the panel
+        /// asks — see CharacterPortrait.
+        /// </summary>
+        public static CharacterPortrait CreateCharacterPortrait(PlayerMotor player)
+        {
+            var portraitObject = new GameObject("CharacterPortrait");
+            portraitObject.transform.SetParent(player.transform, worldPositionStays: false);
+
+            // Far enough back that a two-metre body fills the frame at this
+            // field of view, and level with the middle of it rather than with
+            // the eyes: the panel wants the whole character, not a face.
+            portraitObject.transform.localPosition = new Vector3(0f, 0.1f, 4f);
+            portraitObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+            Camera camera = portraitObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.09f, 0.10f, 0.13f, 1f);
+
+            // The index this returns rather than a lookup by name: the layer may
+            // have been written into the project a moment ago.
+            camera.cullingMask = 1 << EnsureLayer(CharacterLayer);
+            camera.fieldOfView = 34f;
+            camera.nearClipPlane = 0.1f;
+            camera.farClipPlane = 6f;
+
+            // Off until something turns it on, and with no target texture yet:
+            // a camera with neither would render this close-up over the game.
+            camera.enabled = false;
+
+            CharacterPortrait portrait = portraitObject.AddComponent<CharacterPortrait>();
+            SetReference(portrait, "_camera", camera);
+
+            return portrait;
+        }
+
+        /// <summary>
+        /// The layer the character is on, added to the project the first time a
+        /// scene is built.
+        ///
+        /// Nothing in this project reads layers for physics or raycasts, so this
+        /// costs nothing anywhere else — it exists so one camera can be told
+        /// what to draw.
+        /// </summary>
+        public const string CharacterLayer = "Character";
+
+        private static int EnsureLayer(string name)
+        {
+            Object[] assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+
+            if (assets.Length == 0)
+            {
+                Debug.LogWarning(
+                    $"[SceneBuildUtility] Could not open the tag manager, so the '{name}' layer " +
+                    "was not created. The character portrait will draw the world behind the " +
+                    "player.");
+
+                return 0;
+            }
+
+            var manager = new SerializedObject(assets[0]);
+            SerializedProperty layers = manager.FindProperty("layers");
+
+            for (int i = 0; i < layers.arraySize; i++)
+            {
+                if (layers.GetArrayElementAtIndex(i).stringValue == name)
+                    return i;
+            }
+
+            // Everything below eight belongs to Unity — Default, UI, Water and
+            // the rest — and overwriting one of those would be a project-wide
+            // change made by a scene builder.
+            for (int i = 8; i < layers.arraySize; i++)
+            {
+                SerializedProperty layer = layers.GetArrayElementAtIndex(i);
+
+                if (!string.IsNullOrEmpty(layer.stringValue))
+                    continue;
+
+                layer.stringValue = name;
+                manager.ApplyModifiedPropertiesWithoutUndo();
+                return i;
+            }
+
+            Debug.LogWarning(
+                $"[SceneBuildUtility] Every user layer is taken, so '{name}' could not be " +
+                "added. Free one, or the character portrait will draw the whole world.");
+
+            return 0;
+        }
+
+        private static void SetLayerRecursively(GameObject target, int layer)
+        {
+            target.layer = layer;
+
+            for (int i = 0; i < target.transform.childCount; i++)
+                SetLayerRecursively(target.transform.GetChild(i).gameObject, layer);
         }
 
         public static TopDownCameraRig CreateCameraRig()
@@ -342,6 +451,29 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
+        /// Appends one line to a starter kit.
+        ///
+        /// Shared because two factories fill the kit — the library from the
+        /// Tools menu and the coins from the lobby build — and an entry is three
+        /// fields, which is three chances for the two of them to disagree about
+        /// what a default is.
+        /// </summary>
+        public static void AppendKitEntry(
+            SerializedProperty entries, ItemDefinition item, bool worn, int count)
+        {
+            if (entries == null || item == null)
+                return;
+
+            entries.arraySize++;
+
+            SerializedProperty entry = entries.GetArrayElementAtIndex(entries.arraySize - 1);
+            entry.FindPropertyRelative("_item").objectReferenceValue = item;
+            entry.FindPropertyRelative("_placement").enumValueIndex =
+                (int)(worn ? StarterKitPlacement.Worn : StarterKitPlacement.Bag);
+            entry.FindPropertyRelative("_count").intValue = Mathf.Max(1, count);
+        }
+
+        /// <summary>
         /// Appends an item to a loot table if it is not already in it.
         ///
         /// Additive on purpose, and shared because two factories now need it.
@@ -526,6 +658,14 @@ namespace TogetherWeFall.EditorTools
 
             SetReference(authoring, "_config", config);
 
+            // The loadout, as its own asset. Created empty on a fresh project
+            // and filled by the content factories — the coins in the lobby, the
+            // library from the Tools menu — so the reference is wired once here
+            // and every scene gets the same kit until somebody points one at a
+            // copy.
+            SetReference(
+                authoring, "_starterKit", CreateOrLoadConfig<StarterKitConfig>("StarterKitConfig"));
+
             return statsObject;
         }
 
@@ -568,24 +708,34 @@ namespace TogetherWeFall.EditorTools
         /// camera about. Its pooled line renderers are parented to it, so the
         /// whole effect layer is one collapsible entry in the hierarchy.
         /// </summary>
-        public static VfxPresenter CreateVfxPresenter(
-            VfxConfig config, Material lineMaterial, PanelSettings panelSettings)
+        public static VfxPresenter CreateVfxPresenter(VfxConfig config, Material lineMaterial)
         {
-            var vfxObject = new GameObject("VfxPresenter");
+            // Behind everything else, and unclickable. Numbers over a crowd must
+            // never be the thing covering a panel the player opened, and they
+            // must never be the thing that ate a cast.
+            Canvas canvas = CreateUiCanvas("VfxPresenter", sortingOrder: -2, raycasts: false);
 
-            UIDocument document = vfxObject.AddComponent<UIDocument>();
-            document.panelSettings = panelSettings;
-
-            // Behind the inventory, which shares the same panel. Numbers over a
-            // crowd must never be the thing covering a panel the player opened.
-            document.sortingOrder = -1f;
-
+            GameObject vfxObject = canvas.gameObject;
             VfxPresenter presenter = vfxObject.AddComponent<VfxPresenter>();
+
+            // The authored sets: created where they do not exist yet, then
+            // listed for the presenter. Found rather than named, like the item
+            // sets and for the same reason — a new set should be an asset
+            // somebody makes, not a line somebody adds here.
+            SkillVfxContentFactory.CreateOrLoadSets();
+            SkillVfxSet[] sets = SkillVfxContentFactory.LoadAll();
 
             var serialized = new SerializedObject(presenter);
             serialized.FindProperty("_config").objectReferenceValue = config;
             serialized.FindProperty("_lineMaterial").objectReferenceValue = lineMaterial;
-            serialized.FindProperty("_document").objectReferenceValue = document;
+            serialized.FindProperty("_canvas").objectReferenceValue = canvas;
+
+            SerializedProperty list = serialized.FindProperty("_skillVfx");
+            list.arraySize = sets.Length;
+
+            for (int i = 0; i < sets.Length; i++)
+                list.GetArrayElementAtIndex(i).objectReferenceValue = sets[i];
+
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             return presenter;
@@ -622,19 +772,20 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
-        /// The inventory panel. A UIDocument and the component that fills it —
-        /// there is no UXML, because a panel generated entirely from a buffer
-        /// would have nothing but an empty container to describe.
+        /// The inventory panel. A canvas and the component that fills it — there
+        /// are no prefabs, because a panel generated entirely from a buffer would
+        /// have nothing but an empty container to author.
+        ///
+        /// Over the lobby's panels: this is the one the player opens on purpose,
+        /// and it can be open while standing in a shop.
         /// </summary>
-        public static InventoryUI CreateInventoryUI(PanelSettings panelSettings)
+        public static InventoryUI CreateInventoryUI(CharacterPortrait portrait)
         {
-            var uiObject = new GameObject("InventoryUI");
+            Canvas canvas = CreateUiCanvas("InventoryUI", sortingOrder: 1, raycasts: true);
 
-            UIDocument document = uiObject.AddComponent<UIDocument>();
-            document.panelSettings = panelSettings;
-
-            InventoryUI ui = uiObject.AddComponent<InventoryUI>();
-            SetReference(ui, "_document", document);
+            InventoryUI ui = canvas.gameObject.AddComponent<InventoryUI>();
+            SetReference(ui, "_canvas", canvas);
+            SetReference(ui, "_portrait", portrait);
 
             return ui;
         }
@@ -643,20 +794,17 @@ namespace TogetherWeFall.EditorTools
         /// The lobby panels: the NPC prompt, the shop, the forge, the portal and
         /// the damage meter.
         ///
-        /// Its own UIDocument beside the inventory one rather than a section
-        /// inside it. They are shown at different times by different things, and
-        /// a panel that has to ask another panel whether it may draw is a
-        /// dependency neither of them needs.
+        /// Its own canvas beside the inventory one rather than a section inside
+        /// it. They are shown at different times by different things, and a panel
+        /// that has to ask another panel whether it may draw is a dependency
+        /// neither of them needs.
         /// </summary>
-        public static LobbyUI CreateLobbyUI(PanelSettings panelSettings)
+        public static LobbyUI CreateLobbyUI()
         {
-            var uiObject = new GameObject("LobbyUI");
+            Canvas canvas = CreateUiCanvas("LobbyUI", sortingOrder: 0, raycasts: true);
 
-            UIDocument document = uiObject.AddComponent<UIDocument>();
-            document.panelSettings = panelSettings;
-
-            LobbyUI ui = uiObject.AddComponent<LobbyUI>();
-            SetReference(ui, "_document", document);
+            LobbyUI ui = canvas.gameObject.AddComponent<LobbyUI>();
+            SetReference(ui, "_canvas", canvas);
 
             return ui;
         }
@@ -674,22 +822,22 @@ namespace TogetherWeFall.EditorTools
         /// <summary>
         /// The orbs and the skill bar.
         ///
-        /// Its own UIDocument on the shared panel settings, sorted between the
-        /// damage numbers and the inventory: the HUD must sit over the numbers
-        /// floating off a crowd, and under the panel the player deliberately
-        /// opened. Sorting is the only place that can be said, because the
-        /// panels build themselves lazily and in no fixed order.
+        /// Its own canvas, sorted between the damage numbers and the inventory:
+        /// the HUD must sit over the numbers floating off a crowd, and under the
+        /// panel the player deliberately opened. Sorting is the only place that
+        /// can be said, because the panels build themselves lazily and in no
+        /// fixed order.
+        ///
+        /// No raycaster, which is the whole of what `pickingMode = Ignore` used
+        /// to say on every element the HUD has: a readout is not a surface, and
+        /// a canvas nothing can hit says that once.
         /// </summary>
-        public static PlayerHud CreatePlayerHud(PanelSettings panelSettings)
+        public static PlayerHud CreatePlayerHud()
         {
-            var hudObject = new GameObject("PlayerHud");
+            Canvas canvas = CreateUiCanvas("PlayerHud", sortingOrder: -1, raycasts: false);
 
-            UIDocument document = hudObject.AddComponent<UIDocument>();
-            document.panelSettings = panelSettings;
-            document.sortingOrder = -0.5f;
-
-            PlayerHud hud = hudObject.AddComponent<PlayerHud>();
-            SetReference(hud, "_document", document);
+            PlayerHud hud = canvas.gameObject.AddComponent<PlayerHud>();
+            SetReference(hud, "_canvas", canvas);
 
             return hud;
         }
@@ -697,23 +845,101 @@ namespace TogetherWeFall.EditorTools
         /// <summary>
         /// The screen curtain.
         ///
-        /// Its own UIDocument on the same panel settings, sorted above
-        /// everything else. A fade that the inventory panel can be on top of is
-        /// not a fade — and the sorting order is the only place that can be
-        /// said, because the panels are built lazily and in no fixed order.
+        /// Its own canvas, sorted above everything else. A fade that the
+        /// inventory panel can be on top of is not a fade — and the sorting
+        /// order is the only place that can be said, because the panels are
+        /// built lazily and in no fixed order.
         /// </summary>
-        public static CurtainPresenter CreateCurtainPresenter(PanelSettings panelSettings)
+        public static CurtainPresenter CreateCurtainPresenter()
         {
-            var curtainObject = new GameObject("CurtainPresenter");
+            Canvas canvas = CreateUiCanvas("CurtainPresenter", sortingOrder: 10, raycasts: false);
 
-            UIDocument document = curtainObject.AddComponent<UIDocument>();
-            document.panelSettings = panelSettings;
-            document.sortingOrder = 10f;
-
-            CurtainPresenter presenter = curtainObject.AddComponent<CurtainPresenter>();
-            SetReference(presenter, "_document", document);
+            CurtainPresenter presenter = canvas.gameObject.AddComponent<CurtainPresenter>();
+            SetReference(presenter, "_canvas", canvas);
 
             return presenter;
+        }
+
+        /// <summary>
+        /// A screen-space canvas for one screen, scaled exactly the way the UI
+        /// Toolkit panel was: 1200×800 reference, matched on width.
+        ///
+        /// One canvas per screen rather than one shared canvas, because that is
+        /// what the panels already assumed — each drew into its own document and
+        /// said where it sat with a sorting order. A shared canvas would make
+        /// every rebuild of the inventory dirty the HUD's mesh as well, which is
+        /// the one thing separate canvases are actually for.
+        ///
+        /// `raycasts: false` leaves the raycaster off, and nothing on the canvas
+        /// can then be clicked at all. That is the right answer for anything
+        /// that only reports — the HUD, the curtain, floating numbers — and the
+        /// wrong one for anything with a button on it.
+        /// </summary>
+        public static Canvas CreateUiCanvas(string name, int sortingOrder, bool raycasts)
+        {
+            RequireTextMeshPro();
+            EnsureEventSystem();
+
+            var canvasObject = new GameObject(name);
+
+            Canvas canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = sortingOrder;
+
+            var scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1200f, 800f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0f;
+
+            if (raycasts)
+                canvasObject.AddComponent<GraphicRaycaster>();
+
+            return canvas;
+        }
+
+        /// <summary>
+        /// Shouts if TextMeshPro's resources have never been imported.
+        ///
+        /// Without them every label in the game draws nothing and the console
+        /// fills with TMP's own complaints — which reads as a broken scene rather
+        /// than as a missing one-time import. The package ships them as a
+        /// .unitypackage, so there is no way to depend on them; the best that can
+        /// be done is to say exactly which menu item fixes it.
+        /// </summary>
+        /// <summary>
+        /// The one object that turns a click into a uGUI event.
+        ///
+        /// One per scene, found rather than counted: three builders and five
+        /// canvases all need it and none of them owns it. Without it the panels
+        /// draw and nothing in them can be pressed — which looks like broken
+        /// panels rather than like a missing object.
+        ///
+        /// The Input System's module rather than the legacy one: the project is on
+        /// the new handler, and StandaloneInputModule throws at runtime there.
+        /// Its actions are left empty on purpose — the module assigns its own
+        /// defaults in OnEnable, and a generated asset saved into a scene would be
+        /// one more thing to keep in step.
+        /// </summary>
+        private static void EnsureEventSystem()
+        {
+            if (Object.FindFirstObjectByType<EventSystem>() != null)
+                return;
+
+            var eventObject = new GameObject("EventSystem");
+            eventObject.AddComponent<EventSystem>();
+            eventObject.AddComponent<InputSystemUIInputModule>();
+        }
+
+        private static void RequireTextMeshPro()
+        {
+            if (TMPro.TMP_Settings.instance != null)
+                return;
+
+            Debug.LogError(
+                "[SceneBuildUtility] TextMeshPro resources are missing, so no UI text will " +
+                "render. Import them once with Window > TextMeshPro > Import TMP Essential " +
+                "Resources, then build the scene again.");
         }
 
         /// <summary>
@@ -789,54 +1015,6 @@ namespace TogetherWeFall.EditorTools
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return config;
-        }
-
-        /// <summary>
-        /// The panel settings every runtime UI document needs.
-        ///
-        /// UI Toolkit refuses to render a runtime panel without a theme, so one
-        /// is generated alongside it. A .tss importing the built-in default is
-        /// exactly what the editor's own "Create > UI Toolkit > TSS Theme File"
-        /// produces — this only saves the trip through the menu.
-        /// </summary>
-        public static PanelSettings CreateOrLoadPanelSettings(string assetName)
-        {
-            EnsureAssetFolder(UiFolder);
-            string path = $"{UiFolder}/{assetName}.asset";
-
-            var existing = AssetDatabase.LoadAssetAtPath<PanelSettings>(path);
-            if (existing != null)
-                return existing;
-
-            var settings = ScriptableObject.CreateInstance<PanelSettings>();
-            settings.themeStyleSheet = CreateOrLoadRuntimeTheme();
-
-            if (settings.themeStyleSheet == null)
-            {
-                Debug.LogWarning(
-                    "[SceneBuildUtility] Could not create a runtime theme. The inventory panel " +
-                    "will not render until a TSS theme is assigned to " + path + ". Create one " +
-                    "with Assets > Create > UI Toolkit > TSS Theme File and drag it onto the " +
-                    "Theme Style Sheet field.");
-            }
-
-            AssetDatabase.CreateAsset(settings, path);
-            return settings;
-        }
-
-        private static ThemeStyleSheet CreateOrLoadRuntimeTheme()
-        {
-            string path = $"{UiFolder}/RuntimeTheme.tss";
-
-            var existing = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(path);
-            if (existing != null)
-                return existing;
-
-            EnsureAssetFolder(UiFolder);
-            File.WriteAllText(path, "@import url(\"unity-theme://default\");");
-            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-
-            return AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(path);
         }
 
         /// <summary>

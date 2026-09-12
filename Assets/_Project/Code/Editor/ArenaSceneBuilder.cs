@@ -4,7 +4,6 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UIElements;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.Config;
 using TogetherWeFall.DebugTools.Authoring;
@@ -176,29 +175,27 @@ namespace TogetherWeFall.EditorTools
             TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
             GameObject debugTools = SceneBuildUtility.CreateDebugTools();
 
-            PanelSettings panelSettings =
-                SceneBuildUtility.CreateOrLoadPanelSettings("RuntimePanelSettings");
-
             // The arena has an inventory now, and it is not a convenience: the
             // starter kit hands out gems in the BAG, deliberately, so socketing
             // them is the player's decision. Without this panel there is no way
             // to make that decision, and therefore no way to cast anything.
-            InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(panelSettings);
+            InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(
+                SceneBuildUtility.CreateCharacterPortrait(player));
 
             Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
             VfxPresenter vfxPresenter =
-                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial, panelSettings);
+                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial);
 
             // Above every other panel, so a fade covers the inventory too.
             CurtainPresenter curtainPresenter =
-                SceneBuildUtility.CreateCurtainPresenter(panelSettings);
+                SceneBuildUtility.CreateCurtainPresenter();
 
             AudioPresenter audioPresenter = SceneBuildUtility.CreateAudioPresenter(
                 SceneBuildUtility.CreateAudioConfig("AudioConfig"));
 
             // The orbs and the skill bar. Between the damage numbers and the
             // inventory, so it covers neither.
-            PlayerHud playerHud = SceneBuildUtility.CreatePlayerHud(panelSettings);
+            PlayerHud playerHud = SceneBuildUtility.CreatePlayerHud();
 
             SceneBuildUtility.CreateBootstrap(
                 cameraRig, player, debugTools, dungeon: null, inventoryUI: inventoryUI,

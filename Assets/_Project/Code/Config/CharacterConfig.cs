@@ -10,6 +10,11 @@ namespace TogetherWeFall.Config
     /// carry, not by what they were born as. When classes arrive this becomes a
     /// set of these assets and the baker picks one — the systems that read the
     /// baked singleton do not change.
+    ///
+    /// What a character STARTS with is no longer here: it moved to
+    /// StarterKitConfig, beside the reason — a loadout is a dial somebody turns
+    /// twenty times an hour to look at a mechanic, and the sheet is balance
+    /// every scene shares.
     /// </summary>
     [CreateAssetMenu(
         fileName = "CharacterConfig",
@@ -36,13 +41,6 @@ namespace TogetherWeFall.Config
             new ItemStatValue(StatKind.ManaRegen, 8f)
         };
 
-        [Header("Starting kit")]
-        [Tooltip("What a new character is handed. The first entry is the gear " +
-                 "the rest are socketed into, in order — so the layout of its " +
-                 "link groups decides which skills end up supported.")]
-        [SerializeField] private ItemDefinition[] _starterItems =
-            System.Array.Empty<ItemDefinition>();
-
         [Header("Bag")]
         [Tooltip("How many cells wide the carried bag is. Twelve by five is the " +
                  "Path of Exile bag; it is here rather than in the simulation " +
@@ -53,8 +51,6 @@ namespace TogetherWeFall.Config
         [SerializeField, Range(3, 12)] private int _bagHeight = 5;
 
         public ItemStatValue[] BaseStats => _baseStats;
-
-        public ItemDefinition[] StarterItems => _starterItems;
 
         public int BagWidth => _bagWidth;
         public int BagHeight => _bagHeight;

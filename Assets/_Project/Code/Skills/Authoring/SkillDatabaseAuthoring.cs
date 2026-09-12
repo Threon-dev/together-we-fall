@@ -134,6 +134,11 @@ namespace TogetherWeFall.Skills.Authoring
                     if (skill.AppliedStatus != null)
                         DependsOn(skill.AppliedStatus);
 
+                    // The id is hashed from the set's asset name, so renaming
+                    // one has to re-bake this.
+                    if (skill.Vfx != null)
+                        DependsOn(skill.Vfx);
+
                     SkillModifier[] modifiers = skill.Modifiers;
                     if (modifiers == null)
                         continue;
@@ -297,6 +302,10 @@ namespace TogetherWeFall.Skills.Authoring
                 blob.ChainRange = skill.ChainRange;
                 blob.ChainDelay = skill.ChainDelay;
                 blob.AppliedStatus = skill.AppliedStatusType;
+
+                // The look, as an id. Zero when the skill names no set, which is
+                // every skill until somebody authors one.
+                blob.VfxId = skill.VfxId;
 
                 SkillModifier[] modifiers = skill.Modifiers ?? System.Array.Empty<SkillModifier>();
 

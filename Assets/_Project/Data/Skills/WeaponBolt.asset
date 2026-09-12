@@ -28,4 +28,5 @@ MonoBehaviour:
   _chainRange: 8
   _chainDelay: 0.07
   _appliedStatus: {fileID: 0}
+  _vfx: {fileID: 11400000, guid: 1b84dbb75fa052345b955b575dd11e4e, type: 2}
   _modifiers: []

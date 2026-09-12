@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace TogetherWeFall.Player
@@ -11,6 +12,11 @@ namespace TogetherWeFall.Player
     /// strafing and backing away read correctly in a top-down action game, and
     /// it is also what a future attack system will need — you shoot where you
     /// point, not where you walk.
+    ///
+    /// It is also why the aim has to be ignored while a panel is open: the mouse
+    /// is picking things up in the bag, and a character that spins to follow it
+    /// is following a pointer that no longer means "look there". Walking is
+    /// untouched — that is still the keyboard, and it still means what it says.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public sealed class PlayerMotor : MonoBehaviour
@@ -30,13 +36,23 @@ namespace TogetherWeFall.Player
 
         private CharacterController _controller;
         private PlayerInputReader _input;
+        private Func<bool> _uiCapturing;
         private float _verticalVelocity;
         private bool _initialized;
 
-        public void Initialize(PlayerInputReader input)
+        /// <summary>
+        /// Told who reads the devices, and handed a question to ask about the
+        /// panels rather than a panel to look at.
+        ///
+        /// The same delegate the action publisher gets, from the same place and
+        /// for the same reason: the motor has no business knowing that panels
+        /// exist, let alone how many. Null in a scene with none.
+        /// </summary>
+        public void Initialize(PlayerInputReader input, Func<bool> uiCapturing = null)
         {
             _controller = GetComponent<CharacterController>();
             _input = input;
+            _uiCapturing = uiCapturing;
             _initialized = true;
         }
 
@@ -81,7 +97,10 @@ namespace TogetherWeFall.Player
             motion.y = _verticalVelocity;
             _controller.Move(motion * Time.deltaTime);
 
-            FaceAim(intent);
+            // Not while the bag is open. The character keeps the facing they
+            // had, which is also what the portrait in the panel is drawn from.
+            if (_uiCapturing == null || !_uiCapturing())
+                FaceAim(intent);
         }
 
         private void ApplyGravity()

@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
-using UnityEngine.UIElements;
+using UnityEngine.UI;
+using TMPro;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Player;
@@ -50,9 +51,9 @@ namespace TogetherWeFall.UI
 
         private const float SkillBoxSize = 54f;
 
-        [Tooltip("Panel the HUD is drawn into. Without it the pools and " +
+        [Tooltip("Canvas the HUD is drawn on. Without it the pools and " +
                  "cooldowns still run in the simulation and cannot be seen.")]
-        [SerializeField] private UIDocument _document;
+        [SerializeField] private Canvas _canvas;
 
         private EntityManager _entityManager;
         private EntityQuery _characterQuery;
@@ -62,11 +63,11 @@ namespace TogetherWeFall.UI
 
         private int _playerId;
 
-        private VisualElement _root;
+        private RectTransform _root;
         private Orb _health;
         private Orb _mana;
 
-        private VisualElement _bar;
+        private RectTransform _bar;
         private readonly List<SkillBox> _boxes = new List<SkillBox>();
 
         /// <summary>
@@ -103,10 +104,10 @@ namespace TogetherWeFall.UI
             _skillDatabaseQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<SkillDatabase>());
 
-            if (_document == null)
+            if (_canvas == null)
             {
                 Debug.LogWarning(
-                    $"[{nameof(PlayerHud)}] No UIDocument assigned — the HUD will not be " +
+                    $"[{nameof(PlayerHud)}] No Canvas assigned — the HUD will not be " +
                     "drawn. Everything else is unaffected.", this);
             }
 
@@ -126,11 +127,11 @@ namespace TogetherWeFall.UI
 
             if (!TryGetCharacter(out Entity character))
             {
-                _root.style.display = DisplayStyle.None;
+                _root.gameObject.SetActive(false);
                 return;
             }
 
-            _root.style.display = DisplayStyle.Flex;
+            _root.gameObject.SetActive(true);
 
             Health health = _entityManager.GetComponentData<Health>(character);
             Mana mana = _entityManager.GetComponentData<Mana>(character);
@@ -251,12 +252,12 @@ namespace TogetherWeFall.UI
             ItemDatabase items,
             SkillDatabase skills)
         {
-            _bar.Clear();
+            Ugui.Clear(_bar);
             _boxes.Clear();
 
             for (int i = 0; i < bar.Length && i < BarSlotCount; i++)
             {
-                var box = new SkillBox(i);
+                var box = new SkillBox(_bar, i);
 
                 if (Resolve(bar[i], worn, items, skills, out int skillIndex, out int linkGroup))
                 {
@@ -292,7 +293,6 @@ namespace TogetherWeFall.UI
                         automatic);
                 }
 
-                _bar.Add(box.Root);
                 _boxes.Add(box);
             }
         }
@@ -329,51 +329,60 @@ namespace TogetherWeFall.UI
         /// Builds the chrome on first use.
         ///
         /// Lazily rather than in Initialize, for the reason the curtain gives:
-        /// a UIDocument fills its root in OnEnable, and the bootstrap that calls
-        /// Initialize deliberately runs before every other component.
+        /// the bootstrap that calls Initialize deliberately runs before every
+        /// other component, and building on first paint depends on nothing.
+        ///
+        /// The three pieces are anchored to the strip's corners rather than laid
+        /// out by a group. UI Toolkit said "a row, spaced apart, bottom
+        /// aligned"; uGUI has no space-between, and with exactly three children
+        /// that never change the anchors say the same thing in the same number
+        /// of lines — left orb, bar in the middle, right orb — without a
+        /// layout pass. The bar is the one piece whose width depends on its
+        /// contents, and that is the one place a layout group earns itself.
+        ///
+        /// The HUD is a readout, not a surface. Every click on it belongs to the
+        /// world underneath, which is why its canvas carries no raycaster at
+        /// all — see the scene builder. The one click that would not, casting, is
+        /// read from the input system rather than from an element anyway.
         /// </summary>
         private bool EnsureLayout()
         {
             if (_root != null)
                 return true;
 
-            if (_document == null)
+            if (_canvas == null)
                 return false;
 
-            VisualElement root = _document.rootVisualElement;
-            if (root == null)
-                return false;
+            _root = Ugui.Node(_canvas.transform, "Hud");
+            Ugui.Place(_root, left: 18f, right: 18f, bottom: 12f, height: OrbSize);
 
-            _root = new VisualElement();
-            _root.style.position = Position.Absolute;
-            _root.style.left = 0f;
-            _root.style.right = 0f;
-            _root.style.bottom = 12f;
-            _root.style.flexDirection = FlexDirection.Row;
-            _root.style.alignItems = Align.FlexEnd;
-            _root.style.justifyContent = Justify.SpaceBetween;
-            _root.style.paddingLeft = 18f;
-            _root.style.paddingRight = 18f;
+            _health = new Orb(
+                _root, "Health",
+                new Color(0.68f, 0.16f, 0.18f), new Color(0.30f, 0.08f, 0.09f));
+            Ugui.Place(_health.Root, left: 0f, bottom: 0f, width: OrbSize, height: OrbSize);
 
-            // The HUD is a readout, not a surface. Every click on it belongs to
-            // the world underneath — and the one click that would not, casting,
-            // is read from the input system rather than from an element anyway.
-            _root.pickingMode = PickingMode.Ignore;
+            _mana = new Orb(
+                _root, "Mana",
+                new Color(0.22f, 0.40f, 0.78f), new Color(0.09f, 0.15f, 0.32f));
+            Ugui.Place(_mana.Root, right: 0f, bottom: 0f, width: OrbSize, height: OrbSize);
 
-            _health = new Orb(new Color(0.68f, 0.16f, 0.18f), new Color(0.30f, 0.08f, 0.09f));
-            _mana = new Orb(new Color(0.22f, 0.40f, 0.78f), new Color(0.09f, 0.15f, 0.32f));
+            _bar = Ugui.Node(_root, "SkillBar");
+            Ugui.Place(_bar, bottom: 8f, height: SkillBoxSize);
 
-            _bar = new VisualElement();
-            _bar.style.flexDirection = FlexDirection.Row;
-            _bar.style.alignItems = Align.FlexEnd;
-            _bar.style.marginBottom = 8f;
-            _bar.pickingMode = PickingMode.Ignore;
+            // The boxes keep their own size — the group only spaces them and
+            // measures the result, which the fitter then makes the bar's width.
+            // Eight of spacing is the four-a-side margin each box used to carry.
+            var row = _bar.gameObject.AddComponent<HorizontalLayoutGroup>();
+            row.childAlignment = TextAnchor.LowerCenter;
+            row.spacing = 8f;
+            row.childControlWidth = false;
+            row.childControlHeight = false;
+            row.childForceExpandWidth = false;
+            row.childForceExpandHeight = false;
 
-            _root.Add(_health.Root);
-            _root.Add(_bar);
-            _root.Add(_mana.Root);
+            var fitter = _bar.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            root.Add(_root);
             return true;
         }
 
@@ -406,56 +415,43 @@ namespace TogetherWeFall.UI
         /// </summary>
         private sealed class Orb
         {
-            public readonly VisualElement Root;
+            public readonly RectTransform Root;
 
-            private readonly VisualElement _fill;
-            private readonly Label _label;
+            private readonly Image _fill;
+            private readonly TextMeshProUGUI _label;
 
             private int _lastCurrent = int.MinValue;
             private int _lastMax = int.MinValue;
 
-            public Orb(Color fill, Color empty)
+            public Orb(Transform parent, string name, Color fill, Color empty)
             {
-                Root = new VisualElement();
-                Root.style.width = OrbSize;
-                Root.style.height = OrbSize;
-                Root.style.backgroundColor = empty;
-                Root.style.justifyContent = Justify.Center;
-                Root.style.alignItems = Align.Center;
-                Root.pickingMode = PickingMode.Ignore;
+                const float Radius = OrbSize * 0.5f;
 
-                SetRadius(Root, OrbSize * 0.5f);
-                SetBorder(Root, new Color(0.08f, 0.09f, 0.11f), 2f);
+                Root = Ugui.Box(parent, name, empty, Radius).rectTransform;
 
-                _fill = new VisualElement();
-                _fill.style.position = Position.Absolute;
-                _fill.style.left = 0f;
-                _fill.style.right = 0f;
-                _fill.style.bottom = 0f;
-                _fill.style.backgroundColor = fill;
-                _fill.pickingMode = PickingMode.Ignore;
+                // A filled image rather than a child whose height is the
+                // fraction, which is what UI Toolkit needed. uGUI fills a
+                // sprite from an edge natively, so the liquid level is one
+                // number on one component — and it is the circle itself being
+                // cut, so the surface stays flat and the bottom stays round
+                // however low it gets. That took a separately-rounded child
+                // before.
+                _fill = Ugui.Box(Root, "Fill", fill, Radius);
+                _fill.type = Image.Type.Filled;
+                _fill.fillMethod = Image.FillMethod.Vertical;
+                _fill.fillOrigin = (int)Image.OriginVertical.Bottom;
+                _fill.fillAmount = 0f;
 
-                // Rounded at the bottom only. A fill rounded at the top would
-                // pull away from the orb's edge as it drains and stop reading as
-                // liquid; square at the top is what a surface looks like.
-                _fill.style.borderBottomLeftRadius = OrbSize * 0.5f;
-                _fill.style.borderBottomRightRadius = OrbSize * 0.5f;
+                _label = Ugui.Text(Root, "Label", 14f, Color.white, bold: true);
 
-                _label = new Label();
-                _label.style.fontSize = 14;
-                _label.style.color = Color.white;
-                _label.style.unityFontStyleAndWeight = FontStyle.Bold;
-                _label.style.unityTextAlign = TextAnchor.MiddleCenter;
-                _label.pickingMode = PickingMode.Ignore;
-
-                Root.Add(_fill);
-                Root.Add(_label);
+                // Last, so the ring draws over the fill instead of under it.
+                Ugui.Border(Root, new Color(0.08f, 0.09f, 0.11f), 2f, Radius);
             }
 
             public void Write(float current, float max)
             {
                 float fraction = max > 0f ? Mathf.Clamp01(current / max) : 0f;
-                _fill.style.height = Length.Percent(fraction * 100f);
+                _fill.fillAmount = fraction;
 
                 // Rounded before comparing, so the label is rewritten when the
                 // number it shows changes rather than when the float behind it
@@ -484,104 +480,77 @@ namespace TogetherWeFall.UI
         /// </summary>
         private sealed class SkillBox
         {
-            public readonly VisualElement Root;
+            public readonly RectTransform Root;
 
-            private readonly VisualElement _shade;
-            private readonly Label _timer;
+            private readonly Image _border;
+            private readonly Image _shade;
+            private readonly TextMeshProUGUI _timer;
 
-            private readonly Label _icon;
-            private readonly Label _cost;
+            private readonly TextMeshProUGUI _icon;
+            private readonly TextMeshProUGUI _cost;
 
             private float _lastCooldown = -1f;
 
-            public SkillBox(int slot)
+            public SkillBox(Transform parent, int slot)
             {
-                Root = new VisualElement();
-                Root.style.width = SkillBoxSize;
-                Root.style.height = SkillBoxSize;
-                Root.style.marginLeft = 4f;
-                Root.style.marginRight = 4f;
-                Root.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 0.92f);
-                Root.pickingMode = PickingMode.Ignore;
+                Root = Ugui.Box(
+                    parent, $"Slot{slot}",
+                    new Color(0.10f, 0.11f, 0.14f, 0.92f), radius: 6f).rectTransform;
 
-                SetRadius(Root, 6f);
-                SetBorder(Root, new Color(0.24f, 0.26f, 0.32f), 1f);
+                Ugui.Place(Root, width: SkillBoxSize, height: SkillBoxSize);
 
                 // The placeholder icon: the skill's initials, large and centred.
                 // A real icon is a sprite per gem, which is art rather than
                 // pipeline — and a box that says "FB" tells the player which of
                 // two fire skills this is, which is the whole job an icon has.
-                _icon = new Label();
-                _icon.style.position = Position.Absolute;
-                _icon.style.left = 0f;
-                _icon.style.right = 0f;
-                _icon.style.top = 14f;
-                _icon.style.fontSize = 18;
-                _icon.style.unityFontStyleAndWeight = FontStyle.Bold;
-                _icon.style.unityTextAlign = TextAnchor.MiddleCenter;
-                _icon.style.color = new Color(0.38f, 0.41f, 0.48f);
-                _icon.pickingMode = PickingMode.Ignore;
+                _icon = Ugui.Text(
+                    Root, "Icon", 18f, new Color(0.38f, 0.41f, 0.48f), bold: true);
+                Ugui.Place(_icon.rectTransform, left: 0f, right: 0f, top: 14f, height: 24f);
 
-                var key = new Label(PlayerInputReader.CastSlotName(slot));
-                key.style.position = Position.Absolute;
-                key.style.left = 4f;
-                key.style.top = 2f;
-                key.style.fontSize = 9;
-                key.style.color = new Color(0.72f, 0.76f, 0.84f);
-                key.style.unityFontStyleAndWeight = FontStyle.Bold;
-                key.pickingMode = PickingMode.Ignore;
+                TextMeshProUGUI key = Ugui.Text(
+                    Root, "Key", 9f, new Color(0.72f, 0.76f, 0.84f),
+                    TextAlignmentOptions.TopLeft, bold: true);
+                key.text = PlayerInputReader.CastSlotName(slot);
+                Ugui.Place(key.rectTransform, left: 4f, top: 2f, width: 20f, height: 12f);
 
-                _cost = new Label();
-                _cost.style.position = Position.Absolute;
-                _cost.style.right = 4f;
-                _cost.style.bottom = 2f;
-                _cost.style.fontSize = 10;
-                _cost.style.color = new Color(0.44f, 0.62f, 0.94f);
-                _cost.pickingMode = PickingMode.Ignore;
+                _cost = Ugui.Text(
+                    Root, "Cost", 10f, new Color(0.44f, 0.62f, 0.94f),
+                    TextAlignmentOptions.BottomRight);
+                Ugui.Place(_cost.rectTransform, right: 4f, bottom: 2f, width: 30f, height: 14f);
 
-                // Above everything else in the box, because it covers them.
-                _shade = new VisualElement();
-                _shade.style.position = Position.Absolute;
-                _shade.style.left = 0f;
-                _shade.style.right = 0f;
-                _shade.style.top = 0f;
-                _shade.style.backgroundColor = new Color(0f, 0f, 0f, 0.62f);
-                _shade.style.display = DisplayStyle.None;
-                _shade.pickingMode = PickingMode.Ignore;
+                // Over everything else in the box, because it covers them —
+                // which in uGUI means later in the child order rather than
+                // anything said about depth.
+                //
+                // Square, unlike the box under it: a filled image maps its whole
+                // sprite onto the rect, so a rounded one would have its corners
+                // scaled up with it and read as a much larger radius than the
+                // box's own. What it pokes into is three pixels of near-black
+                // over near-black.
+                _shade = Ugui.Box(Root, "Shade", new Color(0f, 0f, 0f, 0.62f));
+                _shade.type = Image.Type.Filled;
+                _shade.fillMethod = Image.FillMethod.Vertical;
+                _shade.fillOrigin = (int)Image.OriginVertical.Top;
+                _shade.gameObject.SetActive(false);
 
-                _timer = new Label();
-                _timer.style.position = Position.Absolute;
-                _timer.style.left = 0f;
-                _timer.style.right = 0f;
-                _timer.style.bottom = 12f;
-                _timer.style.fontSize = 13;
-                _timer.style.unityFontStyleAndWeight = FontStyle.Bold;
-                _timer.style.unityTextAlign = TextAnchor.MiddleCenter;
-                _timer.style.color = Color.white;
-                _timer.style.display = DisplayStyle.None;
-                _timer.pickingMode = PickingMode.Ignore;
+                _timer = Ugui.Text(Root, "Timer", 13f, Color.white, bold: true);
+                Ugui.Place(_timer.rectTransform, left: 0f, right: 0f, bottom: 12f, height: 18f);
+                _timer.gameObject.SetActive(false);
 
-                Root.Add(_icon);
-                Root.Add(key);
-                Root.Add(_cost);
-                Root.Add(_shade);
-                Root.Add(_timer);
+                _border = Ugui.Border(Root, new Color(0.24f, 0.26f, 0.32f), 1f, radius: 6f);
             }
 
             /// <summary>What this key is bound to right now. Empty leaves it dim.</summary>
             public void Fill(string skillName, float manaCost, bool automatic)
             {
                 _icon.text = Initials(skillName);
-                _icon.style.color = automatic
+                _icon.color = automatic
                     ? new Color(0.85f, 0.66f, 0.38f)
                     : new Color(0.80f, 0.84f, 0.90f);
 
-                SetBorder(
-                    Root,
-                    automatic
-                        ? new Color(0.85f, 0.66f, 0.38f)
-                        : new Color(0.45f, 0.62f, 0.85f),
-                    1f);
+                _border.color = automatic
+                    ? new Color(0.85f, 0.66f, 0.38f)
+                    : new Color(0.45f, 0.62f, 0.85f);
 
                 // A trigger gem in the group means the key is not the thing that
                 // fires this, so there is no press to price. Showing a cost the
@@ -590,7 +559,7 @@ namespace TogetherWeFall.UI
                     ? "auto"
                     : manaCost > 0f ? Mathf.RoundToInt(manaCost).ToString() : string.Empty;
 
-                _cost.style.color = automatic
+                _cost.color = automatic
                     ? new Color(0.85f, 0.66f, 0.38f)
                     : new Color(0.44f, 0.62f, 0.94f);
             }
@@ -605,20 +574,20 @@ namespace TogetherWeFall.UI
                 _lastCooldown = remaining;
 
                 bool active = remaining > 0.01f;
-                _shade.style.display = active ? DisplayStyle.Flex : DisplayStyle.None;
-                _timer.style.display = active ? DisplayStyle.Flex : DisplayStyle.None;
+                _shade.gameObject.SetActive(active);
+                _timer.gameObject.SetActive(active);
 
                 if (!active)
                     return;
 
-                // The shade's height is the time left, but against WHAT? The
-                // slot does not carry the cooldown it started from, and adding
-                // that would be a second number to keep in step with the first.
-                // So the sweep is against two seconds of travel and clamps —
-                // a long cooldown simply starts full and a short one drains fast,
-                // and the seconds written on it are exact either way.
-                _shade.style.height =
-                    Length.Percent(Mathf.Clamp01(remaining / 2f) * 100f);
+                // The shade's share of the box is the time left, but against
+                // WHAT? The slot does not carry the cooldown it started from, and
+                // adding that would be a second number to keep in step with the
+                // first. So the sweep is against two seconds of travel and
+                // clamps — a long cooldown simply starts full and a short one
+                // drains fast, and the seconds written on it are exact either
+                // way.
+                _shade.fillAmount = Mathf.Clamp01(remaining / 2f);
 
                 _timer.text = remaining >= 1f
                     ? remaining.ToString("0.0")
@@ -646,27 +615,6 @@ namespace TogetherWeFall.UI
                     ? name.Substring(0, 2).ToUpperInvariant()
                     : name.ToUpperInvariant();
             }
-        }
-
-        private static void SetRadius(VisualElement element, float radius)
-        {
-            element.style.borderTopLeftRadius = radius;
-            element.style.borderTopRightRadius = radius;
-            element.style.borderBottomLeftRadius = radius;
-            element.style.borderBottomRightRadius = radius;
-        }
-
-        private static void SetBorder(VisualElement element, Color colour, float width)
-        {
-            element.style.borderTopWidth = width;
-            element.style.borderBottomWidth = width;
-            element.style.borderLeftWidth = width;
-            element.style.borderRightWidth = width;
-
-            element.style.borderTopColor = colour;
-            element.style.borderBottomColor = colour;
-            element.style.borderLeftColor = colour;
-            element.style.borderRightColor = colour;
         }
     }
 }

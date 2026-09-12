@@ -52,7 +52,28 @@ namespace TogetherWeFall.Vfx
         /// constant hum the refusal rules exist to prevent. This one draws and
         /// nothing else.
         /// </summary>
-        ElementBurst = 5
+        ElementBurst = 5,
+
+        /// <summary>
+        /// A skill went off here.
+        ///
+        /// Announced once per cast — so a multicast announces three — at the
+        /// point the effect visually starts: the muzzle for something that
+        /// flies, the blast centre for something that does not. What it looks
+        /// like is the skill's own visual set, which is why this kind carries an
+        /// id while the five above carry only a colour.
+        /// </summary>
+        SkillCast = 6,
+
+        /// <summary>
+        /// A blow landed here.
+        ///
+        /// Once per blow rather than once per cast, which is the difference
+        /// between this and SkillCast: a fork announces two and a chain one per
+        /// jump. Skipped entirely by a skill with no visual set, so the queue is
+        /// not filled with events nothing draws.
+        /// </summary>
+        SkillHit = 7
     }
 
     /// <summary>Marks the entity holding the presentation queue.</summary>
@@ -90,5 +111,16 @@ namespace TogetherWeFall.Vfx
         /// kind, because it changes how the same thing is drawn, not what it is.
         /// </summary>
         public bool Emphasis;
+
+        /// <summary>
+        /// Which authored visual set draws this, or zero for the built-in lines
+        /// and rings.
+        ///
+        /// Read by SkillCast and SkillHit alone. An id rather than a kind per
+        /// effect, because "which fireball" is content — the alternative is an
+        /// enum value and a branch in the presenter for every prefab somebody
+        /// imports, which is precisely what this seam exists to avoid.
+        /// </summary>
+        public int VfxId;
     }
 }

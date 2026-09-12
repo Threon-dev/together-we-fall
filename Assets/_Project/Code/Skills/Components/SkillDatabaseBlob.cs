@@ -152,6 +152,16 @@ namespace TogetherWeFall.Skills
         public float ChainDelay;
 
         /// <summary>
+        /// Which visual set draws this skill, or zero for none.
+        ///
+        /// An id rather than an index, like every other cross-database
+        /// reference here: the presenter's list of sets is filled by the scene
+        /// build and this blob by the skill authoring, and the two share no
+        /// ordering. Zero draws what the game drew before sets existed.
+        /// </summary>
+        public int VfxId;
+
+        /// <summary>
         /// A status this skill applies to everything it hits, or None.
         ///
         /// Named by type, because the status table is baked by a different
@@ -283,6 +293,23 @@ namespace TogetherWeFall.Skills
 
         /// <summary>The status everything this cast touches is marked with, or None.</summary>
         public StatusEffectType AppliedStatus;
+
+        /// <summary>
+        /// Which visual set draws this, or zero.
+        ///
+        /// It rides the fold rather than being read off the blob at the far end
+        /// for one reason: everything downstream of a cast already carries what
+        /// it needs to resolve itself and has deliberately forgotten which skill
+        /// it came from. A projectile in flight knows its damage and its element
+        /// and nothing else — so if it is to have a trail, the trail has to
+        /// travel with it.
+        ///
+        /// No support changes it. It is the only field in here that is copied
+        /// rather than folded, and that is the point: a gem may turn a fire bolt
+        /// blue, and the fold already says so through the damage type the
+        /// presenter tints with.
+        /// </summary>
+        public int VfxId;
     }
 
     /// <summary>
@@ -798,7 +825,10 @@ namespace TogetherWeFall.Skills
                 // is that new modifier kind, and it starts from the authored
                 // status, so a skill with no override gem resolves to exactly
                 // what it always did.
-                AppliedStatus = fold.Status
+                AppliedStatus = fold.Status,
+
+                // Copied, not folded. See the field.
+                VfxId = skill.VfxId
             };
         }
     }

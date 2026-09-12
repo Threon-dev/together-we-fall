@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6385964d0d314ec18add14df44862408, type: 3}
+  m_Name: WarlordsRegalia
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemSetDefinition
+  _setId: WarlordsRegalia
+  _setName: Warlord's Regalia
+  _members:
+  - {fileID: 11400000, guid: 2329c0c2f6ea8ec4c9334d89611e59d7, type: 2}
+  - {fileID: 11400000, guid: ae231eb5eac8ecde098beb733d09bfd5, type: 2}
+  - {fileID: 11400000, guid: 38c6dcf56a45fe84b86094cae32eaea7, type: 2}
+  - {fileID: 11400000, guid: 7581dbe86933b3774ee392fca57b5221, type: 2}
+  _thresholds:
+  - _requiredPieceCount: 2
+    _bonuses:
+    - _stat: 3
+      _kind: 0
+      _value: 25
+    - _stat: 2
+      _kind: 1
+      _value: 15
+    _bonusSkillModifier: {fileID: 0}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 4
+    _bonuses:
+    - _stat: 0
+      _kind: 1
+      _value: 20
+    _bonusSkillModifier: {fileID: 11400000, guid: ff76ebed5d2e1d14db71720dd8c9ff91,
+      type: 2}
+    _bonusKeystone: 0

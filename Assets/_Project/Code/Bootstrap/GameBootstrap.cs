@@ -81,9 +81,14 @@ namespace TogetherWeFall.Bootstrap
 
             BeginDungeonRun();
 
+            // Asked once and handed to both the motor and the action publisher:
+            // "is anything taking the player's input" is one question, and two
+            // copies of it would eventually be two answers.
+            System.Func<bool> uiCapturing = CreateUiCaptureProbe();
+
             _cameraRig.Initialize(_player.transform);
             _input.Initialize(_cameraRig);
-            _player.Initialize(_input);
+            _player.Initialize(_input, uiCapturing);
 
             _positionPublisher.Initialize();
             _spawnTrigger.Initialize();
@@ -109,10 +114,7 @@ namespace TogetherWeFall.Bootstrap
             // question, because "is anything taking the clicks" is what the
             // publisher actually wants to know.
             if (_actionPublisher != null)
-            {
-                _actionPublisher.Initialize(
-                    _input, _positionPublisher.PlayerId, CreateUiCaptureProbe());
-            }
+                _actionPublisher.Initialize(_input, _positionPublisher.PlayerId, uiCapturing);
 
             // After the camera, because the presenter shakes it.
             if (_vfxPresenter != null)
@@ -134,9 +136,13 @@ namespace TogetherWeFall.Bootstrap
         /// Whether any panel is currently taking the player's clicks, or null
         /// when this scene has no panels at all.
         ///
-        /// One delegate rather than a list the publisher walks: the publisher
-        /// has no business knowing that panels are what does it, let alone how
-        /// many there are.
+        /// One delegate rather than a list each caller walks: neither the
+        /// publisher nor the motor has any business knowing that panels are what
+        /// does it, let alone how many there are.
+        ///
+        /// It closes over the fields rather than reading them when asked, so it
+        /// can be built before the panels are initialised — which it is, because
+        /// the motor is wired first.
         /// </summary>
         private System.Func<bool> CreateUiCaptureProbe()
         {

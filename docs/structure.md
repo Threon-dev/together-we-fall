@@ -15,6 +15,7 @@ Assets/_Project/
 │   ├── Shared/                           PlayerPositions*, SimulationSettings*
 │   ├── Player/                           InputReader, Motor, MoveIntent,
 │   │   │                                 PositionPublisher, ActionPublisher
+│   │   ├── CharacterPortrait.cs          камера-дитина гравця → RenderTexture
 │   │   ├── Components/PlayerCharacter.cs сутність гравця в ECS
 │   │   ├── Components/PlayerResources.cs Mana — Current і нічого більше
 │   │   └── Systems/                      PlayerCharacterRegistry,
@@ -61,7 +62,7 @@ Assets/_Project/
 │   │   └── Systems/AudioEventRegistrySystem.cs
 │   ├── Curtain/
 │   │   ├── Components/CurtainComponents.cs  CurtainState, CurtainRequest
-│   │   ├── CurtainPresenter.cs           малює прямокутник поверх усього
+│   │   ├── CurtainPresenter.cs           uGUI-прямокутник поверх усього
 │   │   └── Systems/CurtainSystem.cs      веде непрозорість
 │   ├── Vfx/
 │   │   ├── Components/VfxComponents.cs   VfxEvent — єдиний шов до презентації
@@ -69,7 +70,7 @@ Assets/_Project/
 │   │   ├── StatusIconPool.cs             пул гліфів статусів над тілами
 │   │   ├── VfxPresenter.cs               міст-презентер, лише читає ECS
 │   │   ├── VfxLinePool.cs                пул LineRenderer: лінії й кільця
-│   │   ├── DamageNumberPool.cs           пул UI Toolkit-лейблів
+│   │   ├── DamageNumberPool.cs           пул TMP-лейблів на канвасі
 │   │   └── HitStopController.cs          єдине місце, що чіпає Time.timeScale
 │   ├── Skills/
 │   │   ├── Components/                   Skill*, ProjectileSpawn, SkillDatabaseBlob,
@@ -93,9 +94,10 @@ Assets/_Project/
 │   │   └── Systems/                      NpcInteraction, VendorStock,
 │   │                                     VendorTransaction, Crafting,
 │   │                                     DungeonPortal
-│   ├── UI/InventoryUI.cs                 UI Toolkit, читає ECS, пише запит
+│   ├── UI/Ugui.cs                        хелпер uGUI: Place, Box, Text, спрайти
+│   ├── UI/InventoryUI.cs                 uGUI, читає ECS, пише запит
 │   ├── UI/LobbyUI.cs                     промпт, крамниця, кузня, портал, метр
-│   ├── UI/PlayerHud.cs                   колби й бар скілів, лише читає ECS
+│   ├── UI/PlayerHud.cs                   uGUI: колби й бар скілів, лише читає ECS
 │   ├── Dungeon/
 │   │   ├── DungeonDirector.cs            генерація → геометрія → ECS → бейк navmesh
 │   │   ├── DungeonLayoutPublisher.cs     міст GO↔ECS, лише копіює дані
@@ -120,7 +122,7 @@ Assets/_Project/
 │       └── LobbySceneBuilder.cs          хаб: NPC, манекени, портал
 ├── Data/                                 Enemy/Spawn/Pathfinding/Separation/
 │   │                                     DungeonGeneration/Loot/Character/
-│   │                                     TreasureLootTable
+│   │                                     StarterKit/TreasureLootTable
 │   ├── Items/                            спорядження, монета, геми (активні
 │   │                                     й супорти), keystone-персні,
 │   │                                     Riftwood Staff на 14 отворів
@@ -130,9 +132,12 @@ Assets/_Project/
 │   │                                     і ElementReactionTable
 │   ├── Skills/                           SkillDefinition (разом із двома
 │   │                                     вшитими атаками зброї) і SkillModifier
-│   └── Sets/                             ItemSetDefinition — членство сету
-│                                         й бонуси за порогами
-├── UI/                                   PanelSettings + RuntimeTheme.tss
+│   ├── Sets/                             ItemSetDefinition — членство сету
+│   │                                     й бонуси за порогами
+│   └── Vfx/                              SkillVfxSet — cast / projectile / hit
+│                                         на скіл
+├── UI/                                   PanelSettings + RuntimeTheme.tss (від
+│                                          UI Toolkit; ні на що не посилаються)
 ├── Prefabs/                              Enemy, Chest, LootItem, SkillProjectile,
 │                                         ElementZone
 └── Scenes/

@@ -1,15 +1,16 @@
 using System.Collections.Generic;
 using System.Text;
+using TMPro;
 using UnityEngine;
-using UnityEngine.UIElements;
 using TogetherWeFall.Combat;
+using TogetherWeFall.UI;
 
 namespace TogetherWeFall.Vfx
 {
     /// <summary>
     /// A fixed set of markers floating over whatever is afflicted.
     ///
-    /// The same shape as DamageNumberPool and for the same reasons: UI Toolkit
+    /// The same shape as DamageNumberPool and for the same reasons: canvas
     /// labels rather than world-space text, because a marker is read rather than
     /// inhabited, and nothing is created after Initialize.
     ///
@@ -19,7 +20,7 @@ namespace TogetherWeFall.Vfx
     /// whatever the simulation currently says, rather than accumulating: the
     /// presenter hands over the afflicted bodies in whatever order it found
     /// them, and every label not claimed this frame is hidden. That is a few
-    /// dozen style writes on a frame where a crowd is burning, and it means a
+    /// dozen writes on a frame where a crowd is burning, and it means a
     /// status that ends in any way at all — expired, consumed, the body killed,
     /// the body returned to the pool — takes its marker with it without anything
     /// having to say so.
@@ -34,10 +35,10 @@ namespace TogetherWeFall.Vfx
         /// <summary>Panel pixels above the body's own point, so it clears the damage numbers.</summary>
         private const float LiftPixels = 26f;
 
-        private readonly List<Label> _labels = new List<Label>();
+        private readonly List<TextMeshProUGUI> _labels = new List<TextMeshProUGUI>();
         private readonly StringBuilder _text = new StringBuilder(32);
 
-        private VisualElement _root;
+        private RectTransform _root;
         private Camera _camera;
         private int _used;
 
@@ -46,28 +47,19 @@ namespace TogetherWeFall.Vfx
         /// <summary>How many bodies can be marked at once. The presenter's budget.</summary>
         public int Capacity => _labels.Count;
 
-        public void Initialize(int size, int fontSize, VisualElement parent, Camera camera)
+        /// <summary>
+        /// The layer never eats a click — the left mouse button is a cast — and
+        /// nothing here has to say so, because the canvas it is built on carries
+        /// no raycaster at all. See the scene builder.
+        /// </summary>
+        public void Initialize(int size, int fontSize, RectTransform parent, Camera camera)
         {
             _camera = camera;
 
-            _root = new VisualElement();
-            _root.style.position = Position.Absolute;
-            _root.style.left = 0f;
-            _root.style.top = 0f;
-            _root.style.right = 0f;
-            _root.style.bottom = 0f;
-
-            // The layer must never eat a click. The left mouse button is a cast.
-            _root.pickingMode = PickingMode.Ignore;
-
-            parent.Add(_root);
+            _root = Ugui.Node(parent, "StatusIcons");
 
             for (int i = 0; i < size; i++)
-            {
-                Label label = CreateLabel(fontSize);
-                _root.Add(label);
-                _labels.Add(label);
-            }
+                _labels.Add(CreateLabel(_root, fontSize));
         }
 
         /// <summary>Starts a frame. Everything not added before Finish is hidden.</summary>
@@ -106,17 +98,17 @@ namespace TogetherWeFall.Vfx
             if (_text.Length == 0)
                 return;
 
-            Label label = _labels[_used++];
+            TextMeshProUGUI label = _labels[_used++];
 
             label.text = _text.ToString();
-            label.style.color = tint;
+            label.color = tint;
 
-            Vector2 point = RuntimePanelUtils.CameraTransformWorldToPanel(
-                _root.panel, worldPosition, _camera);
+            Vector2 point = Ugui.Point(_root, _camera.WorldToScreenPoint(worldPosition));
 
-            label.style.left = point.x;
-            label.style.top = point.y - LiftPixels;
-            label.visible = true;
+            // Minus the lift in the panel's y-down pixels is plus it in uGUI's,
+            // which is the whole of the difference between the two.
+            label.rectTransform.anchoredPosition = new Vector2(point.x, -point.y + LiftPixels);
+            label.gameObject.SetActive(true);
         }
 
         /// <summary>Hides every label no body claimed this frame.</summary>
@@ -124,8 +116,8 @@ namespace TogetherWeFall.Vfx
         {
             for (int i = _used; i < _labels.Count; i++)
             {
-                if (_labels[i].visible)
-                    _labels[i].visible = false;
+                if (_labels[i].gameObject.activeSelf)
+                    _labels[i].gameObject.SetActive(false);
             }
         }
 
@@ -135,22 +127,23 @@ namespace TogetherWeFall.Vfx
             Finish();
         }
 
-        private static Label CreateLabel(int fontSize)
+        /// <summary>
+        /// One marker, built exactly the way a damage number is: pinned to the
+        /// layer's corner, centred on its own point, a fixed box the layout
+        /// system need never measure.
+        /// </summary>
+        private static TextMeshProUGUI CreateLabel(RectTransform parent, int fontSize)
         {
-            var label = new Label
-            {
-                pickingMode = PickingMode.Ignore,
-                visible = false
-            };
+            TextMeshProUGUI label = Ugui.Text(
+                parent, "Status", fontSize, Color.white, bold: true);
 
-            label.style.position = Position.Absolute;
-            label.style.fontSize = fontSize;
-            label.style.unityFontStyleAndWeight = FontStyle.Bold;
+            RectTransform rect = label.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(96f, 22f);
 
-            // Centred on the point rather than starting at it, so the marker
-            // sits over the body instead of beside it.
-            label.style.translate = new Translate(Length.Percent(-50f), Length.Percent(-50f));
-
+            label.gameObject.SetActive(false);
             return label;
         }
     }

@@ -510,6 +510,20 @@ namespace TogetherWeFall.Skills
         /// same property that makes CarriedElements a field rather than a buffer.
         /// </summary>
         public StatusEffectType AppliedStatus;
+
+        /// <summary>
+        /// Which visual set follows this in the air, or zero.
+        ///
+        /// The one field in here that no system reads. It is carried because a
+        /// projectile in flight is deliberately the only thing that knows where
+        /// it is — the cast that fired it is over and may be over twice, since
+        /// the weapon can be swapped mid-flight — so a trail that belongs to
+        /// this projectile has to be findable from this projectile.
+        ///
+        /// Inherited by a fork for free, which is the right answer: a split
+        /// fireball is still a fireball.
+        /// </summary>
+        public int VfxId;
     }
 
     /// <summary>
@@ -536,6 +550,16 @@ namespace TogetherWeFall.Skills
     public struct PendingHit : IBufferElementData
     {
         public Entity Target;
+
+        /// <summary>
+        /// Which visual set draws the impact, or zero.
+        ///
+        /// Carried to the hit rather than looked up from the skill, for the
+        /// reason the whole struct exists: by the time a hit lands, the cast is
+        /// a frame or more gone and a chain's fourth jump has no idea what fired
+        /// it. Copied by a jump, so a chain plays its impact once per body.
+        /// </summary>
+        public int VfxId;
 
         /// <summary>
         /// Where this hit lands. Carried rather than read off the target,
@@ -624,6 +648,16 @@ namespace TogetherWeFall.Skills
     public struct PendingArea : IBufferElementData
     {
         public float3 Position;
+
+        /// <summary>
+        /// Which visual set draws the blows this blast produces, or zero.
+        ///
+        /// Only the impacts. The blast's own effect was announced by the cast,
+        /// once, at the point it went off — a queue that also carries corpse
+        /// explosions and zone pulses has no business announcing those as
+        /// somebody's skill.
+        /// </summary>
+        public int VfxId;
 
         /// <summary>Facing, for arcs. Ignored when the arc is a full circle.</summary>
         public float3 Direction;

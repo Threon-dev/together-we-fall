@@ -4,7 +4,6 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UIElements;
 using TogetherWeFall.Audio;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.Config;
@@ -110,7 +109,8 @@ namespace TogetherWeFall.EditorTools
             // Money, and a handful of it in the starting kit so the shop can be
             // tried the first time somebody walks up to it.
             ItemDefinition coin = LobbyContentFactory.CreateOrLoadCoin(lootTable);
-            LobbyContentFactory.GrantStarterCoins(characterConfig, coin);
+            LobbyContentFactory.GrantStarterCoins(
+                SceneBuildUtility.CreateOrLoadConfig<StarterKitConfig>("StarterKitConfig"), coin);
 
             SceneBuildUtility.CreateLighting();
             GameObject ground = CreateGround(groundMaterial);
@@ -141,19 +141,17 @@ namespace TogetherWeFall.EditorTools
             TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
             GameObject debugTools = SceneBuildUtility.CreateDebugTools();
 
-            PanelSettings panelSettings =
-                SceneBuildUtility.CreateOrLoadPanelSettings("RuntimePanelSettings");
-
-            InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(panelSettings);
-            LobbyUI lobbyUI = SceneBuildUtility.CreateLobbyUI(panelSettings);
+            InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(
+                SceneBuildUtility.CreateCharacterPortrait(player));
+            LobbyUI lobbyUI = SceneBuildUtility.CreateLobbyUI();
             SceneLoadBridge sceneLoader = SceneBuildUtility.CreateSceneLoadBridge();
 
             Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
             VfxPresenter vfxPresenter =
-                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial, panelSettings);
+                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial);
 
             CurtainPresenter curtainPresenter =
-                SceneBuildUtility.CreateCurtainPresenter(panelSettings);
+                SceneBuildUtility.CreateCurtainPresenter();
 
             AudioPresenter audioPresenter = SceneBuildUtility.CreateAudioPresenter(
                 SceneBuildUtility.CreateAudioConfig("AudioConfig"));

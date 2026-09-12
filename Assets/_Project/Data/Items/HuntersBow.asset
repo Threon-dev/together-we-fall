@@ -22,10 +22,13 @@ MonoBehaviour:
   _gemKind: 0
   _gemSkill: {fileID: 0}
   _gemSupport: {fileID: 0}
+  _gemSupportSecond: {fileID: 0}
   _innateSkills:
+  - {fileID: 11400000, guid: 71aa63aee176fe24da8942e9741e163e, type: 2}
   - {fileID: 11400000, guid: f5c4a9839765d0a43b3427d890064343, type: 2}
-  _socketCount: 0
-  _linkGroups: 
+  _socketCount: 6
+  _linkGroups: 000000000000000000000000000000000000000000000000
   _gridWidth: 2
   _gridHeight: 3
+  _currencyValue: 0
   _canRotate: 1

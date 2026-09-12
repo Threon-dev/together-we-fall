@@ -799,8 +799,20 @@ namespace TogetherWeFall.Skills
             // about never copying a blob struct is about the arrays inside one.
             FixedList64Bytes<int> candidates = blob.InnateSkillIds;
 
-            if (sockets.Length == 0)
-                sockets.Add(new GearSocket { SocketIndex = 0, LinkGroup = 0 });
+            // One head per skill, before anything is welded. A skill is welded
+            // into the FIRST socket of a link group, so a weapon with fewer
+            // groups than skills silently loses the extra ones — which is what
+            // a two-handed weapon with no authored layout is: LinkGroupOf
+            // answers zero for every socket, so twelve holes are one group, and
+            // the second attack the item promises has nowhere to live.
+            //
+            // The fix belongs here rather than in the layout, because the
+            // promise is made here: ActiveSkillCount says a two-hander comes
+            // with two, the tooltip reads that number, and the player is told
+            // about a skill no key can reach. It generalises the rule that was
+            // already in this method — a weapon with no sockets at all still
+            // gets one — from "at least one" to "one per skill".
+            EnsureWeldHeads(sockets, count);
 
             var filled = new FixedList32Bytes<int>();
 
@@ -823,6 +835,49 @@ namespace TogetherWeFall.Skills
                 sockets[i] = socket;
 
                 candidates.RemoveAtSwapBack(pick);
+            }
+        }
+
+        /// <summary>
+        /// Appends a socket in a group of its own until every welded skill has a
+        /// group to head.
+        ///
+        /// Appended rather than taken from the authored layout, and that is the
+        /// whole of the decision: re-grouping holes the player has already
+        /// socketed would move their supports from one skill to another behind
+        /// their back. A head cannot hold a gem — it is welded — so a weapon
+        /// gains an attack and not a hole, and the model's scarcity is intact.
+        ///
+        /// The second attack therefore starts with no supports. Linking one to
+        /// it is what the forge is for; the alternative is an authored layout
+        /// that splits the groups, which is what the staff does.
+        /// </summary>
+        private static void EnsureWeldHeads(DynamicBuffer<GearSocket> sockets, int count)
+        {
+            var seen = new FixedList32Bytes<int>();
+            int highest = -1;
+
+            for (int i = 0; i < sockets.Length && seen.Length < count; i++)
+            {
+                int group = sockets[i].LinkGroup;
+
+                if (group > highest)
+                    highest = group;
+
+                if (!HasGroup(seen, group) && seen.Length < seen.Capacity)
+                    seen.Add(group);
+            }
+
+            for (int groups = seen.Length; groups < count; groups++)
+            {
+                highest++;
+
+                sockets.Add(new GearSocket
+                {
+                    SocketIndex = sockets.Length,
+                    LinkGroup = highest,
+                    InsertedGem = Entity.Null
+                });
             }
         }
 

@@ -79,6 +79,13 @@ namespace TogetherWeFall.Config
                  "or the runtime has never heard of it.")]
         [SerializeField] private StatusEffectDefinition _appliedStatus;
 
+        [Header("Look")]
+        [Tooltip("What this skill looks like: the flash where it is cast, the " +
+                 "thing that flies, the effect where it lands. Empty draws what " +
+                 "the game drew before sets existed — a coloured line and a " +
+                 "ring, and nothing is broken by leaving it so.")]
+        [SerializeField] private SkillVfxSet _vfx;
+
         [Header("Supports")]
         [SerializeField] private SkillModifier[] _modifiers = Array.Empty<SkillModifier>();
 
@@ -115,6 +122,19 @@ namespace TogetherWeFall.Config
 
         /// <summary>The asset, so the baker can depend on it and read its type.</summary>
         public StatusEffectDefinition AppliedStatus => _appliedStatus;
+
+        /// <summary>The visual set, for the baker to depend on.</summary>
+        public SkillVfxSet Vfx => _vfx;
+
+        /// <summary>
+        /// The visual set as a stable id, or zero for a skill that has none.
+        ///
+        /// An id rather than a reference for the reason every cross-database
+        /// reference here is one: the presenter's list of sets and the skill
+        /// database are filled by two different things, and a job cannot hold a
+        /// prefab anyway.
+        /// </summary>
+        public int VfxId => _vfx != null ? ItemDefinition.ComputeId(_vfx.name) : 0;
 
         /// <summary>
         /// What the skill applies, as the name the two databases share.
