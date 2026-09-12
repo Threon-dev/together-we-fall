@@ -163,6 +163,9 @@ namespace TogetherWeFall.UI
         private Label _ghostLabel;
         private Label _message;
 
+        /// <summary>What says what a thing is while the pointer is over it.</summary>
+        private TooltipView _tooltips;
+
         private readonly List<SlotTarget> _slotTargets = new List<SlotTarget>();
         private readonly List<SocketTarget> _socketTargets = new List<SocketTarget>();
         private readonly List<BarTarget> _barTargets = new List<BarTarget>();
@@ -394,6 +397,11 @@ namespace TogetherWeFall.UI
             _bagColumn.Add(_message);
 
             _screen.Add(_panel);
+
+            // After the panel, so it draws over it. A tooltip behind the thing
+            // it describes is the one placement that helps nobody.
+            _tooltips = new TooltipView(_screen, RarityColour);
+
             root.Add(_screen);
 
             // The panel is sized from the screen, so it has to be told when the
@@ -425,6 +433,86 @@ namespace TogetherWeFall.UI
             _builtCellSize = 0f;
             _lastSignature = int.MinValue;
         }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Tooltip
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Makes an element describe itself while the pointer is over it.
+        ///
+        /// A wrapper around TooltipView rather than a call straight to it,
+        /// because of the one thing this panel knows and the box does not: a
+        /// tooltip following a dragged item would sit on top of the very
+        /// squares that say where it may land.
+        /// </summary>
+        private void AttachTooltip(
+            VisualElement element, System.Func<ItemTooltip.Text> describe)
+            => _tooltips.Attach(element, () => _drag.Active ? default : describe());
+
+        /// <summary>
+        /// What an item in the bag or in a socket says.
+        ///
+        /// Compared against what is worn only when it is not itself the worn
+        /// thing: an item's difference from itself is a list of zeroes, and the
+        /// panel would print "the same numbers" under every equipment slot.
+        /// </summary>
+        private ItemTooltip.Text DescribeItem(int itemId, bool compare)
+        {
+            if (!TryGetItems(out ItemDatabase items))
+                return default;
+
+            TryGetSkills(out SkillDatabase skills);
+
+            ItemTooltip.TryDescribeItem(
+                items, skills, itemId, compare ? WornRivalOf(items, itemId) : 0,
+                out ItemTooltip.Text text);
+
+            return text;
+        }
+
+        /// <summary>
+        /// What wearing this item would cost the player, by id, or zero.
+        ///
+        /// The rule itself lives in EquipmentSlots, beside the mask it reads.
+        /// This is only the part that knows whose character is being looked at.
+        /// </summary>
+        private int WornRivalOf(ItemDatabase items, int itemId)
+        {
+            if (!TryGetCharacter(out Entity character, out _) ||
+                !_entityManager.HasBuffer<EquippedItem>(character))
+            {
+                return 0;
+            }
+
+            return EquipmentSlots.WornRivalOf(
+                _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true),
+                items, itemId);
+        }
+
+        /// <summary>What a welded socket or a bound hotkey says, by skill id.</summary>
+        private ItemTooltip.Text DescribeSkillId(int skillId)
+        {
+            if (!TryGetSkills(out SkillDatabase skills))
+                return default;
+
+            ItemTooltip.TryDescribeSkill(
+                skills, skills.IndexOf(skillId), out ItemTooltip.Text text);
+
+            return text;
+        }
+
+        /// <summary>The same, for the one caller that already holds an index.</summary>
+        private ItemTooltip.Text DescribeSkillIndex(int skillIndex)
+        {
+            if (!TryGetSkills(out SkillDatabase skills))
+                return default;
+
+            ItemTooltip.TryDescribeSkill(skills, skillIndex, out ItemTooltip.Text text);
+            return text;
+        }
+
+        private void HideTooltip() => _tooltips?.Hide();
 
         /// <summary>
         /// Draws the empty grid. Only when its shape changes — the cells behind
@@ -591,6 +679,11 @@ namespace TogetherWeFall.UI
             }
 
             ItemDatabase items = _itemDatabaseQuery.GetSingleton<ItemDatabase>();
+
+            // Everything the pointer could be over is about to be thrown away,
+            // and a destroyed element raises no leave event — so the box would
+            // hang there describing an item that is no longer under the cursor.
+            HideTooltip();
 
             BuildGrid(grid);
             RebuildStats(character, stats);
@@ -900,6 +993,8 @@ namespace TogetherWeFall.UI
                     SendUnequip(captured.Slot, false, 0, 0, false);
             });
 
+            AttachTooltip(box, () => DescribeItem(captured.ItemId, false));
+
             return box;
         }
 
@@ -1012,6 +1107,8 @@ namespace TogetherWeFall.UI
             element.RegisterCallback<PointerMoveEvent>(OnDragMove);
             element.RegisterCallback<PointerUpEvent>(OnDragEnd);
 
+            AttachTooltip(element, () => DescribeItem(capturedId, true));
+
             // Double click equips, the way it does in every game this one is
             // trying to feel like. No slot travels with it, so the host picks —
             // an empty allowed slot first, which is what makes double-clicking
@@ -1120,6 +1217,11 @@ namespace TogetherWeFall.UI
 
             source.CapturePointer(evt.pointerId);
             source.style.opacity = 0.35f;
+
+            // Pointer capture means the elements underneath stop seeing the
+            // cursor, so the leave event that would normally hide this never
+            // arrives.
+            HideTooltip();
 
             ShapeGhost(items);
 
@@ -1631,6 +1733,11 @@ namespace TogetherWeFall.UI
                     evt, cell, capturedWeapon, capturedSocket, capturedDatabase));
                 cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
                 cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+
+                // A welded skill has no gem to describe, so the tooltip comes
+                // from the skill database instead. Same box, same words.
+                int capturedSkill = socket.WeldedSkillId;
+                AttachTooltip(cell, () => DescribeSkillId(capturedSkill));
             }
             else if (!socket.IsEmpty &&
                 GemSockets.TryDescribeGem(
@@ -1663,6 +1770,10 @@ namespace TogetherWeFall.UI
                     evt, cell, capturedGear, capturedIndex, capturedGem, capturedItems));
                 cell.RegisterCallback<PointerMoveEvent>(OnDragMove);
                 cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
+
+                // The letter in the cell says which kind of gem it is; the
+                // tooltip is where the rest of the sentence lives.
+                AttachTooltip(cell, () => DescribeItem(itemId, false));
             }
             else
             {
@@ -1755,6 +1866,9 @@ namespace TogetherWeFall.UI
                     text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}\n" +
                            $"auto: {trigger.TriggerCondition}";
                 }
+
+                int capturedSkill = skillIndex;
+                AttachTooltip(box, () => DescribeSkillIndex(capturedSkill));
             }
 
             box.style.backgroundColor = new Color(0.10f, 0.11f, 0.14f, 1f);
@@ -2039,6 +2153,17 @@ namespace TogetherWeFall.UI
                 return false;
 
             items = _itemDatabaseQuery.GetSingleton<ItemDatabase>();
+            return true;
+        }
+
+        private bool TryGetSkills(out SkillDatabase skills)
+        {
+            skills = default;
+
+            if (_skillDatabaseQuery.IsEmptyIgnoreFilter)
+                return false;
+
+            skills = _skillDatabaseQuery.GetSingleton<SkillDatabase>();
             return true;
         }
 

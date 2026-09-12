@@ -12,6 +12,7 @@ using TogetherWeFall.Inventory;
 using TogetherWeFall.Lobby;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
+using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.UI
 {
@@ -72,6 +73,7 @@ namespace TogetherWeFall.UI
         private EntityQuery _itemDatabaseQuery;
         private EntityQuery _npcQuery;
         private EntityQuery _meterQuery;
+        private EntityQuery _skillDatabaseQuery;
         private bool _hasWorld;
 
         private VisualElement _screen;
@@ -83,6 +85,9 @@ namespace TogetherWeFall.UI
         private VisualElement _meterPanel;
         private VisualElement _meterRows;
         private VisualElement _meterGraph;
+
+        /// <summary>What says what a thing is while the pointer is over it.</summary>
+        private TooltipView _tooltips;
 
         private NpcServiceType _session = NpcServiceType.None;
         private Entity _npc = Entity.Null;
@@ -144,6 +149,11 @@ namespace TogetherWeFall.UI
             _meterQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<DamageMeter>(),
                 ComponentType.ReadOnly<LocalTransform>());
+
+            // For the tooltips: half of what a vendor sells is a gem, and a gem
+            // is a skill nobody can read off the tile.
+            _skillDatabaseQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<SkillDatabase>());
 
             _hasWorld = true;
         }
@@ -374,9 +384,80 @@ namespace TogetherWeFall.UI
             _panel.Add(hint);
 
             _screen.Add(_panel);
+
+            // After the panel, so it draws over it. A tooltip behind the thing
+            // it describes is the one placement that helps nobody.
+            _tooltips = new TooltipView(_screen, RarityColour);
+
             root.Add(_screen);
 
             return true;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Tooltips
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// What an item on a shelf, in the bag or in a socket says.
+        ///
+        /// The same describer the inventory panel uses, told the same two
+        /// things: the item, and what the player is already wearing that it
+        /// would replace. A shop that described a helmet differently from the
+        /// bag it lands in would be the second answer this whole class exists
+        /// to avoid.
+        /// </summary>
+        private ItemTooltip.Text DescribeItem(int itemId)
+        {
+            if (!TryGetItems(out ItemDatabase items))
+                return default;
+
+            TryGetSkills(out SkillDatabase skills);
+
+            ItemTooltip.TryDescribeItem(
+                items, skills, itemId, WornRivalOf(items, itemId), out ItemTooltip.Text text);
+
+            return text;
+        }
+
+        /// <summary>What a welded socket says, by skill id.</summary>
+        private ItemTooltip.Text DescribeSkillId(int skillId)
+        {
+            if (!TryGetSkills(out SkillDatabase skills))
+                return default;
+
+            ItemTooltip.TryDescribeSkill(
+                skills, skills.IndexOf(skillId), out ItemTooltip.Text text);
+
+            return text;
+        }
+
+        /// <summary>
+        /// What buying this would replace, by id, or zero. The rule lives in
+        /// EquipmentSlots; this is the part that knows whose character it is.
+        /// </summary>
+        private int WornRivalOf(ItemDatabase items, int itemId)
+        {
+            if (!TryGetCharacter(out Entity character, out _) ||
+                !_entityManager.HasBuffer<EquippedItem>(character))
+            {
+                return 0;
+            }
+
+            return EquipmentSlots.WornRivalOf(
+                _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true),
+                items, itemId);
+        }
+
+        private bool TryGetSkills(out SkillDatabase skills)
+        {
+            skills = default;
+
+            if (_skillDatabaseQuery.IsEmptyIgnoreFilter)
+                return false;
+
+            skills = _skillDatabaseQuery.GetSingleton<SkillDatabase>();
+            return skills.Value.IsCreated;
         }
 
         private void BuildMeterPanel(VisualElement root)
@@ -458,6 +539,12 @@ namespace TogetherWeFall.UI
                 return;
 
             _lastSignature = signature;
+
+            // Everything the pointer could be over is about to be thrown away,
+            // and a destroyed element raises no leave event — so the box would
+            // hang there describing a tile that is no longer under the cursor.
+            _tooltips?.Hide();
+
             _body.Clear();
 
             switch (_session)
@@ -740,6 +827,22 @@ namespace TogetherWeFall.UI
                     _craftSocket = index;
                     _lastSignature = int.MinValue;
                 });
+
+                // The forge is where a player decides which gem goes where, so
+                // it is the last place a hole should be a number with no name.
+                if (socket.IsWelded)
+                {
+                    int weldedSkill = socket.WeldedSkillId;
+                    _tooltips.Attach(box, () => DescribeSkillId(weldedSkill));
+                }
+                else if (socket.InsertedGem != Entity.Null &&
+                         _entityManager.HasComponent<ItemInstance>(socket.InsertedGem))
+                {
+                    int gemId =
+                        _entityManager.GetComponentData<ItemInstance>(socket.InsertedGem).ItemId;
+
+                    _tooltips.Attach(box, () => DescribeItem(gemId));
+                }
 
                 row.Add(box);
             }
@@ -1110,6 +1213,9 @@ namespace TogetherWeFall.UI
                 }
             }
 
+            int capturedId = itemId;
+            _tooltips.Attach(tile, () => DescribeItem(capturedId));
+
             if (onActivate == null)
                 return tile;
 
@@ -1413,6 +1519,7 @@ namespace TogetherWeFall.UI
             _itemDatabaseQuery.Dispose();
             _npcQuery.Dispose();
             _meterQuery.Dispose();
+            _skillDatabaseQuery.Dispose();
         }
     }
 }

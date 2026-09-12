@@ -65,6 +65,44 @@ namespace TogetherWeFall.Equipment
         }
 
         /// <summary>
+        /// What the character is already wearing that this item would replace,
+        /// by id, or zero for nothing.
+        ///
+        /// Here rather than in a panel because both panels ask it — the bag and
+        /// the vendor's shelf are the same question asked in two rooms — and
+        /// because it is the same allowed mask an equip request is checked
+        /// against, so the item named is one this item could genuinely replace.
+        /// It decides nothing: which slot an equip actually lands in stays the
+        /// host's answer.
+        ///
+        /// ponytail: the FIRST occupied slot the item is allowed in, which for a
+        /// ring means whichever hand comes first. Naming both would be two
+        /// columns of numbers for the one item in the game that has two rivals,
+        /// and the answer to "and the other ring?" is to look at the other ring.
+        /// Return a pair the day a second item type accepts two slots.
+        /// </summary>
+        public static int WornRivalOf(
+            Unity.Entities.DynamicBuffer<EquippedItem> slots, ItemDatabase items, int itemId)
+        {
+            int index = items.IndexOf(itemId);
+            if (index < 0)
+                return 0;
+
+            // By reference: ItemBlob carries a BlobArray of affixes, and copying
+            // the struct leaves that array pointing at nothing useful.
+            ref ItemBlob item = ref items.Value.Value.Items[index];
+            ushort mask = item.AllowedSlots;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (slots[i].HasItem && Accepts(mask, slots[i].Slot))
+                    return slots[i].ItemId;
+            }
+
+            return 0;
+        }
+
+        /// <summary>
         /// Whether the off hand is unusable because the main hand is holding
         /// something that needs both.
         ///
