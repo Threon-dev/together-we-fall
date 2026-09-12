@@ -89,6 +89,7 @@ namespace TogetherWeFall.Combat.Systems
                 DamageEvent killingBlow = default;
 
                 float total = 0f;
+                bool anyCrit = false;
                 DamageType lastType = DamageType.Physical;
 
                 for (int i = 0; i < events.Length; i++)
@@ -102,14 +103,27 @@ namespace TogetherWeFall.Combat.Systems
                     // the feedback is written and there would be nothing left to
                     // read it from.
                     lastType = events[i].Type;
+                    anyCrit |= events[i].Crit;
 
                     // The blow that takes it below zero is the one that decides
                     // what happens to the corpse, so it is recorded rather than
                     // simply the last one in the buffer.
-                    if (!killed && remaining <= 0f)
+                    //
+                    // Or the one that takes it under the culling threshold it
+                    // was carrying, which is the same decision: a body left
+                    // with a sliver of life by a supported blow is a body that
+                    // support finished. Resolved here because this is the only
+                    // stage that can see the fraction — everything upstream
+                    // knows how hard it hit, not how much was left.
+                    if (!killed && (remaining <= 0f || Culled(events[i], remaining, health.Max)))
                     {
                         killed = true;
                         killingBlow = events[i];
+
+                        // Taken to zero rather than left at the sliver, so the
+                        // orb, the number and the corpse all agree about what
+                        // happened.
+                        remaining = 0f;
                     }
                 }
 
@@ -124,6 +138,7 @@ namespace TogetherWeFall.Combat.Systems
                 feedback.Amount = total;
                 feedback.Type = lastType;
                 feedback.Killing = killed;
+                feedback.Crit = anyCrit;
                 hasFeedback.ValueRW = true;
 
                 health.Current = remaining;
@@ -136,11 +151,24 @@ namespace TogetherWeFall.Combat.Systems
                     KilledByPlayerId = killingBlow.SourcePlayerId,
                     Type = killingBlow.Type,
                     ExplosionRadius = killingBlow.ExplosionRadius,
-                    ExplosionDamage = killingBlow.ExplosionDamage
+                    ExplosionDamage = killingBlow.ExplosionDamage,
+                    ManaOnKill = killingBlow.ManaOnKill
                 };
 
                 isDead.ValueRW = true;
             }
+
+            /// <summary>
+            /// Whether this blow's culling support finishes what is left.
+            ///
+            /// Guarded against a zero maximum for the same reason the cast
+            /// conditions are: a target whose maximum is zero would make every
+            /// culling support an instant kill rather than a meaningless
+            /// question.
+            /// </summary>
+            private static bool Culled(in DamageEvent blow, float remaining, float max)
+                => blow.CullThreshold > 0f && max > 0f &&
+                   remaining / max <= blow.CullThreshold;
         }
     }
 }

@@ -24,6 +24,7 @@ namespace TogetherWeFall.EditorTools
     public static class ItemContentFactory
     {
         private const string ItemFolder = "Assets/_Project/Data/Items";
+        private const string SetFolder = "Assets/_Project/Data/Sets";
 
         /// <summary>
         /// Gives every weapon the attack it is born with.
@@ -115,6 +116,105 @@ namespace TogetherWeFall.EditorTools
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return table;
         }
+
+        /// <summary>
+        /// One set, so the mechanism exists in content and not only in code.
+        ///
+        /// Four pieces that the sample items already provide, and two steps on
+        /// purpose: the first is plain numbers, the second adds a support that
+        /// applies to every skill the wearer casts. That is the whole shape of
+        /// the feature — a step that is stats, a step that is more than stats —
+        /// and a set with one step would have exercised half of it.
+        ///
+        /// The numbers are placeholders, like every other number in these
+        /// factories. Filled only when the asset is created: rebuilding a scene
+        /// must never overwrite a set somebody has since tuned.
+        /// </summary>
+        public static ItemSetDefinition CreateOrLoadDemoSet()
+        {
+            ItemSetDefinition set = SceneBuildUtility.CreateOrLoadConfig<ItemSetDefinition>(
+                "WarlordsRegalia", SetFolder, out bool created);
+
+            if (!created)
+                return set;
+
+            // The pieces, by asset name. Named rather than filtered by slot,
+            // because "which items are in this set" is a content decision and a
+            // scan would quietly change it the day an item is added.
+            var members = new[]
+            {
+                LoadItem("WarlordsPlate"),
+                LoadItem("RustedHelm"),
+                LoadItem("RunedGauntlets"),
+                LoadItem("BandOfEmbers")
+            };
+
+            var serialized = new SerializedObject(set);
+            serialized.FindProperty("_setId").stringValue = "WarlordsRegalia";
+            serialized.FindProperty("_setName").stringValue = "Warlord's Regalia";
+
+            SerializedProperty memberList = serialized.FindProperty("_members");
+            memberList.arraySize = 0;
+
+            for (int i = 0; i < members.Length; i++)
+            {
+                // A missing piece is said out loud rather than written in as a
+                // hole: this asset is filled once, so a null baked in now is a
+                // set that is quietly one piece short forever.
+                if (members[i] == null)
+                {
+                    Debug.LogWarning(
+                        $"[{nameof(ItemContentFactory)}] The demo set is missing a member — " +
+                        "the sample items are not on disk yet. Rebuild the scene once they are.");
+                    continue;
+                }
+
+                memberList.arraySize++;
+                memberList.GetArrayElementAtIndex(memberList.arraySize - 1)
+                    .objectReferenceValue = members[i];
+            }
+
+            SerializedProperty thresholds = serialized.FindProperty("_thresholds");
+            thresholds.arraySize = 2;
+
+            // Two pieces: numbers only. TUNE
+            SerializedProperty twoPiece = thresholds.GetArrayElementAtIndex(0);
+            twoPiece.FindPropertyRelative("_requiredPieceCount").intValue = 2;
+            twoPiece.FindPropertyRelative("_bonusSkillModifier").objectReferenceValue = null;
+            twoPiece.FindPropertyRelative("_bonusKeystone").enumValueIndex =
+                (int)KeystoneEffect.None;
+
+            WriteAffixes(
+                twoPiece.FindPropertyRelative("_bonuses"),
+                new[]
+                {
+                    new ItemAffix(StatKind.MaxHealth, ModifierKind.Flat, 25f),
+                    new ItemAffix(StatKind.Armour, ModifierKind.Increased, 15f)
+                });
+
+            // Four pieces: numbers AND a support on everything cast. TUNE
+            SerializedProperty fourPiece = thresholds.GetArrayElementAtIndex(1);
+            fourPiece.FindPropertyRelative("_requiredPieceCount").intValue = 4;
+            fourPiece.FindPropertyRelative("_bonusSkillModifier").objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<SkillModifier>(
+                    "Assets/_Project/Data/Skills/SupportChain.asset");
+            fourPiece.FindPropertyRelative("_bonusKeystone").enumValueIndex =
+                (int)KeystoneEffect.None;
+
+            WriteAffixes(
+                fourPiece.FindPropertyRelative("_bonuses"),
+                new[]
+                {
+                    new ItemAffix(StatKind.Damage, ModifierKind.Increased, 20f)
+                });
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            return set;
+        }
+
+        /// <summary>One sample item by asset name, or null when it is not there yet.</summary>
+        private static ItemDefinition LoadItem(string assetName)
+            => AssetDatabase.LoadAssetAtPath<ItemDefinition>($"{ItemFolder}/{assetName}.asset");
 
         /// <summary>
         /// The starter items.

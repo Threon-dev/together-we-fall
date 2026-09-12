@@ -1,8 +1,10 @@
 using Unity.Collections;
 using Unity.Entities;
+using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Interaction.Systems;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Player;
 
 namespace TogetherWeFall.Loot.Systems
@@ -40,6 +42,7 @@ namespace TogetherWeFall.Loot.Systems
                 .Build();
 
             state.RequireForUpdate<ItemInstance>();
+            state.RequireForUpdate<ItemDatabase>();
             state.RequireForUpdate<PlayerCharacter>();
         }
 
@@ -69,6 +72,8 @@ namespace TogetherWeFall.Loot.Systems
 
         private void Request(ref SystemState state, NativeList<PickedItem> picked)
         {
+            ItemDatabase items = SystemAPI.GetSingleton<ItemDatabase>();
+
             using NativeArray<Entity> playerEntities = _playerQuery.ToEntityArray(Allocator.Temp);
             using NativeArray<PlayerCharacter> players =
                 _playerQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
@@ -92,6 +97,21 @@ namespace TogetherWeFall.Loot.Systems
                     UnityEngine.Debug.LogWarning(
                         $"[ItemPickupSystem] No character for player {entry.PlayerId} — " +
                         $"{entry.Name} was left on the floor.");
+                    continue;
+                }
+
+                // Money never reaches the bag. A coin is an item for exactly as
+                // long as it is lying on the floor; picking it up adds its value
+                // to the purse and hands the entity back to the pool, so a
+                // floor's worth of payout costs no squares and no placement
+                // request at all.
+                //
+                // Asked before the request below rather than inside the
+                // placement stage, because "this is money" is a fact about the
+                // item and the grid has no business knowing it.
+                if (Currency.TryCollect(
+                        state.EntityManager, items, playerEntities[player], entry.Entity))
+                {
                     continue;
                 }
 

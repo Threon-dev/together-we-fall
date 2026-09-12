@@ -32,8 +32,10 @@ namespace TogetherWeFall.Skills.Systems
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct SkillCastSystem : ISystem
     {
-        /// <summary>How far apart multicast copies fan out, in degrees.</summary>
-        private const float MulticastSpreadDegrees = 9f;
+        // The multicast spread used to be a constant here. It is a folded
+        // number now — SkillDatabase.DefaultSpreadDegrees is where it starts and
+        // IncreasedSpread is what moves it — because a gem wanted to change it,
+        // and a constant the fold cannot see is one the tooltip cannot explain.
 
         /// <summary>How wide a chain bolt looks for its first target. Sixty degrees each way.</summary>
         private const float BoltAcquireCosine = 0.5f;
@@ -233,30 +235,40 @@ namespace TogetherWeFall.Skills.Systems
 
             // The build, gathered fresh. The same gem beside different supports
             // is a different skill, and this is the line where that happens.
-            FixedList512Bytes<SkillModifierBlob> supports =
-                GemSockets.GatherSupports(state.EntityManager, items, slot.Gear, linkGroup);
-
-            // A trigger gem in the group takes the key away, and this is where
-            // that is enforced — not in the bind, which happened before the gem
-            // arrived and cannot be re-run when it does. The socket is still
-            // bound and the panel still names it; it simply casts when the world
-            // says so rather than when the key is pressed.
             //
-            // Silently, and on purpose: the alternative is a refusal message
-            // every frame the button is held.
-            if (GemSockets.TryGetTrigger(supports, out _))
+            // The character goes in so the set bonuses that carry a support are
+            // gathered with them: those act on every skill rather than on one
+            // link group, and this is the line where "every skill" is decided.
+            FixedList512Bytes<SkillModifierBlob> supports =
+                GemSockets.GatherSupports(
+                    state.EntityManager, items, slot.Gear, linkGroup, character);
+
+            // A passive refuses the key, and only a passive: the first active in
+            // a group keeps answering even with a trigger gem beside it, which
+            // is what lets a weapon go on being swung by the hand that owns it
+            // while the gem linked to it fires on its own.
+            //
+            // Enforced here rather than in the bind, which happened before the
+            // gem arrived and cannot be re-run when it does. Silently, and on
+            // purpose: the alternative is a refusal message every frame the
+            // button is held.
+            if (GemSockets.IsPassiveActive(
+                    state.EntityManager, items, slot.Gear, slot.SocketIndex))
+            {
                 return;
+            }
 
             StatBlock stats = state.EntityManager.GetComponentData<PlayerStats>(character).Final;
 
             // Only asked for when something asked. A build with no conditional
             // supports — which is every build that existed before this — pays
             // one comparison and never touches the world.
-            CastConditions conditions = SkillConditions.AnyConditional(supports)
-                ? ReadConditions(
-                    ref state, targets, request.Origin, Flatten(request.Direction),
-                    skills.RangeOf(skillIndex))
-                : CastConditions.Unknown(default);
+            CastConditions conditions =
+                SkillConditions.AnyConditional(supports) || skills.AnyConditional(skillIndex)
+                    ? ReadConditions(
+                        ref state, targets, request.Origin, Flatten(request.Direction),
+                        skills.RangeOf(skillIndex), Entity.Null)
+                    : CastConditions.Unknown(default);
 
             ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports, conditions);
 
@@ -322,8 +334,15 @@ namespace TogetherWeFall.Skills.Systems
             bool produced = false;
             for (int c = 0; c < resolved.Casts; c++)
             {
+                // Both the facing and the aim swing, so a fan of bursts lands as
+                // a fan rather than as one burst three times over.
+                float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
+
+                CastContext copy = context;
+                copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
+
                 produced |= Emit(
-                    resolved, context, Spread(direction, c, resolved.Casts),
+                    resolved, copy, Turn(direction, angle),
                     targets, hits, areas, spawns, zones, effects);
             }
 
@@ -339,6 +358,17 @@ namespace TogetherWeFall.Skills.Systems
 
             SpendMana(ref state, character, resolved.ManaCost);
         }
+
+        // The crit roll used to live here, once per press, and it was in the
+        // wrong place: a cast is not a blow. One projectile out of three forks
+        // crits and the other two do not, a chain crits on the second jump and
+        // not the first, a burst crits on the body it caught and not its
+        // neighbour. All of that is a fact about a blow landing, and the stage
+        // that knows a blow is landing is SkillHitSystem — which is also where
+        // OnCrit is announced now, with the body it actually happened to.
+        //
+        // What travels from here is the chance and the multiplier, carried the
+        // same way the explosion and the cull already are.
 
         /// <summary>
         /// Whether the caster can pay, treating a character with no mana
@@ -421,10 +451,6 @@ namespace TogetherWeFall.Skills.Systems
             // remembered its weapon is a weapon that cannot be swapped while it
             // flies.
             //
-            // Conditions are not asked here either way. What a triggered cast is
-            // aimed at is whatever it landed on, and asking "is the target
-            // burning" of a body a blast already killed is a question with a
-            // misleading answer.
             var supports = new FixedList512Bytes<SkillModifierBlob>();
 
             if (cast.Gear != Entity.Null &&
@@ -433,11 +459,66 @@ namespace TogetherWeFall.Skills.Systems
             {
                 supports = GemSockets.GatherSupports(
                     state.EntityManager, SystemAPI.GetSingleton<ItemDatabase>(),
-                    cast.Gear, socket.LinkGroup);
+                    cast.Gear, socket.LinkGroup, character);
             }
 
+            // What this cast is actually aimed at, worked out before anything
+            // asks a question about it.
+            //
+            // The cause named a body, and it may well be gone: a crit names
+            // nobody at all, and a kill names a corpse. Either way the cast has
+            // to go somewhere — a projectile fired down the default facing at a
+            // dead man is the difference between a trigger gem that feels like
+            // a build and one that looks broken.
+            //
+            // So: the body that caused it if it is still standing, otherwise
+            // the nearest one within the skill's own reach, otherwise nothing
+            // and the cast goes off where it was caused.
+            Entity aimed = cast.PreferredTarget;
+            float3 aimPoint = cast.Origin;
+            float3 direction = Flatten(cast.Direction);
+
+            int aimedIndex = aimed != Entity.Null ? targets.IndexOf(aimed) : -1;
+
+            if (aimedIndex < 0)
+            {
+                aimedIndex = targets.FindNearest(cast.Origin, skills.RangeOf(cast.SkillIndex));
+                aimed = aimedIndex >= 0 ? targets.Entities[aimedIndex] : Entity.Null;
+            }
+
+            if (aimedIndex >= 0)
+            {
+                aimPoint = targets.PositionOf(aimedIndex);
+
+                // Only when there is a line to speak of. A burst that goes off
+                // on top of its target has no direction, and normalising a zero
+                // vector would point it at the world's z axis.
+                float3 toTarget = aimPoint - cast.Origin;
+
+                if (math.lengthsq(toTarget) > 1e-3f)
+                    direction = Flatten(toTarget);
+            }
+
+            // Conditions, asked of the body that caused this.
+            //
+            // They used to be refused outright here, on the grounds that asking
+            // "is the target burning" of a body a blast already killed gives a
+            // misleading answer. The price was worse than the problem: every
+            // conditional gem in a group holding a trigger gem was dead weight,
+            // silently, and "dead weight, silently" is the one thing a socketed
+            // gem must never be. A cause that named a body is asked about that
+            // body; a cause whose body has since died falls back to the search,
+            // and a search that finds nothing answers no — which is the same
+            // honest nothing a key press gets when it is aimed at empty floor.
+            CastConditions conditions =
+                SkillConditions.AnyConditional(supports) || skills.AnyConditional(cast.SkillIndex)
+                    ? ReadConditions(
+                        ref state, targets, cast.Origin, direction,
+                        skills.RangeOf(cast.SkillIndex), aimed)
+                    : CastConditions.Unknown(default);
+
             ResolvedSkill resolved = skills.Resolve(
-                cast.SkillIndex, stats, supports, CastConditions.Unknown(default));
+                cast.SkillIndex, stats, supports, conditions);
 
             resolved.Damage *= cast.DamageScale;
             resolved.ExplosionDamage *= cast.DamageScale;
@@ -450,21 +531,21 @@ namespace TogetherWeFall.Skills.Systems
             {
                 PlayerId = cast.PlayerId,
                 Origin = cast.Origin,
-
-                // Where it landed is the aim. A triggered burst goes off at the
-                // impact point rather than at arm's length beyond it.
-                AimPoint = cast.Origin,
-                PreferredTarget = cast.PreferredTarget,
+                AimPoint = aimPoint,
+                PreferredTarget = aimed,
                 Depth = cast.Depth,
                 Keystone = keystone
             };
 
-            float3 direction = Flatten(cast.Direction);
-
             for (int c = 0; c < resolved.Casts; c++)
             {
+                float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
+
+                CastContext copy = context;
+                copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
+
                 Emit(
-                    resolved, context, Spread(direction, c, resolved.Casts),
+                    resolved, copy, Turn(direction, angle),
                     targets, hits, areas, spawns, zones, effects);
             }
         }
@@ -500,11 +581,20 @@ namespace TogetherWeFall.Skills.Systems
                             HitRadius = ProjectileHitRadius,
                             ImpactRadius = skill.Radius,
                             ForksRemaining = skill.Forks,
+                            PiercesRemaining = skill.Pierces,
                             ChainsRemaining = skill.Chains,
                             ChainRange = skill.ChainRange,
                             ChainDelay = skill.ChainDelay,
                             ExplosionRadius = skill.ExplosionRadius,
                             ExplosionDamage = skill.ExplosionDamage,
+                            CullThreshold = skill.CullThreshold,
+                            ManaOnKill = skill.ManaOnKill,
+
+                            // Not spent here. Every body this ends up striking
+                            // rolls its own, which is what makes a fork that
+                            // crits on one side and not the other possible.
+                            CritChance = skill.CritChance,
+                            CritMultiplier = skill.CritMultiplier,
 
                             // Carried on the projectile, like everything else it
                             // needs to resolve its own impact.
@@ -566,7 +656,34 @@ namespace TogetherWeFall.Skills.Systems
                             // it is cast is a burst wearing a zone as a costume.
                             TickRemaining = skill.ZoneTickInterval,
                             Damage = skill.Damage,
-                            SourcePlayerId = context.PlayerId
+                            SourcePlayerId = context.PlayerId,
+
+                            // The rest of the fold, which a zone used to drop
+                            // on the floor. A status gem, a kill gem or a
+                            // trigger gem in the group is now spent on a zone
+                            // skill instead of sitting in the socket doing
+                            // nothing — the one thing a gem must never do.
+                            //
+                            // Chains are the deliberate omission. A pulse is an
+                            // effect that repeats twelve times, and a chain per
+                            // pulse would make the jumps a function of how long
+                            // the fire burns rather than of what was socketed.
+                            AppliedStatus = skill.AppliedStatus,
+                            ExplosionRadius = skill.ExplosionRadius,
+                            ExplosionDamage = skill.ExplosionDamage,
+                            CullThreshold = skill.CullThreshold,
+                            ManaOnKill = skill.ManaOnKill,
+
+                            // Every pulse rolls for every body it catches, so a
+                            // zone that burns for six seconds is a crit build's
+                            // best friend rather than one lucky number.
+                            CritChance = skill.CritChance,
+                            CritMultiplier = skill.CritMultiplier,
+
+                            // Fires on the first pulse and then never again.
+                            TriggerSkillIndex = skill.TriggerSkillIndex,
+                            TriggerDamageScale = skill.TriggerDamageScale,
+                            TriggerDepth = context.Depth
                         }
                     });
 
@@ -674,6 +791,10 @@ namespace TogetherWeFall.Skills.Systems
                 Delay = 0f,
                 ExplosionRadius = skill.ExplosionRadius,
                 ExplosionDamage = skill.ExplosionDamage,
+                CullThreshold = skill.CullThreshold,
+                ManaOnKill = skill.ManaOnKill,
+                CritChance = skill.CritChance,
+                CritMultiplier = skill.CritMultiplier,
                 AppliedStatus = skill.AppliedStatus,
 
                 // Depth zero is a key press; anything deeper got here because
@@ -722,8 +843,19 @@ namespace TogetherWeFall.Skills.Systems
             Type = skill.Type,
             SourcePlayerId = context.PlayerId,
             Delay = 0f,
+
+            // Handed to one body inside the blast rather than to all of them.
+            // A swing or a burst with a chain gem beside it now spends that
+            // gem; the area stage is what keeps it to one chain per effect.
+            ChainsRemaining = skill.Chains,
+            ChainRange = skill.ChainRange,
+            ChainDelay = skill.ChainDelay,
             ExplosionRadius = skill.ExplosionRadius,
             ExplosionDamage = skill.ExplosionDamage,
+            CullThreshold = skill.CullThreshold,
+            ManaOnKill = skill.ManaOnKill,
+            CritChance = skill.CritChance,
+            CritMultiplier = skill.CritMultiplier,
             TriggerSkillIndex = skill.TriggerSkillIndex,
             TriggerDamageScale = skill.TriggerDamageScale,
             TriggerDepth = context.Depth,
@@ -793,11 +925,24 @@ namespace TogetherWeFall.Skills.Systems
             in EnemyTargets targets,
             float3 origin,
             float3 direction,
-            float range)
+            float range,
+            Entity preferred)
         {
             var conditions = CastConditions.Unknown(default);
 
-            int index = targets.FindNearestInArc(origin, direction, BoltAcquireCosine, range);
+            // The body that caused this cast, when something named one — a
+            // projectile knows precisely what it landed on, and a trigger knows
+            // whose death it is answering. Asked first for the same reason the
+            // bolt asks it first: "the one I hit" and "the one nearest to where
+            // I hit" come apart exactly in a crowd, which is where builds are
+            // decided.
+            //
+            // It may already be gone, and then the searches below take over.
+            int index = preferred != Entity.Null ? targets.IndexOf(preferred) : -1;
+
+            if (index < 0)
+                index = targets.FindNearestInArc(origin, direction, BoltAcquireCosine, range);
+
             if (index < 0)
                 index = targets.FindNearest(origin, range);
 
@@ -806,6 +951,22 @@ namespace TogetherWeFall.Skills.Systems
 
             Entity target = targets.Entities[index];
             conditions.HasTarget = true;
+
+            // Counted here rather than in a helper on EnemyTargets, because it
+            // is the one question in this file that is about the fight and not
+            // about a body — and it is one walk of an array already in hand, on
+            // a path only a build with a crowd support ever takes.
+            float3 around = targets.PositionOf(index);
+            float crowdSq = SkillConditions.CrowdRadius * SkillConditions.CrowdRadius;
+
+            for (int i = 0; i < targets.Length; i++)
+            {
+                float3 offset = targets.PositionOf(i) - around;
+                offset.y = 0f;
+
+                if (math.lengthsq(offset) <= crowdSq)
+                    conditions.TargetNearbyCount++;
+            }
 
             if (state.EntityManager.HasComponent<Health>(target))
             {
@@ -941,21 +1102,40 @@ namespace TogetherWeFall.Skills.Systems
                 : new float3(0f, 0f, 1f);
         }
 
-        private static float3 Spread(float3 direction, int index, int count)
+        /// <summary>
+        /// How far off the aim this copy of a multicast goes, in radians.
+        ///
+        /// Centred on the aim, so an odd number of casts still has one going
+        /// exactly where the player pointed.
+        /// </summary>
+        private static float SpreadAngle(int index, int count, float spreadDegrees)
+            => count <= 1 ? 0f : (index - (count - 1) * 0.5f) * math.radians(spreadDegrees);
+
+        /// <summary>Turns a direction on the ground plane by an angle.</summary>
+        private static float3 Turn(float3 direction, float angle)
         {
-            if (count <= 1)
+            if (angle == 0f)
                 return direction;
 
-            // Centred on the aim, so an odd number of casts still has one going
-            // exactly where the player pointed.
-            float angle = (index - (count - 1) * 0.5f) * math.radians(MulticastSpreadDegrees);
             math.sincos(angle, out float sin, out float cos);
 
             return new float3(
                 direction.x * cos - direction.z * sin,
-                0f,
+                direction.y,
                 direction.x * sin + direction.z * cos);
         }
+
+        /// <summary>
+        /// Where this copy of a multicast is aimed.
+        ///
+        /// The aim swings with the direction, around the caster. Without it
+        /// every copy of a burst and every copy of a zone landed on exactly the
+        /// same square metre — three novas inside one another, which is a damage
+        /// multiplier wearing a multicast as a costume, and a spread gem beside
+        /// them that could not possibly do anything.
+        /// </summary>
+        private static float3 SpreadAim(float3 origin, float3 aimPoint, float angle)
+            => angle == 0f ? aimPoint : origin + Turn(aimPoint - origin, angle);
 
         /// <summary>
         /// Takes the height from where the player is pointing rather than from

@@ -218,6 +218,14 @@ namespace TogetherWeFall.Skills.Systems
                     if (!GemSockets.TryGetTrigger(supports, out SkillModifierBlob trigger))
                         continue;
 
+                    // Only the passives. The first active in the group is the
+                    // one the player is pressing — firing it here as well would
+                    // be the same skill going off twice for reasons nobody can
+                    // see, which is exactly what the old rule did to a weapon's
+                    // welded attack.
+                    if (!GemSockets.IsPassiveActive(entityManager, items, gear, socket))
+                        continue;
+
                     if (IsOnCooldown(cooldowns, gear, socket))
                         continue;
 

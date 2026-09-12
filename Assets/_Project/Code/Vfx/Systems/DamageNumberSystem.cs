@@ -55,7 +55,13 @@ namespace TogetherWeFall.Vfx.Systems
                     Position = transform.ValueRO.Position,
                     Color = DamageTypePalette.For(feedback.ValueRO.Type),
                     Magnitude = feedback.ValueRO.Amount,
-                    Emphasis = feedback.ValueRO.Killing
+                    // A killing blow and a critical one both get the emphasis,
+                    // because both are the thing the player is watching for and
+                    // the event carries exactly one flag for "look at this".
+                    // Telling them apart on screen is a second flag and a second
+                    // treatment in the presenter, which is a presentation
+                    // decision rather than a missing fact.
+                    Emphasis = feedback.ValueRO.Killing || feedback.ValueRO.Crit
                 });
             }
         }

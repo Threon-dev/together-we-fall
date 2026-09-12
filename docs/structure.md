@@ -85,7 +85,7 @@ Assets/_Project/
 │   │                                     ProjectileZoneOverlap, TriggerEvaluation,
 │   │                                     StarterKit
 │   ├── Lobby/
-│   │   ├── Currency.cs                   гроші-предмет: баланс, оплата, видача
+│   │   ├── Currency.cs                   гроші: гаманець, оплата, збір монети
 │   │   ├── SceneLoadBridge.cs            єдиний, хто кличе LoadScene
 │   │   ├── Components/                   NpcService, Vendor*, Crafting*,
 │   │   │                                 DungeonPortal, SceneTransition
@@ -128,8 +128,10 @@ Assets/_Project/
 │   ├── Elements/                         StatusEffectDefinition (CC, DoT,
 │   │                                     дебафи), правила реакцій
 │   │                                     і ElementReactionTable
-│   └── Skills/                           SkillDefinition (разом із двома
-│                                         вшитими атаками зброї) і SkillModifier
+│   ├── Skills/                           SkillDefinition (разом із двома
+│   │                                     вшитими атаками зброї) і SkillModifier
+│   └── Sets/                             ItemSetDefinition — членство сету
+│                                         й бонуси за порогами
 ├── UI/                                   PanelSettings + RuntimeTheme.tss
 ├── Prefabs/                              Enemy, Chest, LootItem, SkillProjectile,
 │                                         ElementZone

@@ -46,6 +46,24 @@ namespace TogetherWeFall.Skills
         /// </summary>
         public StatusEffectType RequiredStatus;
 
+        /// <summary>
+        /// The status a StatusOverride support puts on the supported skill.
+        /// Ignored by every other kind.
+        ///
+        /// A seventh byte in a struct that has room for eight before it pads,
+        /// so it costs nothing here and nothing in the fixed list the fold
+        /// gathers into — the same arithmetic RequiredStatus was added under.
+        /// </summary>
+        public StatusEffectType AppliedStatus;
+
+        /// <summary>
+        /// How many bodies a TargetCrowded condition wants. Ignored by the rest.
+        ///
+        /// The eighth byte, and the last one free. A ninth would push this
+        /// struct to thirty-six and cost two slots out of the fixed list.
+        /// </summary>
+        public byte RequiredCount;
+
         public float Value;
 
         /// <summary>Second number, where one is not enough. See SkillModifier.</summary>
@@ -168,6 +186,35 @@ namespace TogetherWeFall.Skills
     }
 
     /// <summary>
+    /// The few facts about a skill that decide whether a support has anything
+    /// to act on.
+    ///
+    /// A flat, copyable struct — no BlobArray — so the panel can hold one while
+    /// it draws a socket and hand it to the tooltip. It exists because "this
+    /// gem does nothing here" is a question two parts of the UI ask about the
+    /// same gem, and an answer written twice is an answer that drifts.
+    ///
+    /// Deliberately not the whole SkillBlob. What a support needs to know is
+    /// what kind of effect this is, whether it has an area at all, and whether
+    /// it costs anything — everything else about a skill is a number a support
+    /// changes rather than a reason it cannot.
+    /// </summary>
+    public struct SkillShape
+    {
+        public FixedString64Bytes Name;
+        public SkillEffectKind Effect;
+
+        /// <summary>Zero on a projectile means it hits one body and nothing around it.</summary>
+        public float Radius;
+
+        /// <summary>Zero is free, which a weapon's built-in attack always is.</summary>
+        public float ManaCost;
+
+        /// <summary>Whether this shape names a real skill at all.</summary>
+        public bool Exists;
+    }
+
+    /// <summary>
     /// A skill after its supports and the caster have been folded in. What the
     /// cast actually uses.
     /// </summary>
@@ -192,6 +239,33 @@ namespace TogetherWeFall.Skills
 
         /// <summary>How many times the whole skill goes off. Multicast raises it.</summary>
         public int Casts;
+
+        /// <summary>
+        /// How far apart those casts fan out, in degrees. The default is what
+        /// the cast system used to hold as a constant.
+        /// </summary>
+        public float SpreadDegrees;
+
+        /// <summary>Bodies a projectile passes through before it stops.</summary>
+        public int Pierces;
+
+        /// <summary>Fraction of life below which a blow finishes the target, or zero.</summary>
+        public float CullThreshold;
+
+        /// <summary>Mana returned per body this skill kills.</summary>
+        public float ManaOnKill;
+
+        /// <summary>
+        /// Chance that this cast lands as a critical blow, from zero to one.
+        ///
+        /// Folded here rather than rolled here: the fold is a pure function of
+        /// the build, and a random number in it would make the same gems answer
+        /// differently to the panel and to the host.
+        /// </summary>
+        public float CritChance;
+
+        /// <summary>What a critical blow multiplies the damage by.</summary>
+        public float CritMultiplier;
 
         public int Forks;
         public int Chains;
@@ -233,6 +307,16 @@ namespace TogetherWeFall.Skills
     /// </summary>
     public struct SkillDatabase : IComponentData
     {
+        /// <summary>
+        /// How far apart the copies of a multicast fan out, before any support.
+        ///
+        /// It lived in the cast system as a constant until a gem wanted to
+        /// change it. Here rather than there because the fold is where every
+        /// other number a support touches is decided, and a value the fold
+        /// could not see would be one the tooltip could not explain.
+        /// </summary>
+        public const float DefaultSpreadDegrees = 9f;
+
         public BlobAssetReference<SkillDatabaseBlob> Value;
 
         public bool IsValidIndex(int index)
@@ -276,17 +360,13 @@ namespace TogetherWeFall.Skills
         public float RangeOf(int index)
             => IsValidIndex(index) ? Value.Value.Skills[index].Range : 0f;
 
-        /// <summary>
-        /// What a press of this skill costs.
-        ///
-        /// Beside RangeOf and for the same reason it exists: a caller that wants
-        /// one field and not the fold. Safe in the same way, too — no support
-        /// scales the cost, so asking before the fold and after it give the same
-        /// answer. The day one does, this becomes wrong and the compiler will
-        /// not say so, which is why ResolvedSkill carries the cost as well.
-        /// </summary>
-        public float ManaCostOf(int index)
-            => IsValidIndex(index) ? Value.Value.Skills[index].ManaCost : 0f;
+        // ManaCostOf used to sit here: the authored cost, for a caller that
+        // wanted one field and not the fold. Its own comment said it would
+        // become wrong the day a support scaled the cost and that the compiler
+        // would not say so — IncreasedManaCost is that day, so it is gone
+        // rather than left to quietly disagree with the host. The one caller,
+        // the skill bar, folds properly now; it was already holding the
+        // supports.
 
         /// <summary>
         /// Everything the supports of one cast add up to, before the maths.
@@ -300,17 +380,115 @@ namespace TogetherWeFall.Skills
             public float IncreasedDamage;
             public float IncreasedArea;
             public float IncreasedSpeed;
+            public float IncreasedCost;
+            public float ReducedCooldown;
+            public float IncreasedDuration;
+            public float IncreasedSpread;
+            public float IncreasedCrit;
 
             public int Chains;
             public int Forks;
             public int Casts;
+            public int Pierces;
 
             public DamageType Type;
+
+            /// <summary>The status the skill ends up applying, after any override.</summary>
+            public StatusEffectType Status;
+
             public float ExplosionRadius;
             public float ExplosionShare;
 
+            /// <summary>The deepest cull any support asked for. Fractions, not percent.</summary>
+            public float CullThreshold;
+
+            public float ManaOnKill;
+
             public int TriggerId;
             public float TriggerShare;
+        }
+
+        /// <summary>
+        /// What this skill will actually deal, before anything else is folded.
+        ///
+        /// Innate conversions first, then gem ones, so a gem beats an authored
+        /// conversion — the same precedence the main fold applies, arrived at
+        /// the same way. Its own pass rather than a value read out of the main
+        /// one, because the main fold needs this answer before it starts.
+        /// </summary>
+        private static DamageType FinalElement(
+            ref SkillBlob skill, in FixedList512Bytes<SkillModifierBlob> gemSupports)
+        {
+            DamageType type = skill.Type;
+
+            for (int m = 0; m < skill.Modifiers.Length; m++)
+            {
+                if (skill.Modifiers[m].Kind == SkillModifierKind.ElementalConversion)
+                    type = skill.Modifiers[m].ConvertTo;
+            }
+
+            for (int g = 0; g < gemSupports.Length; g++)
+            {
+                if (gemSupports[g].Kind == SkillModifierKind.ElementalConversion)
+                    type = gemSupports[g].ConvertTo;
+            }
+
+            return type;
+        }
+
+        /// <summary>
+        /// Whether this skill's own supports ask about anything.
+        ///
+        /// The counterpart of SkillConditions.AnyConditional, which can only
+        /// see the gems: a skill authored with a conditional support of its own
+        /// needs the context gathered even when nothing is socketed beside it.
+        /// </summary>
+        public bool AnyConditional(int index)
+        {
+            if (!IsValidIndex(index))
+                return false;
+
+            ref SkillBlob skill = ref Value.Value.Skills[index];
+
+            for (int m = 0; m < skill.Modifiers.Length; m++)
+            {
+                if (skill.Modifiers[m].Condition != ModifierConditionType.None)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// What kind of effect a skill is, for a caller that wants to know
+        /// whether a support has anything to act on.
+        ///
+        /// Beside RangeOf and safe for the same reason: no support changes what
+        /// a skill fundamentally does, so asking before the fold and after it
+        /// give the same answer.
+        /// </summary>
+        public SkillEffectKind EffectOf(int index)
+            => IsValidIndex(index) ? Value.Value.Skills[index].Effect : SkillEffectKind.Projectile;
+
+        /// <summary>
+        /// The handful of facts that decide whether a support can act on this
+        /// skill at all. Safe to copy, unlike the blob it is read from.
+        /// </summary>
+        public SkillShape ShapeOf(int index)
+        {
+            if (!IsValidIndex(index))
+                return default;
+
+            ref SkillBlob skill = ref Value.Value.Skills[index];
+
+            return new SkillShape
+            {
+                Name = skill.Name,
+                Effect = skill.Effect,
+                Radius = skill.Radius,
+                ManaCost = skill.ManaCost,
+                Exists = true
+            };
         }
 
         /// <summary>
@@ -378,6 +556,50 @@ namespace TogetherWeFall.Skills
                     // explicitly rather than left to the default so that the one
                     // support with no numbers is visibly deliberate.
                     break;
+
+                case SkillModifierKind.IncreasedManaCost:
+                    fold.IncreasedCost += modifier.Value;
+                    break;
+
+                case SkillModifierKind.ReducedCooldown:
+                    fold.ReducedCooldown += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedDuration:
+                    fold.IncreasedDuration += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedSpread:
+                    fold.IncreasedSpread += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedCritChance:
+                    fold.IncreasedCrit += modifier.Value;
+                    break;
+
+                case SkillModifierKind.Pierce:
+                    fold.Pierces += (int)math.max(1f, modifier.Value);
+                    break;
+
+                // Overwrites, exactly as an elemental conversion does, and the
+                // last one folded wins for the same reason: a blow carries one
+                // named status, so two override gems is a question with no
+                // second answer rather than a sum.
+                case SkillModifierKind.StatusOverride:
+                    fold.Status = modifier.AppliedStatus;
+                    break;
+
+                // The deepest threshold wins rather than the sum, the same rule
+                // the explosion radius beside it follows: two culling supports
+                // is the better of the two, not a percentage nobody authored.
+                case SkillModifierKind.CullingStrike:
+                    fold.CullThreshold =
+                        math.max(fold.CullThreshold, math.saturate(modifier.Value * 0.01f));
+                    break;
+
+                case SkillModifierKind.ManaOnKill:
+                    fold.ManaOnKill += math.max(0f, modifier.Value);
+                    break;
             }
         }
 
@@ -410,17 +632,38 @@ namespace TogetherWeFall.Skills
         {
             ref SkillBlob skill = ref Value.Value.Skills[index];
 
-            // The element a condition asks about is the authored one, so that
-            // the answer cannot depend on where in this same fold a conversion
-            // gem happens to sit.
+            // The element a condition asks about is what the skill will
+            // ACTUALLY deal, worked out in a pass of its own before anything
+            // else is folded.
+            //
+            // It used to be the authored one, to keep the answer from depending
+            // on where a conversion gem happened to sit. The cost of that was a
+            // player socketing Galvanic Focus beside a lance that comes out
+            // yellow and getting nothing, with nothing anywhere saying why —
+            // and the order-independence was bought at the price of the gem
+            // being wrong about the game the player can see.
+            //
+            // The pre-pass buys it back: conversions are gathered first and
+            // separately, so every element condition in the group sees the same
+            // final element no matter which hole it sits in. Two conversion
+            // gems still resolve last-wins, exactly as the damage type itself
+            // always has — and a conversion's own condition is not consulted
+            // here, because "what element is this skill" cannot depend on an
+            // answer that depends on it.
             CastConditions asked = conditions;
-            asked.SkillElement = skill.Type;
+            asked.SkillElement = FinalElement(ref skill, gemSupports);
 
             var fold = new Fold
             {
                 Chains = skill.BaseChains,
                 Casts = 1,
                 Type = skill.Type,
+
+                // What the skill applies unless a support says otherwise. In
+                // the fold rather than read straight off the blob at the bottom,
+                // because that is the only way an override can lose to the
+                // authored one when nobody socketed a gem for it.
+                Status = skill.AppliedStatus,
                 TriggerShare = 100f
             };
 
@@ -441,10 +684,13 @@ namespace TogetherWeFall.Skills
             float increasedDamage = fold.IncreasedDamage;
             float increasedArea = fold.IncreasedArea;
             float increasedSpeed = fold.IncreasedSpeed;
+            float duration = fold.IncreasedDuration;
+            float spread = fold.IncreasedSpread;
 
             int chains = fold.Chains;
             int forks = fold.Forks;
             int casts = fold.Casts;
+            int pierces = fold.Pierces;
 
             DamageType type = fold.Type;
             float explosionRadius = fold.ExplosionRadius;
@@ -472,33 +718,73 @@ namespace TogetherWeFall.Skills
             if (attackSpeed <= 0.01f)
                 attackSpeed = 1f;
 
+            // Floored well above zero. A hundred percent reduced cooldown is a
+            // skill that goes off every frame, which is not a fast build, it is
+            // a frame spent casting — the same rail the trigger cooldown has.
+            float cooldownScale = math.max(0.2f, 1f - fold.ReducedCooldown * 0.01f);
+
+            // Floored at nothing rather than at the base: a support that makes
+            // a skill free is a legitimate thing to author, and a negative bill
+            // would refund mana for pressing a button.
+            float costScale = math.max(0f, 1f + fold.IncreasedCost * 0.01f);
+
+            // The sheet's chance, scaled by the supports, as a fraction. A
+            // character with no crit chance stays at zero however many supports
+            // are socketed — which is what makes the first item that grants
+            // some worth finding.
+            float critChance = math.saturate(
+                stats.Get(StatKind.CritChance) * 0.01f * (1f + fold.IncreasedCrit * 0.01f));
+
+            // A sheet that has never heard of crit multipliers would otherwise
+            // make every critical blow do less damage than an ordinary one.
+            float critMultiplier = math.max(1f, stats.Get(StatKind.CritMultiplier));
+
             return new ResolvedSkill
             {
                 Effect = skill.Effect,
                 Type = type,
                 Damage = damage,
-                Cooldown = skill.Cooldown / attackSpeed,
+                Cooldown = skill.Cooldown / attackSpeed * cooldownScale,
 
-                // Passed through untouched. No support changes what a skill
-                // costs, and none should by accident: a reduced-cost support is
-                // a new modifier kind with its own fold entry, not a number
-                // borrowed from increased damage the way zone duration almost
-                // was. It is in the resolved struct anyway so that the panel and
-                // the host read the SAME number — a bar that advertises a price
-                // the cast does not charge is worse than no price at all.
-                ManaCost = skill.ManaCost,
+                // Scaled by its own modifier kind, which is what the note that
+                // used to sit here asked for: a support that changes the price
+                // has a fold entry of its own rather than borrowing a number
+                // from somewhere else. Everything else about it is unchanged —
+                // the panel and the host still read this one figure, because a
+                // bar that advertises a price the cast does not charge is worse
+                // than no price at all. ManaCostOf, which used to answer that
+                // question off the asset, is gone for exactly this reason.
+                ManaCost = skill.ManaCost * costScale,
                 Range = skill.Range,
                 Radius = skill.Radius * (1f + increasedArea * 0.01f),
                 ArcCosine = math.cos(math.radians(math.clamp(skill.ArcDegrees, 0f, 360f) * 0.5f)),
                 ProjectileSpeed = skill.ProjectileSpeed * (1f + increasedSpeed * 0.01f),
 
-                // Duration is not scaled by anything yet. Increased area already
-                // makes a zone cover more ground through Radius above, and a
-                // support for how long it lasts is a new modifier kind rather
-                // than a number quietly borrowed from an existing one.
-                ZoneDuration = skill.ZoneDuration,
+                // Its own modifier kind, as the note that used to sit here
+                // insisted: increased area makes a zone cover more ground
+                // through Radius above, and how long it burns is a different
+                // purchase rather than a number borrowed from that one.
+                //
+                // The tick interval is deliberately NOT scaled with it. A zone
+                // that lasts twice as long should pulse twice as many times,
+                // not twice as fast — scaling both would leave the total damage
+                // where it started and make the support do nothing.
+                ZoneDuration = skill.ZoneDuration * math.max(0.1f, 1f + duration * 0.01f),
                 ZoneTickInterval = skill.ZoneTickInterval,
                 Casts = math.max(1, casts),
+
+                // Clamped away from zero and from a full circle: at zero every
+                // copy of a multicast flies down the same line and the support
+                // reads as doing nothing, and past a semicircle half of them
+                // fly backwards.
+                SpreadDegrees = math.clamp(
+                    DefaultSpreadDegrees * (1f + spread * 0.01f), 1f, 180f),
+
+                Pierces = math.max(0, pierces),
+                CullThreshold = fold.CullThreshold,
+                ManaOnKill = fold.ManaOnKill,
+                CritChance = critChance,
+                CritMultiplier = critMultiplier,
                 Forks = math.max(0, forks),
                 Chains = math.max(0, chains),
                 ChainRange = skill.ChainRange,
@@ -508,11 +794,11 @@ namespace TogetherWeFall.Skills
                 TriggerSkillIndex = triggerIndex,
                 TriggerDamageScale = math.max(0f, triggerShare) * 0.01f,
 
-                // Straight through the fold. No support changes which status a
-                // skill applies, and one that did would be a new modifier kind
-                // rather than a number quietly borrowed here — the same line
-                // drawn for zone duration above.
-                AppliedStatus = skill.AppliedStatus
+                // Out of the fold now rather than off the blob: StatusOverride
+                // is that new modifier kind, and it starts from the authored
+                // status, so a skill with no override gem resolves to exactly
+                // what it always did.
+                AppliedStatus = fold.Status
             };
         }
     }

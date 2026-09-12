@@ -74,9 +74,24 @@ namespace TogetherWeFall.Skills
 
                 // Casts something else where this landed.
                 case SkillModifierKind.TriggerOnHit:
+
+                // Carries on through the body it just struck. Folded at cast
+                // like the fork it sits beside, and answered at the impact for
+                // the same reason — the projectile has to reach something
+                // before there is anything to pass through.
+                case SkillModifierKind.Pierce:
+
+                // Decides what a blow does to a body that was already nearly
+                // gone, which is a question only the resolver can answer.
+                case SkillModifierKind.CullingStrike:
                     return SkillModifierPhase.Hit;
 
                 case SkillModifierKind.ExplodeOnKill:
+
+                // Pays out on a body falling, exactly like the burst beside it.
+                // Both are carried to the kill by the blow rather than acting
+                // at the moment of casting.
+                case SkillModifierKind.ManaOnKill:
                     return SkillModifierPhase.Kill;
 
                 // Casts the actives beside it when the world says so, rather
@@ -153,6 +168,11 @@ namespace TogetherWeFall.Skills
 
                 // Raised by ElementReactionSystem.
                 case TriggerConditionType.OnStatusApplied:
+
+                // Raised by SkillCastSystem, which is where the roll happens:
+                // a cast either crits or it does not, and everything it
+                // produces carries that answer.
+                case TriggerConditionType.OnCrit:
                     return true;
 
                 // OnLowHealth needs no announcer — it is a state read off the
@@ -167,5 +187,132 @@ namespace TogetherWeFall.Skills
         /// <summary>The same question for a support condition. Only one is early.</summary>
         public static bool HasSource(ModifierConditionType condition)
             => condition != ModifierConditionType.CasterRecentlyHit;
+
+        // ─────────────────────────────────────────────────────────────────
+        // Whether a gem can do anything at all where it has been put.
+        //
+        // Some supports cannot act on some skills, and no amount of plumbing
+        // fixes it: a swing has no projectile to split, a bolt has no area to
+        // widen, a weapon's free attack has no price to raise. Those are facts
+        // about what the skill IS.
+        //
+        // What used to happen was that such a gem sat in its hole, drew its
+        // letter, and did nothing — indistinguishable from a gem that was
+        // working. Everything below exists so the panel can say so instead, in
+        // the same words the fold would use if it could speak. One table, two
+        // readers: the socket cell and the tooltip.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Whether this kind of support changes anything about this skill.
+        ///
+        /// False is a promise that the fold will do literally nothing with it —
+        /// not that it is a weak choice. Anything that depends on what ELSE is
+        /// socketed is not asked here; see NeedsCompanion.
+        /// </summary>
+        public static bool AppliesTo(SkillModifierKind kind, in SkillShape skill)
+        {
+            if (!skill.Exists)
+                return true;
+
+            switch (kind)
+            {
+                // A projectile is the only effect that travels, so it is the
+                // only one that can be made faster, split or pushed through a
+                // body.
+                case SkillModifierKind.Fork:
+                case SkillModifierKind.Pierce:
+                case SkillModifierKind.IncreasedProjectileSpeed:
+                    return skill.Effect == SkillEffectKind.Projectile;
+
+                // Only one effect stays on the ground long enough to last
+                // longer.
+                case SkillModifierKind.IncreasedDuration:
+                    return skill.Effect == SkillEffectKind.PersistentZone;
+
+                // A bolt is a line between two bodies and has no area at all;
+                // a projectile has one only if it was authored to burst on
+                // impact, and a radius of zero scaled by anything is zero.
+                case SkillModifierKind.IncreasedArea:
+                    if (skill.Effect == SkillEffectKind.ChainBolt)
+                        return false;
+
+                    return skill.Effect != SkillEffectKind.Projectile || skill.Radius > 0f;
+
+                // A zone pulses for as long as it burns, so a chain from a zone
+                // would be a number of jumps decided by the duration rather
+                // than by what was socketed. The other four all chain.
+                case SkillModifierKind.AddedChains:
+                    return skill.Effect != SkillEffectKind.PersistentZone;
+
+                // A chain is one effect touching several bodies, and firing per
+                // jump would make the count depend on how crowded the room is.
+                case SkillModifierKind.TriggerOnHit:
+                    return skill.Effect != SkillEffectKind.ChainBolt;
+
+                // Nothing to make more expensive. True of exactly the two
+                // attacks welded into weapons, which are free on purpose.
+                case SkillModifierKind.IncreasedManaCost:
+                    return skill.ManaCost > 0f;
+
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>
+        /// Short words for why a gem is inert here, for the tooltip. Empty when
+        /// it is not.
+        /// </summary>
+        public static string WhyInert(SkillModifierKind kind, in SkillShape skill)
+        {
+            if (AppliesTo(kind, skill))
+                return string.Empty;
+
+            switch (kind)
+            {
+                case SkillModifierKind.Fork:
+                case SkillModifierKind.Pierce:
+                case SkillModifierKind.IncreasedProjectileSpeed:
+                    return "it fires no projectile";
+
+                case SkillModifierKind.IncreasedDuration:
+                    return "it leaves nothing on the ground";
+
+                case SkillModifierKind.IncreasedArea:
+                    return skill.Effect == SkillEffectKind.ChainBolt
+                        ? "a bolt jumps between bodies rather than covering ground"
+                        : "it strikes one body and nothing around it";
+
+                case SkillModifierKind.AddedChains:
+                    return "a zone pulses where it lies rather than jumping onward";
+
+                case SkillModifierKind.TriggerOnHit:
+                    return "a bolt is one effect touching many bodies";
+
+                case SkillModifierKind.IncreasedManaCost:
+                    return "it costs nothing to cast";
+
+                default:
+                    return "it has nothing to act on";
+            }
+        }
+
+        /// <summary>
+        /// The support this one needs beside it to do anything, or None.
+        ///
+        /// The other half of "this gem is doing nothing", and a different half:
+        /// this is about the GROUP rather than the skill. A spread support
+        /// widens the gap between copies of a cast, so with one cast there is
+        /// no gap to widen — however good the skill it is socketed beside.
+        /// </summary>
+        public static SkillModifierKind NeedsCompanion(SkillModifierKind kind)
+            => kind == SkillModifierKind.IncreasedSpread
+                ? SkillModifierKind.Multicast
+                : kind;
+
+        /// <summary>Whether this kind needs something else in the group at all.</summary>
+        public static bool HasCompanion(SkillModifierKind kind)
+            => NeedsCompanion(kind) != kind;
     }
 }

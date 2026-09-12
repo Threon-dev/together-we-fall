@@ -5,6 +5,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 using TogetherWeFall.Audio;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Player;
 using TogetherWeFall.Skills;
 using TogetherWeFall.Vfx;
 
@@ -67,6 +68,7 @@ namespace TogetherWeFall.Combat.Systems
                 _deadQuery.ToComponentDataArray<URPMaterialPropertyBaseColor>(Allocator.Temp);
 
             QueueExplosions(ref state, info, transforms);
+            GrantMana(ref state, info);
             AnnounceDeaths(ref state, transforms, colors);
             AnnounceKills(ref state, dead, info, transforms);
 
@@ -111,6 +113,52 @@ namespace TogetherWeFall.Combat.Systems
                     // every corpse would cast the first skill in the database.
                     TriggerSkillIndex = -1
                 });
+            }
+        }
+
+        /// <summary>
+        /// Pays the killer back for the bodies their skill was carrying a mana
+        /// support for.
+        ///
+        /// Here rather than in the resolver, which is where the kill is decided,
+        /// because the resolver is a parallel job walking enemies and a
+        /// character's pool is on an entity it has no handle to. This system is
+        /// already on the main thread with the same list of corpses in hand, and
+        /// the pool is not clamped here either: the resource system does that
+        /// every frame against the sheet's maximum, and a second clamp would be
+        /// a second answer to how big the pool is.
+        ///
+        /// Summed per player before anything is written, so a wave that falls
+        /// together is one component write rather than three hundred.
+        /// </summary>
+        private void GrantMana(ref SystemState state, in NativeArray<Dead> info)
+        {
+            bool anyOwed = false;
+
+            for (int i = 0; i < info.Length && !anyOwed; i++)
+                anyOwed = info[i].ManaOnKill > 0f;
+
+            // Almost every frame, and every frame of every build with no mana
+            // support socketed anywhere.
+            if (!anyOwed)
+                return;
+
+            foreach ((RefRW<Mana> mana, RefRO<PlayerCharacter> character) in
+                     SystemAPI.Query<RefRW<Mana>, RefRO<PlayerCharacter>>())
+            {
+                float owed = 0f;
+
+                for (int i = 0; i < info.Length; i++)
+                {
+                    if (info[i].ManaOnKill > 0f &&
+                        info[i].KilledByPlayerId == character.ValueRO.PlayerId)
+                    {
+                        owed += info[i].ManaOnKill;
+                    }
+                }
+
+                if (owed > 0f)
+                    mana.ValueRW.Current += owed;
             }
         }
 

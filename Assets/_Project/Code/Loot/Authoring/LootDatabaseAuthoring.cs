@@ -33,6 +33,11 @@ namespace TogetherWeFall.Loot.Authoring
                  "Every item used by any table also lands in the item database.")]
         [SerializeField] private LootTable[] _tables;
 
+        [Tooltip("Item sets. Their members land in the item database too, so a " +
+                 "set piece exists even when no table drops it — a vendor-only " +
+                 "piece is otherwise an item the stat maths never heard of.")]
+        [SerializeField] private ItemSetDefinition[] _sets = System.Array.Empty<ItemSetDefinition>();
+
         [SerializeField] private GameObject _chestPrefab;
         [SerializeField] private GameObject _itemPrefab;
 
@@ -43,6 +48,7 @@ namespace TogetherWeFall.Loot.Authoring
 
         public LootConfig Config => _config;
         public LootTable[] Tables => _tables;
+        public ItemSetDefinition[] Sets => _sets ?? System.Array.Empty<ItemSetDefinition>();
         public GameObject ChestPrefab => _chestPrefab;
         public GameObject ItemPrefab => _itemPrefab;
         public uint LootSeed => _lootSeed;
@@ -66,6 +72,7 @@ namespace TogetherWeFall.Loot.Authoring
 
                 DependsOn(authoring.Config);
                 DependsOnTables(authoring.Tables);
+                DependsOnSets(authoring.Sets);
 
                 Entity entity = GetEntity(TransformUsageFlags.None);
 
@@ -75,7 +82,8 @@ namespace TogetherWeFall.Loot.Authoring
                     Item = GetEntity(authoring.ItemPrefab, TransformUsageFlags.Dynamic)
                 });
 
-                List<ItemDefinition> items = CollectItems(authoring.Tables, authoring);
+                List<ItemDefinition> items =
+                    CollectItems(authoring.Tables, authoring.Sets, authoring);
                 var indexById = new Dictionary<int, int>(items.Count);
                 for (int i = 0; i < items.Count; i++)
                     indexById[items[i].ItemId] = i;
@@ -83,6 +91,14 @@ namespace TogetherWeFall.Loot.Authoring
                 BlobAssetReference<ItemDatabaseBlob> itemDatabase = BuildItemDatabase(items);
                 AddBlobAsset(ref itemDatabase, out _);
                 AddComponent(entity, new ItemDatabase { Value = itemDatabase });
+
+                // Beside the item database rather than in a bake of its own, for
+                // the reason the loot tables are baked here: a set may only name
+                // items the stat maths knows, and one bake is what guarantees it.
+                BlobAssetReference<ItemSetDatabaseBlob> setDatabase =
+                    BuildSetDatabase(authoring.Sets, authoring);
+                AddBlobAsset(ref setDatabase, out _);
+                AddComponent(entity, new ItemSetDatabase { Value = setDatabase });
 
                 BlobAssetReference<LootDatabaseBlob> lootDatabase =
                     BuildLootDatabase(authoring.Tables, indexById);
@@ -146,13 +162,55 @@ namespace TogetherWeFall.Loot.Authoring
             }
 
             /// <summary>
-            /// Every distinct item any table can produce, ordered by id.
+            /// Re-bake when a set or any of its members changes. Without it a
+            /// threshold somebody retuned keeps the old numbers, and a renamed
+            /// member keeps an id that no longer hashes from its name.
+            /// </summary>
+            private void DependsOnSets(ItemSetDefinition[] sets)
+            {
+                for (int s = 0; s < sets.Length; s++)
+                {
+                    ItemSetDefinition set = sets[s];
+                    if (set == null)
+                        continue;
+
+                    DependsOn(set);
+
+                    ItemDefinition[] members = set.Members;
+
+                    for (int m = 0; m < members.Length; m++)
+                    {
+                        if (members[m] != null)
+                            DependsOn(members[m]);
+                    }
+
+                    SetBonusThreshold[] thresholds = set.Thresholds;
+
+                    for (int t = 0; t < thresholds.Length; t++)
+                    {
+                        SkillModifier modifier = thresholds[t]?.BonusSkillModifier;
+
+                        if (modifier != null)
+                            DependsOn(modifier);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Every distinct item any table can produce or any set names,
+            /// ordered by id.
             ///
             /// Sorted by id rather than by discovery order so the blob comes out
             /// identical whatever order the tables happen to be listed in — and
             /// so a lookup can binary search it.
+            ///
+            /// Sets are a second source rather than an assumption that a set
+            /// piece also drops: a piece sold by a vendor and never rolled by a
+            /// chest is a perfectly ordinary item, and leaving it out of the
+            /// database would make it an item nothing can equip.
             /// </summary>
-            private List<ItemDefinition> CollectItems(LootTable[] tables, Object context)
+            private List<ItemDefinition> CollectItems(
+                LootTable[] tables, ItemSetDefinition[] sets, Object context)
             {
                 var byId = new Dictionary<int, ItemDefinition>();
 
@@ -163,33 +221,49 @@ namespace TogetherWeFall.Loot.Authoring
                         continue;
 
                     for (int e = 0; e < entries.Length; e++)
-                    {
-                        ItemDefinition item = entries[e]?.Item;
-                        if (item == null)
-                            continue;
+                        Collect(byId, entries[e]?.Item, context);
+                }
 
-                        int id = item.ItemId;
+                for (int s = 0; s < sets.Length; s++)
+                {
+                    ItemDefinition[] members = sets[s] == null
+                        ? System.Array.Empty<ItemDefinition>()
+                        : sets[s].Members;
 
-                        // Two assets with the same display name hash to the same
-                        // id, and the inventory would not be able to tell them
-                        // apart. Better a loud warning at bake time than an item
-                        // that equips as a different item.
-                        if (byId.TryGetValue(id, out ItemDefinition existing) && existing != item)
-                        {
-                            Debug.LogError(
-                                $"[{nameof(LootDatabaseAuthoring)}] Items '{existing.DisplayName}' " +
-                                $"and '{item.DisplayName}' share the id {id}. Give them distinct " +
-                                "display names.", context);
-                            continue;
-                        }
-
-                        byId[id] = item;
-                    }
+                    for (int m = 0; m < members.Length; m++)
+                        Collect(byId, members[m], context);
                 }
 
                 var items = new List<ItemDefinition>(byId.Values);
                 items.Sort(CompareById);
                 return items;
+            }
+
+            /// <summary>
+            /// Adds one item to the set being baked, and refuses a collision.
+            ///
+            /// Two assets with the same display name hash to the same id, and
+            /// the inventory would not be able to tell them apart. Better a loud
+            /// warning at bake time than an item that equips as a different one.
+            /// </summary>
+            private void Collect(
+                Dictionary<int, ItemDefinition> byId, ItemDefinition item, Object context)
+            {
+                if (item == null)
+                    return;
+
+                int id = item.ItemId;
+
+                if (byId.TryGetValue(id, out ItemDefinition existing) && existing != item)
+                {
+                    Debug.LogError(
+                        $"[{nameof(LootDatabaseAuthoring)}] Items '{existing.DisplayName}' " +
+                        $"and '{item.DisplayName}' share the id {id}. Give them distinct " +
+                        "display names.", context);
+                    return;
+                }
+
+                byId[id] = item;
             }
 
             private static int CompareById(ItemDefinition a, ItemDefinition b)
@@ -259,6 +333,8 @@ namespace TogetherWeFall.Loot.Authoring
                     Condition = modifier.Condition,
                     RequiredElement = modifier.RequiredElement,
                     RequiredStatus = modifier.RequiredStatus,
+                    RequiredCount = modifier.RequiredCount,
+                    AppliedStatus = modifier.AppliedStatusType,
                     Threshold = modifier.Threshold
                 };
             }
@@ -279,6 +355,12 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.GemKind = item.GemType;
                 blob.GemSkillId = item.GemSkillId;
                 blob.GemSupport = BuildSupport(item.GemSupportModifier);
+
+                // The second half of a two-sided gem, and the flag that says it
+                // is there at all — a default blob folds to nothing but would
+                // still take a place in the group's list.
+                blob.HasSupportSecond = item.GemSupportModifierSecond != null;
+                blob.GemSupportSecond = BuildSupport(item.GemSupportModifierSecond);
 
                 // Ids rather than indices, like every other cross-database
                 // reference here: the item database and the skill database are
@@ -364,6 +446,155 @@ namespace TogetherWeFall.Loot.Authoring
                     cursor++;
                 }
             }
+
+            // ─────────────────────────────────────────────────────────────
+            // Item sets
+            // ─────────────────────────────────────────────────────────────
+
+            /// <summary>
+            /// Writes every set, members sorted and steps ascending.
+            ///
+            /// The affix list of each step is folded into a flat block and an
+            /// increased block right here, which is the same split the stat
+            /// maths does at the other end — so the host reads a set bonus with
+            /// the code it already had, and nothing downstream walks an affix
+            /// list a second time.
+            /// </summary>
+            private BlobAssetReference<ItemSetDatabaseBlob> BuildSetDatabase(
+                ItemSetDefinition[] sets, Object context)
+            {
+                var valid = new List<ItemSetDefinition>(sets.Length);
+                var claimedBy = new Dictionary<int, ItemSetDefinition>();
+
+                for (int s = 0; s < sets.Length; s++)
+                {
+                    if (sets[s] != null)
+                        valid.Add(sets[s]);
+                }
+
+                using var builder = new BlobBuilder(Allocator.Temp);
+
+                ref ItemSetDatabaseBlob root = ref builder.ConstructRoot<ItemSetDatabaseBlob>();
+                BlobBuilderArray<ItemSetBlob> blobSets =
+                    builder.Allocate(ref root.Sets, valid.Count);
+
+                for (int s = 0; s < valid.Count; s++)
+                    BuildSet(builder, ref blobSets[s], valid[s], claimedBy, context);
+
+                return builder.CreateBlobAssetReference<ItemSetDatabaseBlob>(Allocator.Persistent);
+            }
+
+            private void BuildSet(
+                BlobBuilder builder,
+                ref ItemSetBlob blob,
+                ItemSetDefinition set,
+                Dictionary<int, ItemSetDefinition> claimedBy,
+                Object context)
+            {
+                blob.SetId = ToFixedString(set.SetId);
+                blob.SetName = ToFixedString(set.SetName);
+
+                // Distinct and sorted: an id listed twice would count one worn
+                // piece twice, and sorted output means the blob is the same
+                // whatever order the inspector happens to show the members in.
+                var memberIds = new List<int>();
+
+                ItemDefinition[] members = set.Members;
+
+                for (int m = 0; m < members.Length; m++)
+                {
+                    if (members[m] == null)
+                        continue;
+
+                    int id = members[m].ItemId;
+
+                    // One item, one set. The second set that claims it is told
+                    // so rather than quietly granting both bonuses — hybrid
+                    // membership is a data model decision, and this is the
+                    // warning that says it has not been made.
+                    if (claimedBy.TryGetValue(id, out ItemSetDefinition owner) && owner != set)
+                    {
+                        Debug.LogError(
+                            $"[{nameof(LootDatabaseAuthoring)}] '{members[m].DisplayName}' is " +
+                            $"named by both '{owner.SetName}' and '{set.SetName}'. An item " +
+                            "belongs to one set; it will count for the first only.", context);
+                        continue;
+                    }
+
+                    claimedBy[id] = set;
+
+                    if (!memberIds.Contains(id))
+                        memberIds.Add(id);
+                }
+
+                memberIds.Sort();
+
+                BlobBuilderArray<int> blobMembers =
+                    builder.Allocate(ref blob.MemberItemIds, memberIds.Count);
+
+                for (int m = 0; m < memberIds.Count; m++)
+                    blobMembers[m] = memberIds[m];
+
+                var steps = new List<SetBonusThreshold>();
+                SetBonusThreshold[] thresholds = set.Thresholds;
+
+                for (int t = 0; t < thresholds.Length; t++)
+                {
+                    if (thresholds[t] == null)
+                        continue;
+
+                    // A step nobody can reach is authored by mistake, every
+                    // time: a six-piece bonus on a four-piece set is a reward
+                    // the player can see in the tooltip and never earn.
+                    if (thresholds[t].RequiredPieceCount > memberIds.Count)
+                    {
+                        Debug.LogWarning(
+                            $"[{nameof(LootDatabaseAuthoring)}] '{set.SetName}' has a " +
+                            $"{thresholds[t].RequiredPieceCount}-piece bonus but only " +
+                            $"{memberIds.Count} members — it can never be reached.", context);
+                    }
+
+                    steps.Add(thresholds[t]);
+                }
+
+                steps.Sort(CompareByRequiredPieces);
+
+                BlobBuilderArray<SetThresholdBlob> blobSteps =
+                    builder.Allocate(ref blob.Thresholds, steps.Count);
+
+                for (int t = 0; t < steps.Count; t++)
+                {
+                    SetBonusThreshold step = steps[t];
+
+                    var threshold = new SetThresholdBlob
+                    {
+                        RequiredPieceCount = step.RequiredPieceCount,
+                        FlatBonuses = StatBlock.Zero(),
+                        IncreasedBonuses = StatBlock.Zero(),
+                        BonusKeystone = step.BonusKeystone,
+                        HasBonusSupport = step.BonusSkillModifier != null,
+                        BonusSupport = BuildSupport(step.BonusSkillModifier)
+                    };
+
+                    ItemAffix[] bonuses = step.Bonuses;
+
+                    for (int a = 0; a < bonuses.Length; a++)
+                    {
+                        if (bonuses[a] == null)
+                            continue;
+
+                        if (bonuses[a].Kind == ModifierKind.Flat)
+                            threshold.FlatBonuses.Add(bonuses[a].Stat, bonuses[a].Value);
+                        else
+                            threshold.IncreasedBonuses.Add(bonuses[a].Stat, bonuses[a].Value);
+                    }
+
+                    blobSteps[t] = threshold;
+                }
+            }
+
+            private static int CompareByRequiredPieces(SetBonusThreshold a, SetBonusThreshold b)
+                => a.RequiredPieceCount.CompareTo(b.RequiredPieceCount);
 
             // ─────────────────────────────────────────────────────────────
             // Loot tables

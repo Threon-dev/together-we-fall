@@ -38,19 +38,21 @@ namespace TogetherWeFall.Equipment.Systems
             foreach ((RefRW<PlayerStats> stats,
                       RefRW<KeystoneComponent> keystone,
                       DynamicBuffer<EquippedItem> slots,
+                      DynamicBuffer<ActiveSetBonusStatus> setBonuses,
                       EnabledRefRW<StatsDirty> dirty) in
                      SystemAPI.Query<RefRW<PlayerStats>,
                          RefRW<KeystoneComponent>,
                          DynamicBuffer<EquippedItem>,
+                         DynamicBuffer<ActiveSetBonusStatus>,
                          EnabledRefRW<StatsDirty>>())
             {
-                stats.ValueRW.Final = Compute(characterBase, slots, items);
+                stats.ValueRW.Final = Compute(characterBase, slots, setBonuses, items);
 
                 // On the same pass and the same flag, because it is the same
                 // kind of fact: authored on items, read off what is worn, and
                 // stale the moment the gear changes. A second system on a second
                 // flag would be a second thing to remember to raise.
-                keystone.ValueRW = ChooseKeystone(slots, items);
+                keystone.ValueRW = ChooseKeystone(slots, setBonuses, items);
 
                 // Bumped after both, so the panel's "has anything changed"
                 // covers the keystone too. It is drawn beside the stats and a
@@ -72,7 +74,9 @@ namespace TogetherWeFall.Equipment.Systems
         /// cannot see.
         /// </summary>
         private static KeystoneComponent ChooseKeystone(
-            DynamicBuffer<EquippedItem> slots, ItemDatabase items)
+            DynamicBuffer<EquippedItem> slots,
+            DynamicBuffer<ActiveSetBonusStatus> setBonuses,
+            ItemDatabase items)
         {
             var chosen = KeystoneEffect.None;
             int ignored = 0;
@@ -97,11 +101,32 @@ namespace TogetherWeFall.Equipment.Systems
                     ignored++;
             }
 
+            // Set keystones after the worn ones, which is the same first-wins
+            // rule two keystone rings follow — a keystone on an item beats one
+            // from a set. Arbitrary, but stable: swapping the pieces of a set
+            // around leaves the same keystone in force.
+            for (int b = 0; b < setBonuses.Length; b++)
+            {
+                if (!setBonuses[b].IsActive ||
+                    setBonuses[b].BonusKeystone == KeystoneEffect.None)
+                {
+                    continue;
+                }
+
+                if (chosen == KeystoneEffect.None)
+                    chosen = setBonuses[b].BonusKeystone;
+                else
+                    ignored++;
+            }
+
             return new KeystoneComponent { Effect = chosen, Ignored = ignored };
         }
 
         private static StatBlock Compute(
-            StatBlock characterBase, DynamicBuffer<EquippedItem> slots, ItemDatabase items)
+            StatBlock characterBase,
+            DynamicBuffer<EquippedItem> slots,
+            DynamicBuffer<ActiveSetBonusStatus> setBonuses,
+            ItemDatabase items)
         {
             // The character sheet is the starting flat pile; item base stats add
             // to the same pile, which is what makes "a sword with 22 damage"
@@ -123,6 +148,28 @@ namespace TogetherWeFall.Equipment.Systems
                 ref ItemBlob item = ref items.Value.Value.Items[index];
 
                 Accumulate(ref flat, ref increased, ref item);
+            }
+
+            // Set bonuses are one more source of the same two piles, which is
+            // the whole reason they needed no maths of their own: the step in
+            // force was folded into a flat block and an increased block when it
+            // was baked, so here it is two adds per stat.
+            for (int b = 0; b < setBonuses.Length; b++)
+            {
+                if (!setBonuses[b].IsActive)
+                    continue;
+
+                // A copy, and safe: the status carries fixed lists, never a blob
+                // array.
+                ActiveSetBonusStatus bonus = setBonuses[b];
+
+                for (int s = 0; s < StatBlock.StatCount; s++)
+                {
+                    var stat = (StatKind)s;
+
+                    flat.Add(stat, bonus.FlatBonuses.Get(stat));
+                    increased.Add(stat, bonus.IncreasedBonuses.Get(stat));
+                }
             }
 
             StatBlock final = StatBlock.Zero();

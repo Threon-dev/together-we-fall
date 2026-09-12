@@ -137,9 +137,19 @@ namespace TogetherWeFall.Player.Systems
                 // Current alone. Its ceiling and its refill rate are stats.
                 typeof(Mana),
 
+                // Money, which used to be a pile of items in the bag. Zero at
+                // birth and filled by picking coins up off the floor.
+                typeof(Wallet),
+
                 // Beside the stats because it is derived exactly as they are:
                 // read off the gear by PlayerStatsSystem on the same dirty flag.
                 typeof(KeystoneComponent),
+
+                // Beside the keystone for the same reason, and filled by a
+                // system on the same flag: how much of each set is worn is
+                // derived from the gear and stale the moment it changes. Empty
+                // for a character wearing no set piece, which is most of them.
+                typeof(ActiveSetBonusStatus),
                 typeof(StatsDirty),
                 typeof(EquippedItem),
                 typeof(EquipRequest),

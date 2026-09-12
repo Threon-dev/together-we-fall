@@ -153,7 +153,18 @@ namespace TogetherWeFall.Equipment
         RejectedNoSuchBarSlot = 11,
 
         /// <summary>The socket holds the weapon's own attack and never lets go.</summary>
-        RejectedWelded = 12
+        RejectedWelded = 12,
+
+        /// <summary>
+        /// The socket holds a passive: an active gem linked to a trigger, which
+        /// only that trigger may cast.
+        ///
+        /// Refused on the host rather than merely hidden in the panel, for the
+        /// reason every other refusal here is: a client that asks anyway must
+        /// get the same answer, or a key would cast a skill the trigger also
+        /// casts and the same spell would go off twice.
+        /// </summary>
+        RejectedPassive = 13
     }
 
     /// <summary>

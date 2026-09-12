@@ -30,8 +30,24 @@ namespace TogetherWeFall.Skills.Systems
     {
         private EntityQuery _enemyQuery;
 
+        /// <summary>
+        /// Seeded once, advanced per blow. The same field and the same argument
+        /// as the one in TriggerEvaluationSystem: host-side combat has to be
+        /// fair rather than reproducible.
+        ///
+        /// It lives here rather than in the cast system because a crit is a
+        /// property of a blow landing on a body, and this is the stage that
+        /// knows both — a fork crits on one side and not the other, a chain
+        /// crits on the third jump, a blast crits on half the crowd.
+        /// </summary>
+        private Unity.Mathematics.Random _random;
+
         public void OnCreate(ref SystemState state)
         {
+            // A constant of its own, so two rolls in the same frame in two
+            // systems are not the same number twice.
+            _random = new Unity.Mathematics.Random(0xB5297A4Du);
+
             _enemyQuery = SystemAPI.QueryBuilder()
                 .WithAll<EnemyTag, LocalTransform>()
                 .Build();
@@ -61,6 +77,10 @@ namespace TogetherWeFall.Skills.Systems
             DynamicBuffer<VfxEvent> vfx = SystemAPI.GetSingletonBuffer<VfxEvent>();
             DynamicBuffer<AudioEvent> audio = SystemAPI.GetSingletonBuffer<AudioEvent>();
 
+            // Where a critical blow is announced from. The trigger stage drains
+            // it next frame, exactly as it drains a kill.
+            DynamicBuffer<TriggerEvent> triggers = SystemAPI.GetSingletonBuffer<TriggerEvent>();
+
             float deltaTime = SystemAPI.Time.DeltaTime;
             float dealt = 0f;
 
@@ -81,7 +101,7 @@ namespace TogetherWeFall.Skills.Systems
                 }
 
                 budget--;
-                dealt += Apply(ref state, hit, targets, hits, vfx, audio);
+                dealt += Apply(ref state, hit, targets, hits, vfx, audio, triggers);
             }
 
             if (dealt <= 0f)
@@ -101,7 +121,8 @@ namespace TogetherWeFall.Skills.Systems
             in EnemyTargets targets,
             DynamicBuffer<PendingHit> hits,
             DynamicBuffer<VfxEvent> vfx,
-            DynamicBuffer<AudioEvent> audio)
+            DynamicBuffer<AudioEvent> audio,
+            DynamicBuffer<TriggerEvent> triggers)
         {
             float dealt = 0f;
 
@@ -111,13 +132,62 @@ namespace TogetherWeFall.Skills.Systems
             if (state.EntityManager.Exists(hit.Target) &&
                 state.EntityManager.HasBuffer<DamageEvent>(hit.Target))
             {
+                // The crit roll, here and nowhere else — and only for a blow
+                // that is actually landing on something. Rolled per blow rather
+                // than per cast: a fork crits on one side and not the other,
+                // and a chain rolls again on every jump.
+                //
+                // Into locals rather than into the hit, because the jump below
+                // copies the hit: multiplying it here would make one lucky roll
+                // follow a chain all the way down the crowd.
+                float amount = hit.Damage;
+                float explosion = hit.ExplosionDamage;
+                bool crit = hit.CritChance > 0f && _random.NextFloat() < hit.CritChance;
+
+                if (crit)
+                {
+                    float multiplier = math.max(1f, hit.CritMultiplier);
+
+                    amount *= multiplier;
+
+                    // A corpse bursts with the blow that killed it, so a
+                    // critical killing blow leaves a bigger burst.
+                    explosion *= multiplier;
+
+                    // Announced with the body it happened TO, which is what a
+                    // cast-on-crit gem wants to fire at — the old announcement
+                    // came from the cast and named nobody. Capped by the queue
+                    // like every other announcement: a blast that crits on forty
+                    // bodies is forty rolls and, for a gem on a cooldown, one
+                    // cast.
+                    TriggerEvents.Announce(triggers, new TriggerEvent
+                    {
+                        Condition = TriggerConditionType.OnCrit,
+                        PlayerId = hit.SourcePlayerId,
+                        Position = hit.Origin,
+                        Target = hit.Target
+                    });
+                }
+
                 state.EntityManager.GetBuffer<DamageEvent>(hit.Target).Add(new DamageEvent
                 {
-                    Amount = hit.Damage,
+                    Amount = amount,
                     Type = hit.Type,
                     SourcePlayerId = hit.SourcePlayerId,
                     ExplosionRadius = hit.ExplosionRadius,
-                    ExplosionDamage = hit.ExplosionDamage,
+                    ExplosionDamage = explosion,
+
+                    // Both answered one stage later, on the target, for the same
+                    // reason: how much life is left is the resolver's to know,
+                    // and so is whether this blow was the one that ended it.
+                    // A chain jump copies the whole hit, so a culling support
+                    // culls all the way down the chain.
+                    CullThreshold = hit.CullThreshold,
+                    ManaOnKill = hit.ManaOnKill,
+
+                    // Carried so the number on screen can say so. The amount
+                    // above already has the multiplier in it.
+                    Crit = crit,
 
                     // The last leg of the journey the elements made: gathered by
                     // a projectile in flight, handed to the hit, and written here
@@ -140,7 +210,7 @@ namespace TogetherWeFall.Skills.Systems
                     FromTrigger = hit.FromTrigger
                 });
 
-                dealt = hit.Damage;
+                dealt = amount;
             }
 
             if (hit.ChainsRemaining <= 0)

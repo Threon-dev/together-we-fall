@@ -263,16 +263,32 @@ namespace TogetherWeFall.UI
                     FixedList512Bytes<SkillModifierBlob> supports =
                         GemSockets.GatherSupports(_entityManager, items, bar[i].Gear, linkGroup);
 
-                    // A trigger gem beside the active takes the key, and the
-                    // player has to see that on the bar rather than discover it
-                    // by pressing twenty times. Asked of the same GemSockets the
-                    // cast system asks, so the bar cannot claim a key works when
-                    // the host has already decided it does not.
-                    bool automatic = GemSockets.TryGetTrigger(supports, out _);
+                    // A key bound to a passive: the socket answers its trigger
+                    // now, not the button. The binding can only be this old —
+                    // one made before the trigger gem arrived — because the
+                    // host refuses new ones, but the player still has to see it
+                    // rather than discover it by pressing twenty times.
+                    //
+                    // Asked of the same GemSockets the cast system asks, so the
+                    // bar cannot claim a key works when the host has already
+                    // decided it does not.
+                    bool automatic = GemSockets.IsPassiveActive(
+                        _entityManager, items, bar[i].Gear, bar[i].SocketIndex);
 
+                    // Folded rather than read off the asset, because a support
+                    // can now change what a press costs. The supports are
+                    // already in hand for the trigger check above, so this is
+                    // the same fold the host will run — and the bar cannot
+                    // advertise a price the cast does not charge.
+                    //
+                    // Zeroed stats on purpose: nothing on the sheet touches the
+                    // cost, and the character's own numbers are not this box's
+                    // business.
                     box.Fill(
                         skills.NameOf(skillIndex).ToString(),
-                        skills.ManaCostOf(skillIndex),
+                        skills.Resolve(
+                            skillIndex, StatBlock.Zero(), supports,
+                            CastConditions.Unknown(default)).ManaCost,
                         automatic);
                 }
 

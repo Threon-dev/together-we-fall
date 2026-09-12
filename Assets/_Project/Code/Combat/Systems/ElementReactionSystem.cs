@@ -48,6 +48,50 @@ namespace TogetherWeFall.Combat.Systems
     [UpdateBefore(typeof(DamageResolutionSystem))]
     public partial struct ElementReactionSystem : ISystem
     {
+        /// <summary>
+        /// One zone, as much of it as marking a body needs.
+        ///
+        /// A flat copy handed to the job rather than a lookup, because the job
+        /// walks enemies and a zone is a different entity entirely — the same
+        /// shape as KeystoneSet, and for the same reason.
+        /// </summary>
+        private struct ZoneAura
+        {
+            public float3 Position;
+            public float Radius;
+            public DamageType Element;
+
+            /// <summary>The status the zone's skill named, or None.</summary>
+            public StatusEffectType Applied;
+
+            public int PlayerId;
+        }
+
+        /// <summary>
+        /// The zones burning this frame, small enough to be a job field.
+        ///
+        /// Its own struct rather than a bare FixedList so the job field reads
+        /// as what it is, and so the capacity lives beside the thing it caps.
+        /// </summary>
+        private struct ZoneAuraSet
+        {
+            public FixedList512Bytes<ZoneAura> Zones;
+        }
+
+        /// <summary>
+        /// How far a status may have decayed before standing in the zone
+        /// renews it.
+        ///
+        /// Not every frame, and that is the whole design of it. Re-applying at
+        /// sixty hertz would drive a stacking status to its cap in three frames
+        /// — a poison cloud would be at maximum stacks before anybody had
+        /// decided to walk out of it. Renewing at half-life means a body
+        /// standing in the cloud keeps the mark alive and builds it up at the
+        /// rhythm the pulses already set, and a body that leaves carries what it
+        /// has out with it and watches it run down.
+        /// </summary>
+        private const float ZoneRenewFraction = 0.5f;
+
         private EntityQuery _characterQuery;
 
         public void OnCreate(ref SystemState state)
@@ -80,6 +124,11 @@ namespace TogetherWeFall.Combat.Systems
                 Database = SystemAPI.GetSingleton<ElementReactionDatabase>(),
                 ElapsedTime = (float)SystemAPI.Time.ElapsedTime,
 
+                // The zones burning on the floor right now, so a body standing
+                // in one is marked by BEING there rather than by being caught
+                // by a pulse. See ZoneAura for why that is a different thing.
+                Zones = GatherZones(ref state),
+
                 // Rebuilt every frame from the characters, because this job
                 // walks enemies and holds nothing but a player id — there is no
                 // entity here to look a component up with. Four entries at most.
@@ -90,6 +139,42 @@ namespace TogetherWeFall.Combat.Systems
             }.Run();
 
             Append(ref state, areas, effects, triggers);
+        }
+
+        /// <summary>
+        /// Every zone currently burning, flattened into something a job can
+        /// hold.
+        ///
+        /// Rebuilt every frame rather than kept, for the same reason the
+        /// keystones are: the components ARE the answer, and a published copy
+        /// would be a second one to keep in step. There are a handful of zones
+        /// at most — the pool is the ceiling — so the walk is nothing.
+        ///
+        /// Past capacity the extra zones are dropped rather than allocating in
+        /// a per-frame path. Twenty-one is far more than the pool hands out.
+        /// </summary>
+        private ZoneAuraSet GatherZones(ref SystemState state)
+        {
+            var set = new ZoneAuraSet();
+
+            foreach ((RefRO<ElementZone> zone, RefRO<LocalTransform> transform) in
+                     SystemAPI.Query<RefRO<ElementZone>, RefRO<LocalTransform>>()
+                         .WithAll<ZoneActive>())
+            {
+                if (set.Zones.Length >= set.Zones.Capacity)
+                    break;
+
+                set.Zones.Add(new ZoneAura
+                {
+                    Position = transform.ValueRO.Position,
+                    Radius = zone.ValueRO.Radius,
+                    Element = zone.ValueRO.Element,
+                    Applied = zone.ValueRO.AppliedStatus,
+                    PlayerId = zone.ValueRO.SourcePlayerId
+                });
+            }
+
+            return set;
         }
 
         private KeystoneSet GatherKeystones()
@@ -147,6 +232,9 @@ namespace TogetherWeFall.Combat.Systems
             public float ElapsedTime;
             public KeystoneSet Keystones;
 
+            /// <summary>The zones on the floor, for the presence pass.</summary>
+            public ZoneAuraSet Zones;
+
             public NativeList<PendingArea> Areas;
             public NativeList<VfxEvent> Effects;
             public NativeList<TriggerEvent> Triggers;
@@ -178,7 +266,7 @@ namespace TogetherWeFall.Combat.Systems
                 DynamicBuffer<CrowdControlImmunity> immunities,
                 in CrowdControlResistance resistance)
             {
-                if (events.Length == 0)
+                if (events.Length == 0 && Zones.Zones.Length == 0)
                     return;
 
                 var target = new Afflicted
@@ -189,6 +277,13 @@ namespace TogetherWeFall.Combat.Systems
                     Immunities = immunities,
                     Resistance = resistance
                 };
+
+                // Standing in something counts, whether or not it hit you this
+                // frame. Before the blows, so a body that has just walked into
+                // a cloud is already poisoned when the pulse that catches it
+                // arrives — and so the pulse refreshes a mark rather than
+                // creating one a frame later.
+                StandingInZones(target);
 
                 for (int i = 0; i < events.Length; i++)
                 {
@@ -426,6 +521,83 @@ namespace TogetherWeFall.Combat.Systems
                 });
 
                 return marked;
+            }
+
+            /// <summary>
+            /// Marks a body for standing in a zone, rather than for being hit
+            /// by one.
+            ///
+            /// This is the difference between a patch of poison and a pulse of
+            /// poison damage. A pulse happens every second and a half, so a body
+            /// that ran across the cloud between two of them took nothing at all
+            /// and walked out clean — which is not what a cloud is. Presence is
+            /// asked every frame instead: step in and you are marked on that
+            /// frame, stay and it is renewed, walk out and it runs down.
+            ///
+            /// Renewed rather than re-applied, which is the whole reason
+            /// ZoneRenewFraction exists: applying at sixty hertz would pin a
+            /// stacking status at its cap instantly. The pulses still do the
+            /// stacking, at the rhythm the skill was authored with.
+            ///
+            /// It goes through the same Apply every other status does, so a zone
+            /// obeys immunity, diminishing returns and the keystone without
+            /// knowing any of them exist.
+            /// </summary>
+            private void StandingInZones(Afflicted target)
+            {
+                for (int i = 0; i < Zones.Zones.Length; i++)
+                {
+                    ZoneAura zone = Zones.Zones[i];
+
+                    float3 offset = target.Position - zone.Position;
+
+                    // Flat, like every other radius test in the pipeline: a disc
+                    // on the floor and a body standing on it differ in height by
+                    // whatever the art happens to be.
+                    offset.y = 0f;
+
+                    if (math.lengthsq(offset) > zone.Radius * zone.Radius)
+                        continue;
+
+                    // What the element leaves on its own — the poison of a chaos
+                    // cloud, the burn of a fire wall.
+                    int index = Database.DefaultStatusOf(zone.Element);
+
+                    if (index >= 0 && Database.TryGetStatus(index, out StatusBlob mark) &&
+                        NeedsRenewing(mark, target))
+                    {
+                        Apply(index, mark, zone.PlayerId, target);
+                    }
+
+                    // And the one the skill named outright, which is the only
+                    // way a zone ever roots or stuns.
+                    if (zone.Applied == StatusEffectType.None)
+                        continue;
+
+                    if (Database.TryGetStatusOfType(zone.Applied, out int named, out StatusBlob status) &&
+                        NeedsRenewing(status, target))
+                    {
+                        Apply(named, status, zone.PlayerId, target);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Whether a body standing in a zone is owed this mark: it has none,
+            /// or the one it has is more than half spent.
+            /// </summary>
+            private static bool NeedsRenewing(in StatusBlob status, Afflicted target)
+            {
+                for (int i = 0; i < target.Statuses.Length; i++)
+                {
+                    if (target.Statuses[i].Type != status.Type)
+                        continue;
+
+                    return target.Statuses[i].RemainingDuration <
+                           status.Duration * ZoneRenewFraction;
+                }
+
+                return true;
             }
 
             /// <summary>

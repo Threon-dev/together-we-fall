@@ -315,6 +315,10 @@ namespace TogetherWeFall.EditorTools
 
             ActiveGems(skills, table);
             SupportGems(table);
+            ConditionalGems(skills, table);
+            LeverGems(table);
+            TwoSidedGems(table);
+            CritJewellery(table);
             CreateLinkedStaff(skills, table);
             CreateTestbedPair(table);
         }
@@ -445,6 +449,399 @@ namespace TogetherWeFall.EditorTools
                     procChance: 1f,                                             // TUNE
                     threshold: 0.3f),                                           // TUNE
                 ItemRarity.Rare, table);
+
+            // The two the starter skills have always socketed and no factory
+            // ever made into gems. Both assets exist on disk from an earlier
+            // hand-authored run, which is why nobody noticed: a clean clone
+            // would have had the modifier and no stone to put it in.
+            SkillContentFactory.SupportGem(
+                "GemBrutality", "Brutality Support",
+                SkillContentFactory.Modifier(
+                    "SupportBrutality", SkillModifierKind.IncreasedDamage, 35f),
+                ItemRarity.Common, table);
+
+            SkillContentFactory.SupportGem(
+                "GemGreaterArea", "Greater Area Support",
+                SkillContentFactory.Modifier(
+                    "SupportGreaterArea", SkillModifierKind.IncreasedArea, 40f),
+                ItemRarity.Common, table);
+
+            // The kind that had a fold entry, a tooltip line and no stone at
+            // all. A projectile speed support is dull read on its own and is
+            // the difference between a toxic spit that can be dodged and one
+            // that cannot — which is the only reason the spit was authored slow.
+            SkillContentFactory.SupportGem(
+                "GemWindrunner", "Windrunner Support",
+                SkillContentFactory.Modifier(
+                    "SupportWindrunner", SkillModifierKind.IncreasedProjectileSpeed, 60f),  // TUNE
+                ItemRarity.Common, table);
+        }
+
+        /// <summary>
+        /// The gems that ask a question, and nothing else.
+        ///
+        /// Every one of these is an existing modifier kind with a condition on
+        /// it, which is the cheapest content in the game: no system heard about
+        /// any of it, and each stone reads as a different gem depending on what
+        /// is socketed beside it. That is the claim the condition axis was built
+        /// for, tested at a scale where it either holds or visibly does not.
+        ///
+        /// The element family is the interesting half. Four gems that each help
+        /// one element are four reasons NOT to socket a conversion — and
+        /// Hoarfrost, which converts to cold, is also what switches Frostbite on.
+        /// Neither gem has heard of the other.
+        ///
+        /// EVERY NUMBER HERE IS PROVISIONAL, like the rest of this file.
+        /// </summary>
+        private static void ConditionalGems(SkillDefinition[] skills, LootTable table)
+        {
+            // The cold twin of Devour. Fire has had a conditional damage gem
+            // since conditions existed; cold now has one, and the pair is what
+            // makes "which element is my build" a question with consequences.
+            SkillContentFactory.SupportGem(
+                "GemFrostbite", "Frostbite Support",
+                SkillContentFactory.Modifier(
+                    "SupportFrostbite", SkillModifierKind.IncreasedDamage, 100f,   // TUNE
+                    condition: ModifierConditionType.TargetHasStatus,
+                    requiredElement: DamageType.Cold),
+                ItemRarity.Rare, table);
+
+            // One per element, all the same shape. They ask about the SKILL
+            // rather than the target, so unlike everything else here they are
+            // never dead weight — they are either socketed on the right skill
+            // or on the wrong one, and the player can read which from the gem.
+            ElementFocus("GemEmberwright", "Emberwright Support",
+                "SupportEmberwright", DamageType.Fire, table);
+
+            ElementFocus("GemGlacialFocus", "Glacial Focus Support",
+                "SupportGlacialFocus", DamageType.Cold, table);
+
+            ElementFocus("GemGalvanicFocus", "Galvanic Focus Support",
+                "SupportGalvanicFocus", DamageType.Lightning, table);
+
+            ElementFocus("GemVirulence", "Virulence Support",
+                "SupportVirulence", DamageType.Chaos, table);
+
+            // The third chain gem, and the one that completes the set: Kindled
+            // asks about fire, Riven about being slowed, this about shock. A
+            // lightning build now has a conditional chain of its own, and the
+            // condition is one its own element applies.
+            SkillContentFactory.SupportGem(
+                "GemConduit", "Conduit Support",
+                SkillContentFactory.Modifier(
+                    "SupportConduit", SkillModifierKind.AddedChains, 3f,           // TUNE
+                    condition: ModifierConditionType.TargetHasStatusEffect,
+                    requiredStatus: StatusEffectType.Shock),
+                ItemRarity.Rare, table);
+
+            // Area, but only against something already held still. It is the
+            // first gem that pays a melee build for its own stun rather than
+            // for an element.
+            SkillContentFactory.SupportGem(
+                "GemShatter", "Shatter Support",
+                SkillContentFactory.Modifier(
+                    "SupportShatter", SkillModifierKind.IncreasedArea, 70f,        // TUNE
+                    condition: ModifierConditionType.TargetHasStatusEffect,
+                    requiredStatus: StatusEffectType.Stun),
+                ItemRarity.Uncommon, table);
+
+            // Forks off the dying, which is the opposite arrangement to Fork
+            // itself: it does nothing on a fresh crowd and everything on one
+            // that is already falling apart.
+            SkillContentFactory.SupportGem(
+                "GemSplintering", "Splintering Support",
+                SkillContentFactory.Modifier(
+                    "SupportSplintering", SkillModifierKind.Fork, 2f,              // TUNE
+                    condition: ModifierConditionType.TargetLowHealth,
+                    threshold: 0.4f),                                             // TUNE
+                ItemRarity.Rare, table);
+
+            // An extra cast against the slowed. With the Frozen Hourglass ring
+            // — every slow also weakens — a frost build ends up with a damage
+            // multiplier and an extra projectile it never authored either of.
+            SkillContentFactory.SupportGem(
+                "GemCascade", "Cascade Support",
+                SkillContentFactory.Modifier(
+                    "SupportCascade", SkillModifierKind.Multicast, 1f,
+                    condition: ModifierConditionType.TargetHasStatusEffect,
+                    requiredStatus: StatusEffectType.Slow),
+                ItemRarity.Rare, table);
+
+            // A bigger burst, but only off burning bodies. Beside Ashen Signet
+            // — burns resolve at once and nothing stays alight — it is the gem
+            // that stops working because of a ring, which is the lesson those
+            // keystones exist to teach.
+            SkillContentFactory.SupportGem(
+                "GemVolatile", "Volatile Support",
+                SkillContentFactory.Modifier(
+                    "SupportVolatile", SkillModifierKind.ExplodeOnKill, 5f,        // TUNE
+                    secondary: 75f,                                               // TUNE
+                    condition: ModifierConditionType.TargetHasStatus,
+                    requiredElement: DamageType.Fire),
+                ItemRarity.Rare, table);
+
+            // The two that use the conditions added with this batch.
+            //
+            // Encircle is the answer to every area support being dead against
+            // one target: it says so out loud instead of being quietly bad.
+            SkillContentFactory.SupportGem(
+                "GemEncircle", "Encircle Support",
+                SkillContentFactory.Modifier(
+                    "SupportEncircle", SkillModifierKind.IncreasedArea, 90f,       // TUNE
+                    condition: ModifierConditionType.TargetCrowded,
+                    requiredCount: 4),                                            // TUNE
+                ItemRarity.Uncommon, table);
+
+            // And the opener, which is Execute read backwards: it pays for the
+            // first blow and stops paying the moment the fight is under way.
+            SkillContentFactory.SupportGem(
+                "GemFirstStrike", "First Strike Support",
+                SkillContentFactory.Modifier(
+                    "SupportFirstStrike", SkillModifierKind.IncreasedDamage, 90f,  // TUNE
+                    condition: ModifierConditionType.TargetHighHealth,
+                    threshold: 0.9f),                                             // TUNE
+                ItemRarity.Uncommon, table);
+
+            // The trigger nothing ever fired on, and the event has been raised
+            // since reactions existed. An elemental build that is applying
+            // statuses anyway gets a second skill for free — and pays for it by
+            // giving up the hotkey, like every trigger gem.
+            SkillContentFactory.SupportGem(
+                "GemReactiveCascade", "Reactive Cascade Support",
+                SkillContentFactory.Modifier(
+                    "SupportReactiveCascade", SkillModifierKind.TriggerOnCondition, 0f,
+                    triggerCondition: TriggerConditionType.OnStatusApplied,
+                    triggerCooldown: 2.5f,                                        // TUNE
+                    procChance: 0.5f),                                            // TUNE
+                ItemRarity.Rare, table);
+
+            // The first trigger-on-hit a PLAYER can socket. Every one before it
+            // was welded into a skill by an author, which made the one support
+            // that composes two skills the only one nobody could choose.
+            SkillDefinition nova = Named(skills, "Frost Nova");
+
+            if (nova != null)
+            {
+                SkillContentFactory.SupportGem(
+                    "GemEchoNova", "Echoing Nova Support",
+                    SkillContentFactory.Modifier(
+                        "SupportEchoNova", SkillModifierKind.TriggerOnHit, 45f,    // TUNE
+                        triggered: nova),
+                    ItemRarity.Epic, table);
+            }
+        }
+
+        /// <summary>
+        /// One gem per element, each helping only skills authored as that
+        /// element.
+        ///
+        /// Written once because the four differ in exactly one field, and four
+        /// copies of the same block is how the third one ends up with a number
+        /// nobody meant to change.
+        /// </summary>
+        private static void ElementFocus(
+            string assetName, string displayName, string modifierName,
+            DamageType element, LootTable table)
+        {
+            SkillContentFactory.SupportGem(
+                assetName, displayName,
+                SkillContentFactory.Modifier(
+                    modifierName, SkillModifierKind.IncreasedDamage, 70f,          // TUNE
+                    condition: ModifierConditionType.TargetElementType,
+                    requiredElement: element),
+                ItemRarity.Uncommon, table);
+        }
+
+        /// <summary>
+        /// The gems for the levers nobody could pull: the price of a press, the
+        /// cooldown, how long a zone burns, what a skill leaves on what it hits,
+        /// how wide a multicast fans, what a projectile does to the body it
+        /// reaches, and what a kill is worth.
+        ///
+        /// Each is one new modifier kind and one stone. None of them needed a
+        /// system: they are numbers the fold was already producing and nothing
+        /// could reach.
+        /// </summary>
+        private static void LeverGems(LootTable table)
+        {
+            SkillContentFactory.SupportGem(
+                "GemSwiftcast", "Swiftcast Support",
+                SkillContentFactory.Modifier(
+                    "SupportSwiftcast", SkillModifierKind.ReducedCooldown, 30f),   // TUNE
+                ItemRarity.Uncommon, table);
+
+            SkillContentFactory.SupportGem(
+                "GemFrugality", "Frugality Support",
+                SkillContentFactory.Modifier(
+                    "SupportFrugality", SkillModifierKind.IncreasedManaCost, -35f),  // TUNE
+                ItemRarity.Uncommon, table);
+
+            // Duration, at last, and only on the two zone skills — which is
+            // what makes it a gem somebody chooses rather than one everybody
+            // sockets.
+            SkillContentFactory.SupportGem(
+                "GemEverburning", "Everburning Support",
+                SkillContentFactory.Modifier(
+                    "SupportEverburning", SkillModifierKind.IncreasedDuration, 80f),  // TUNE
+                ItemRarity.Uncommon, table);
+
+            // The two status overrides. Root and Stun rather than a burn,
+            // because a mark any element already applies would make the gem a
+            // worse version of picking that element — what an override is for
+            // is putting control on a skill that has none.
+            SkillContentFactory.SupportGem(
+                "GemRootingGrasp", "Rooting Grasp Support",
+                SkillContentFactory.Modifier(
+                    "SupportRootingGrasp", SkillModifierKind.StatusOverride, 0f,
+                    appliedStatus: StatusEffectType.Root),
+                ItemRarity.Rare, table);
+
+            SkillContentFactory.SupportGem(
+                "GemConcussive", "Concussive Support",
+                SkillContentFactory.Modifier(
+                    "SupportConcussive", SkillModifierKind.StatusOverride, 0f,
+                    appliedStatus: StatusEffectType.Stun),
+                ItemRarity.Rare, table);
+
+            // The pair that turns Multicast into a decision. Neither does
+            // anything on its own, which is the point: they are the first gems
+            // whose value is entirely in what else is socketed.
+            SkillContentFactory.SupportGem(
+                "GemVolley", "Volley Support",
+                SkillContentFactory.Modifier(
+                    "SupportVolley", SkillModifierKind.IncreasedSpread, 200f),     // TUNE
+                ItemRarity.Uncommon, table);
+
+            SkillContentFactory.SupportGem(
+                "GemFocusedLine", "Focused Line Support",
+                SkillContentFactory.Modifier(
+                    "SupportFocusedLine", SkillModifierKind.IncreasedSpread, -80f),  // TUNE
+                ItemRarity.Uncommon, table);
+
+            // The third of pierce, fork and chain — and the one that rewards
+            // standing somewhere in particular rather than socketing something
+            // in particular.
+            SkillContentFactory.SupportGem(
+                "GemPiercingShot", "Piercing Shot Support",
+                SkillContentFactory.Modifier(
+                    "SupportPiercingShot", SkillModifierKind.Pierce, 2f),          // TUNE
+                ItemRarity.Rare, table);
+
+            SkillContentFactory.SupportGem(
+                "GemExecutionersEdge", "Executioners Edge Support",
+                SkillContentFactory.Modifier(
+                    "SupportExecutionersEdge", SkillModifierKind.CullingStrike, 12f),  // TUNE
+                ItemRarity.Rare, table);
+
+            // What pays for the cost gems above, and the reason they are a
+            // trade rather than a tax: a build that kills keeps casting.
+            SkillContentFactory.SupportGem(
+                "GemSoulHarvest", "Soul Harvest Support",
+                SkillContentFactory.Modifier(
+                    "SupportSoulHarvest", SkillModifierKind.ManaOnKill, 4f),       // TUNE
+                ItemRarity.Rare, table);
+
+            // Worth nothing at all until something on the character sheet
+            // grants crit chance, which is exactly what the two jewels below
+            // are for.
+            SkillContentFactory.SupportGem(
+                "GemDeadlyAim", "Deadly Aim Support",
+                SkillContentFactory.Modifier(
+                    "SupportDeadlyAim", SkillModifierKind.IncreasedCritChance, 120f),  // TUNE
+                ItemRarity.Rare, table);
+        }
+
+        /// <summary>
+        /// The gems that cost something.
+        ///
+        /// A support gem was a pure gift until the item could carry two
+        /// modifiers, which made every socketing decision the same decision:
+        /// put in whatever is biggest. These are the other kind — a benefit
+        /// worth more than any single-sided gem, and a price beside it on the
+        /// same stone.
+        ///
+        /// The price is always a number the fold already had. Nothing here is a
+        /// mechanism; it is the second field on an item.
+        /// </summary>
+        private static void TwoSidedGems(LootTable table)
+        {
+            // More damage than Brutality by a wide margin, and mana it has to
+            // come out of. Beside Soul Harvest it is affordable; on a build
+            // that misses it is empty orbs.
+            SkillContentFactory.SupportGem(
+                "GemOvercharge", "Overcharge Support",
+                SkillContentFactory.Modifier(
+                    "SupportOvercharge", SkillModifierKind.IncreasedDamage, 90f),  // TUNE
+                ItemRarity.Epic, table,
+                SkillContentFactory.Modifier(
+                    "SupportOverchargeCost", SkillModifierKind.IncreasedManaCost, 70f));  // TUNE
+
+            // An extra cast, paid for in cooldown rather than mana — the same
+            // purchase as Multicast with the price finally attached to it.
+            SkillContentFactory.SupportGem(
+                "GemRecklessBarrage", "Reckless Barrage Support",
+                SkillContentFactory.Modifier(
+                    "SupportRecklessBarrage", SkillModifierKind.Multicast, 2f),    // TUNE
+                ItemRarity.Epic, table,
+                SkillContentFactory.Modifier(
+                    "SupportRecklessBarrageSlow", SkillModifierKind.ReducedCooldown, -60f));  // TUNE
+
+            // Culls deeper than Executioner's Edge and hits softer for it, which
+            // is the whole build in one gem: stop caring how hard you hit and
+            // start caring how many things are nearly dead.
+            SkillContentFactory.SupportGem(
+                "GemHemorrhage", "Hemorrhage Support",
+                SkillContentFactory.Modifier(
+                    "SupportHemorrhage", SkillModifierKind.CullingStrike, 20f),    // TUNE
+                ItemRarity.Epic, table,
+                SkillContentFactory.Modifier(
+                    "SupportHemorrhageWeak", SkillModifierKind.IncreasedDamage, -35f));  // TUNE
+
+            // Fast and expensive. The one to put on a skill that costs almost
+            // nothing — Spark — and the one to keep well away from a nova.
+            SkillContentFactory.SupportGem(
+                "GemQuickening", "Quickening Support",
+                SkillContentFactory.Modifier(
+                    "SupportQuickening", SkillModifierKind.ReducedCooldown, 45f),  // TUNE
+                ItemRarity.Epic, table,
+                SkillContentFactory.Modifier(
+                    "SupportQuickeningCost", SkillModifierKind.IncreasedManaCost, 90f));  // TUNE
+
+            // Wide and weak, and the first gem whose two halves are the same
+            // decision from both ends: it turns one blast into a crowd-clearer
+            // and a single-target blast into a waste of mana.
+            SkillContentFactory.SupportGem(
+                "GemWidening", "Widening Support",
+                SkillContentFactory.Modifier(
+                    "SupportWidening", SkillModifierKind.IncreasedArea, 85f),      // TUNE
+                ItemRarity.Rare, table,
+                SkillContentFactory.Modifier(
+                    "SupportWideningWeak", SkillModifierKind.IncreasedDamage, -30f));  // TUNE
+        }
+
+        /// <summary>
+        /// The two jewels that make crit exist for a character at all.
+        ///
+        /// The sheet starts with a small chance and an ordinary multiplier — see
+        /// SceneBuildUtility, which writes both into the character config — so
+        /// every build crits occasionally and no build is built around it. These
+        /// are what turn that into a decision, and what make Deadly Aim worth a
+        /// hole: a support that increases a chance needs a chance to increase.
+        /// </summary>
+        private static void CritJewellery(LootTable table)
+        {
+            SkillContentFactory.Ring(
+                "HuntersEye", "Hunters Eye", KeystoneEffect.None, table,
+                new[] { new ItemAffix(StatKind.CritChance, ModifierKind.Flat, 15f) },  // TUNE
+                ItemRarity.Rare);
+
+            // The other half of the purchase: crit rarely, but enormously. A
+            // build wearing both is choosing crit over everything else two
+            // ring slots could have been.
+            SkillContentFactory.Ring(
+                "CruelSigil", "Cruel Sigil", KeystoneEffect.None, table,
+                new[] { new ItemAffix(StatKind.CritMultiplier, ModifierKind.Flat, 0.8f) },  // TUNE
+                ItemRarity.Rare);
         }
 
         /// <summary>
@@ -660,10 +1057,13 @@ namespace TogetherWeFall.EditorTools
             // decides the build. What is being tested is which combinations are
             // worth making, and that question needs the whole set on the table.
             //
-            // No active gems. A weapon rolls the skills it comes with, so what
-            // an active gem is for is a question this change has reopened — the
-            // ones a previous run of this menu added are left where they are
-            // rather than taken back, because this menu only ever adds.
+            // Active gems, and the question they reopened now has an answer:
+            // they are what a trigger CASTS. A weapon rolls the skill it comes
+            // with and keeps it on the key; an active gem socketed behind that
+            // one, with a trigger gem in the same group, is a passive that goes
+            // off on its own. So the kit hands out a handful of actives worth
+            // putting there — a burst, a wall, a nova and a bolt — rather than
+            // none at all.
             var wanted = new[]
             {
                 "RiftwoodStaff",
@@ -673,19 +1073,43 @@ namespace TogetherWeFall.EditorTools
                 // is a support; these are the only way to choose which skill is
                 // being supported, because every other weapon rolls that for
                 // itself.
-                "TestbedWand", "TestbedFocus", "GemSpark", "GemCinderWall",
+                "TestbedWand", "TestbedFocus",
+
+                // The actives: one to bind by hand on the testbed pair, and
+                // three worth socketing behind a welded attack as passives.
+                "GemSpark", "GemCinderWall", "GemFirebolt", "GemFrostNova",
 
                 // Shape: how much exists and how big it is.
                 "GemChain", "GemFork", "GemMulticast", "GemGreaterArea", "GemBrutality",
+                "GemWindrunner", "GemPiercingShot", "GemVolley", "GemFocusedLine",
 
                 // Element.
                 "GemHoarfrost",
+                "GemEmberwright", "GemGlacialFocus", "GemGalvanicFocus", "GemVirulence",
 
                 // Conditional: the same gem twice over, depending on the target.
                 "GemDevour", "GemExecute", "GemKindledChain", "GemRivenChain",
+                "GemFrostbite", "GemConduit", "GemShatter", "GemSplintering",
+                "GemCascade", "GemVolatile", "GemEncircle", "GemFirstStrike",
 
-                // Trigger: two of these three have no event to fire on yet.
-                "GemCastOnKill", "GemCastOnCrit", "GemCastOnLowHealth"
+                // Levers: the cost of a press, the cooldown, the duration, the
+                // status, the kill.
+                "GemSwiftcast", "GemFrugality", "GemEverburning",
+                "GemRootingGrasp", "GemConcussive",
+                "GemExecutionersEdge", "GemSoulHarvest", "GemDeadlyAim",
+
+                // Two-sided: the gems that cost something.
+                "GemOvercharge", "GemRecklessBarrage", "GemHemorrhage",
+                "GemQuickening", "GemWidening",
+
+                // The jewels crit needs to exist at all, and the support that
+                // is worthless without them.
+                "HuntersEye", "CruelSigil",
+
+                // Trigger: all four have an event now — kill, crit, status
+                // applied, and the one still waiting on player health.
+                "GemCastOnKill", "GemCastOnCrit", "GemCastOnLowHealth",
+                "GemReactiveCascade", "GemEchoNova"
             };
 
             var serialized = new SerializedObject(config);

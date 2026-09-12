@@ -1,9 +1,7 @@
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using TogetherWeFall.Audio;
 using TogetherWeFall.Equipment;
-using TogetherWeFall.Interaction;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
@@ -36,16 +34,13 @@ namespace TogetherWeFall.Lobby.Systems
     [UpdateAfter(typeof(VendorStockSystem))]
     public partial struct VendorTransactionSystem : ISystem
     {
-        private EntityQuery _freeItemQuery;
+        // The free-item query used to live here, so a sale could mint the coins
+        // it paid out. Money is a number on the character now and mints nothing,
+        // so the query, the colour lookup and the "no change" refusal all went
+        // with it.
 
         public void OnCreate(ref SystemState state)
         {
-            _freeItemQuery = SystemAPI.QueryBuilder()
-                .WithAll<ItemInstance>()
-                .WithDisabled<InteractableTag>()
-                .WithDisabled<ItemStored>()
-                .Build();
-
             state.RequireForUpdate<ItemDatabase>();
             state.RequireForUpdate<VendorComponent>();
         }
@@ -56,17 +51,21 @@ namespace TogetherWeFall.Lobby.Systems
 
             foreach ((DynamicBuffer<VendorTransactionRequest> requests,
                       DynamicBuffer<VendorTransactionResult> results,
-                      RefRO<CarriedBag> bag) in
+                      RefRO<CarriedBag> bag,
+                      Entity character) in
                      SystemAPI.Query<DynamicBuffer<VendorTransactionRequest>,
                          DynamicBuffer<VendorTransactionResult>,
                          RefRO<CarriedBag>>()
-                         .WithAll<PlayerCharacter>())
+                         .WithAll<PlayerCharacter>()
+                         .WithEntityAccess())
             {
                 if (requests.Length == 0)
                     continue;
 
+                // The character as well as the bag: the purse is a component on
+                // it now, and the bag is only where the goods go.
                 for (int i = 0; i < requests.Length; i++)
-                    results.Add(Apply(ref state, items, requests[i], bag.ValueRO.Container));
+                    results.Add(Apply(ref state, items, requests[i], character, bag.ValueRO.Container));
 
                 // One frame, like every other request queue. A refused trade
                 // would be refused again with the same answer.
@@ -78,6 +77,7 @@ namespace TogetherWeFall.Lobby.Systems
             ref SystemState state,
             ItemDatabase items,
             in VendorTransactionRequest request,
+            Entity character,
             Entity bag)
         {
             EntityManager entityManager = state.EntityManager;
@@ -113,8 +113,8 @@ namespace TogetherWeFall.Lobby.Systems
             ref ItemBlob blob = ref items.Value.Value.Items[index];
 
             return request.Kind == VendorTransactionKind.Buy
-                ? Buy(ref state, items, request, vendor, bag, ref blob)
-                : Sell(ref state, items, request, vendor, bag, ref blob);
+                ? Buy(ref state, items, request, vendor, character, bag, ref blob)
+                : Sell(ref state, items, request, vendor, character, bag, ref blob);
         }
 
         private VendorTransactionResult Buy(
@@ -122,6 +122,7 @@ namespace TogetherWeFall.Lobby.Systems
             ItemDatabase items,
             in VendorTransactionRequest request,
             in VendorComponent vendor,
+            Entity character,
             Entity bag,
             ref ItemBlob blob)
         {
@@ -135,7 +136,7 @@ namespace TogetherWeFall.Lobby.Systems
 
             int price = BuyPrice(vendor, blob.Rarity);
 
-            if (Currency.Balance(entityManager, items, bag) < price)
+            if (Currency.Balance(entityManager, character) < price)
                 return Reject(request, VendorTransactionStatus.RejectedTooPoor, price);
 
             // Where it will go, worked out before a coin moves. Rotation is not
@@ -157,7 +158,7 @@ namespace TogetherWeFall.Lobby.Systems
             // Everything above only looked. From here nothing can fail: payment
             // was already shown to be possible, and it only frees cells, so the
             // square found above is still free.
-            if (!Currency.TryPay(entityManager, items, bag, price))
+            if (!Currency.TryPay(entityManager, character, price))
                 return Reject(request, VendorTransactionStatus.RejectedTooPoor, price);
 
             GridFit.Clear(
@@ -190,6 +191,7 @@ namespace TogetherWeFall.Lobby.Systems
             ItemDatabase items,
             in VendorTransactionRequest request,
             in VendorComponent vendor,
+            Entity character,
             Entity bag,
             ref ItemBlob blob)
         {
@@ -225,21 +227,11 @@ namespace TogetherWeFall.Lobby.Systems
                 return Reject(request, VendorTransactionStatus.RejectedNoRoom, price);
             }
 
-            int coinId = Currency.SmallestCoinId(items);
-            int coins = Currency.CoinsFor(items, coinId, price);
-
-            using NativeArray<Entity> free = _freeItemQuery.ToEntityArray(Allocator.Temp);
-
-            if (coinId == 0 || coins <= 0 || free.Length < coins)
-                return Reject(request, VendorTransactionStatus.RejectedNoChange, price);
-
-            // The squares the sold item is about to give back count towards the
-            // payout: selling a two-by-three breastplate for four coins works in
-            // a bag with no free cells at all, and refusing it would read as a
-            // bug rather than as a rule.
-            if (Currency.FreeCells(entityManager, bag) + width * height < coins)
-                return Reject(request, VendorTransactionStatus.RejectedNoRoom, price);
-
+            // The payout used to need free entities in the item pool and free
+            // squares in the bag, and a sale could be refused because the seller
+            // had nowhere to put the change — for money they were being handed.
+            // A purse is a number, so there is nothing left to check here.
+            //
             // Nothing below can fail.
             GridFit.Clear(entityManager.GetBuffer<InventoryCell>(bag), request.Item);
 
@@ -255,12 +247,7 @@ namespace TogetherWeFall.Lobby.Systems
                 IsRotated = placement.IsRotated
             });
 
-            RefRW<LootRandom> random = SystemAPI.GetSingletonRW<LootRandom>();
-            DynamicBuffer<RarityColor> colors = SystemAPI.GetSingletonBuffer<RarityColor>();
-
-            Currency.TryGrant(
-                entityManager, items, free, bag, coinId, price,
-                ColorFor(colors, ItemRarity.Common), ref random.ValueRW.Value);
+            Currency.Grant(entityManager, character, price);
 
             Announce(ref state, AudioCue.ItemPickup);
 
@@ -299,12 +286,6 @@ namespace TogetherWeFall.Lobby.Systems
                 return;
 
             audio.Add(new AudioEvent { Cue = cue, Volume = 1f });
-        }
-
-        private static float4 ColorFor(in DynamicBuffer<RarityColor> colors, ItemRarity rarity)
-        {
-            int index = (int)rarity;
-            return index < colors.Length ? colors[index].Value : new float4(1f, 1f, 1f, 1f);
         }
 
         private static VendorTransactionResult Reject(

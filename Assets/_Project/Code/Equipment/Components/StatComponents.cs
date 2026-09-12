@@ -46,7 +46,28 @@ namespace TogetherWeFall.Equipment
         MaxMana = 8,
 
         /// <summary>Mana returned per second. Flat, so a regen affix is a flat affix.</summary>
-        ManaRegen = 9
+        ManaRegen = 9,
+
+        /// <summary>
+        /// How often a cast lands as a critical blow, in percent.
+        ///
+        /// A stat rather than a field on the skill, because it is the thing
+        /// every skill shares and the thing equipment is supposed to change. A
+        /// character sheet that never heard of it answers zero, which is a
+        /// character who never crits — the safe default, and the one every
+        /// enemy is on.
+        /// </summary>
+        CritChance = 10,
+
+        /// <summary>
+        /// What a critical blow multiplies the damage by. 1.5 is half again.
+        ///
+        /// Kept separate from the chance because they are two different
+        /// purchases: a build that crits often and one that crits enormously
+        /// want different items, and a single "crit" number would make that one
+        /// decision instead of two.
+        /// </summary>
+        CritMultiplier = 11
     }
 
     /// <summary>
@@ -76,7 +97,7 @@ namespace TogetherWeFall.Equipment
     /// </summary>
     public struct StatBlock
     {
-        public const int StatCount = (int)StatKind.ManaRegen + 1;
+        public const int StatCount = (int)StatKind.CritMultiplier + 1;
 
         public FixedList64Bytes<float> Values;
 

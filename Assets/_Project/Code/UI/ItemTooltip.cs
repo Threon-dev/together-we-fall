@@ -1,4 +1,5 @@
 using System.Text;
+using Unity.Collections;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Loot;
@@ -66,8 +67,47 @@ namespace TogetherWeFall.UI
         /// answered here, so the bag and the vendor cannot answer it
         /// differently.
         /// </summary>
+        /// <param name="supported">
+        /// The skill this gem is currently supporting, when it is sitting in a
+        /// socket beside one, and default when it is loose in the bag. It is
+        /// what lets a support gem say "this does nothing HERE" — the same gem
+        /// in another weapon may be the best one in the build, so the sentence
+        /// only exists when there is a skill to say it about.
+        /// </param>
+        /// <param name="companions">
+        /// The other supports in the same link group, for the one question that
+        /// is about the group rather than the skill: a spread gem with no
+        /// multicast beside it has no gap to widen.
+        /// </param>
+        /// <param name="passive">
+        /// Whether this active gem is one the trigger owns rather than the key.
+        /// The panel's answer, because only it knows which socket the gem is
+        /// sitting in — a group with a trigger still has one active that keeps
+        /// the hotkey.
+        /// </param>
+        /// <param name="sets">
+        /// The set database, when the panel has one. Without it the item is
+        /// described exactly as it was before sets existed, which is what a
+        /// scene with nothing baked should read like.
+        /// </param>
+        /// <param name="equippedFromSet">
+        /// How many pieces of this item's set the player is currently wearing.
+        /// The panel's answer, because only it knows whose character is being
+        /// looked at — counted by ItemSets so the tooltip and the character
+        /// sheet cannot disagree.
+        /// </param>
         public static bool TryDescribeItem(
-            ItemDatabase items, SkillDatabase skills, int itemId, int wornItemId, out Text text)
+            ItemDatabase items,
+            SkillDatabase skills,
+            int itemId,
+            int wornItemId,
+            out Text text,
+            SkillShape supported = default,
+            FixedList512Bytes<SkillModifierBlob> companions = default,
+            bool passive = false,
+            bool groupHasPassive = true,
+            ItemSetDatabase sets = default,
+            int equippedFromSet = 0)
         {
             text = default;
 
@@ -83,15 +123,22 @@ namespace TogetherWeFall.UI
             text.Rarity = item.Rarity;
 
             if (item.GemKind == GemKind.Active)
-                DescribeActiveGem(ref item, skills, ref text);
+                DescribeActiveGem(ref item, skills, companions, passive, ref text);
             else if (item.GemKind == GemKind.Support)
-                DescribeSupportGem(ref item, skills, ref text);
+                DescribeSupportGem(
+                    ref item, skills, supported, companions, groupHasPassive, ref text);
             else if (item.CurrencyValue > 0)
                 DescribeCurrency(ref item, ref text);
             else
                 DescribeGear(ref item, skills, ref text);
 
             text.Compare = CompareToWorn(items, ref item, wornItemId);
+
+            // Appended rather than folded into the branches above, because it is
+            // the one thing on the tooltip that is not about the item alone: the
+            // same helmet says something different depending on what else is
+            // worn, and every branch would otherwise have to ask.
+            Append(ref text.Detail, SetLines(sets, skills, itemId, equippedFromSet));
 
             return true;
         }
@@ -211,11 +258,40 @@ namespace TogetherWeFall.UI
         // Gems
         // ─────────────────────────────────────────────────────────────────
 
+        /// <param name="companions">
+        /// The supports in the same link group, or empty for a gem in the bag.
+        /// A trigger among them is what turns this gem from something on a key
+        /// into something the world casts.
+        /// </param>
         private static void DescribeActiveGem(
-            ref ItemBlob item, SkillDatabase skills, ref Text text)
+            ref ItemBlob item,
+            SkillDatabase skills,
+            in FixedList512Bytes<SkillModifierBlob> companions,
+            bool passive,
+            ref Text text)
         {
+            bool triggered = GemSockets.TryGetTrigger(companions, out SkillModifierBlob trigger);
+
             text.Kind = "Active gem";
-            text.Hint = "Put it in a socket, then drag that socket onto a hotkey.";
+
+            // Whether THIS gem is the passive one is the panel's answer, not a
+            // thing to guess from the group: a group with a trigger in it still
+            // has one active that keeps the key, and telling the player their
+            // hotkey gem is passive would be worse than saying nothing.
+            if (passive)
+            {
+                text.Hint = $"Cast on {trigger.TriggerCondition} rather than by a key — " +
+                            "it cannot go on the bar while the trigger is linked to it.";
+            }
+            else if (triggered)
+            {
+                text.Hint = "This one keeps the hotkey. The actives behind it in the group " +
+                            $"are cast on {trigger.TriggerCondition} instead.";
+            }
+            else
+            {
+                text.Hint = "Put it in a socket, then drag that socket onto a hotkey.";
+            }
 
             int skillIndex = skills.IndexOf(item.GemSkillId);
 
@@ -227,22 +303,63 @@ namespace TogetherWeFall.UI
 
             ref SkillBlob skill = ref skills.Value.Value.Skills[skillIndex];
 
-            text.Kind = $"Active gem · casts {skill.Name}";
+            text.Kind = passive
+                ? $"Passive gem · {skill.Name} on {trigger.TriggerCondition}"
+                : $"Active gem · casts {skill.Name}";
+
             text.Stats = SkillStats(ref skill);
             text.Detail = SkillDetail(ref skill, skills);
         }
 
         private static void DescribeSupportGem(
-            ref ItemBlob item, SkillDatabase skills, ref Text text)
+            ref ItemBlob item,
+            SkillDatabase skills,
+            in SkillShape supported,
+            in FixedList512Bytes<SkillModifierBlob> companions,
+            bool groupHasPassive,
+            ref Text text)
         {
             SkillModifierPhase phase = SkillModifiers.PhaseOf(item.GemSupport.Kind);
 
             text.Kind = $"Support gem · {SkillModifiers.Describe(phase)}";
-            text.Stats = DescribeSupport(item.GemSupport, skills);
+
+            var stats = new StringBuilder();
+            stats.Append(DescribeSupport(item.GemSupport, skills));
+
+            // The second half of a two-sided gem, on its own line and without a
+            // word saying which is the price. What the numbers do says it: a
+            // player reading "+80% damage" over "+60% mana cost" does not need
+            // to be told which one hurts.
+            if (item.HasSupportSecond)
+            {
+                Line(stats, DescribeSupport(item.GemSupportSecond, skills));
+
+                string secondCondition = SkillConditions.Describe(item.GemSupportSecond);
+                if (secondCondition.Length > 0)
+                    Line(stats, $"— {secondCondition}");
+            }
+
+            text.Stats = stats.ToString();
             text.Hint = "Socket it beside an active gem, in the same link group.";
 
             var detail = new StringBuilder();
-            detail.Append("Changes every active gem linked to it. On its own it casts nothing.");
+
+            // What this gem is doing right where it sits, said before anything
+            // general about what supports are. A gem that cannot act here is
+            // the one thing the player needs to read first — the socket looks
+            // exactly as full either way.
+            string inert = InertLine(ref item, supported, companions, groupHasPassive);
+
+            if (inert.Length > 0)
+            {
+                detail.Append(inert);
+                Line(detail, "Move it to a socket where it has something to do.");
+            }
+            else
+            {
+                detail.Append(
+                    "Changes every active gem linked to it. On its own it casts nothing.");
+            }
 
             string condition = SkillConditions.Describe(item.GemSupport);
             if (condition.Length > 0)
@@ -251,8 +368,8 @@ namespace TogetherWeFall.UI
             if (item.GemSupport.Kind == SkillModifierKind.TriggerOnCondition)
             {
                 Line(detail,
-                    "While it is linked, the hotkey stops answering — the skills beside " +
-                    "it cast themselves instead.");
+                    "The first active in the group keeps its hotkey. Every active behind " +
+                    "it becomes a passive this gem casts, and stops answering keys.");
 
                 if (!SkillModifiers.HasSource(item.GemSupport.TriggerCondition))
                 {
@@ -263,6 +380,68 @@ namespace TogetherWeFall.UI
             }
 
             text.Detail = detail.ToString();
+        }
+
+        /// <summary>
+        /// The sentence a support gem gets when it cannot do anything where it
+        /// is, or empty.
+        ///
+        /// Two reasons, and they are genuinely different questions. One is
+        /// about the skill — a swing has no projectile to split — and is
+        /// answered by the same table the socket cell dims the gem with. The
+        /// other is about the group: a spread gem with nothing to spread is
+        /// fine on any skill and useless in this hole.
+        ///
+        /// Both halves of a two-sided gem are asked, because a gem whose
+        /// benefit lands and whose price does not is not inert, and saying it
+        /// is would be worse than saying nothing.
+        /// </summary>
+        private static string InertLine(
+            ref ItemBlob item,
+            in SkillShape supported,
+            in FixedList512Bytes<SkillModifierBlob> companions,
+            bool groupHasPassive)
+        {
+            if (!supported.Exists)
+                return string.Empty;
+
+            bool first = SkillModifiers.AppliesTo(item.GemSupport.Kind, supported);
+            bool second = !item.HasSupportSecond ||
+                          SkillModifiers.AppliesTo(item.GemSupportSecond.Kind, supported);
+
+            if (!first && !second)
+            {
+                return $"Does nothing for {supported.Name}: " +
+                       $"{SkillModifiers.WhyInert(item.GemSupport.Kind, supported)}.";
+            }
+
+            if (!first || !second)
+            {
+                SkillModifierKind dead = first ? item.GemSupportSecond.Kind : item.GemSupport.Kind;
+
+                return $"Half of it does nothing for {supported.Name}: " +
+                       $"{SkillModifiers.WhyInert(dead, supported)}.";
+            }
+
+            // A trigger needs something to cast, and what it casts is an active
+            // gem socketed BEHIND the one on the key. On its own it fires into
+            // an empty group.
+            if (SkillModifiers.IsAutomatic(item.GemSupport.Kind) && !groupHasPassive)
+            {
+                return "Nothing to cast: put a second active gem in this group. The first " +
+                       "one keeps the hotkey, and this fires the ones behind it.";
+            }
+
+            // Nothing wrong with the skill. The group is the other place a gem
+            // can be wasted, and only one kind is asked about it.
+            if (!SkillModifiers.HasCompanion(item.GemSupport.Kind))
+                return string.Empty;
+
+            SkillModifierKind needed = SkillModifiers.NeedsCompanion(item.GemSupport.Kind);
+
+            return GemSockets.GroupHas(companions, needed)
+                ? string.Empty
+                : $"Does nothing until a {needed} support is linked beside it.";
         }
 
         /// <summary>The line that says what a support actually does.</summary>
@@ -320,6 +499,42 @@ namespace TogetherWeFall.UI
                         Line(lines, $"at most once every {support.TriggerCooldown:0.##} s");
 
                     break;
+
+                case SkillModifierKind.IncreasedManaCost:
+                    lines.Append($"{Signed(support.Value)}% mana cost");
+                    break;
+
+                case SkillModifierKind.ReducedCooldown:
+                    lines.Append($"{Signed(support.Value)}% reduced cooldown");
+                    break;
+
+                case SkillModifierKind.IncreasedDuration:
+                    lines.Append($"{Signed(support.Value)}% increased zone duration");
+                    break;
+
+                case SkillModifierKind.IncreasedSpread:
+                    lines.Append($"{Signed(support.Value)}% wider spread between casts");
+                    break;
+
+                case SkillModifierKind.IncreasedCritChance:
+                    lines.Append($"{Signed(support.Value)}% increased critical chance");
+                    break;
+
+                case SkillModifierKind.Pierce:
+                    lines.Append($"projectiles pass through {(int)support.Value} more enemies");
+                    break;
+
+                case SkillModifierKind.StatusOverride:
+                    lines.Append($"everything it hits is {support.AppliedStatus} instead");
+                    break;
+
+                case SkillModifierKind.CullingStrike:
+                    lines.Append($"kills outright below {support.Value:0}% life");
+                    break;
+
+                case SkillModifierKind.ManaOnKill:
+                    lines.Append($"+{support.Value:0.#} mana for every kill");
+                    break;
             }
 
             return lines.ToString();
@@ -363,7 +578,8 @@ namespace TogetherWeFall.UI
         {
             text.Kind = "Currency";
             text.Stats = $"Worth {item.CurrencyValue}";
-            text.Detail = "Carried like anything else, and lost with the rest of the bag.";
+            text.Detail = "It never goes in the bag. Picking it up puts its value straight " +
+                          "into your purse.";
             text.Hint = "Spend it at the vendor.";
         }
 
@@ -520,6 +736,114 @@ namespace TogetherWeFall.UI
         }
 
         // ─────────────────────────────────────────────────────────────────
+
+        // ─────────────────────────────────────────────────────────────────
+        // Item sets
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Which set this item belongs to, how much of it is worn, and what
+        /// every step is worth — reached or not.
+        ///
+        /// The unreached steps are shown on purpose. A set bonus the player
+        /// cannot see the shape of is a reason to keep wearing four pieces of
+        /// something worse for no reason they could name, and "what do I get
+        /// for one more piece" is the only question this whole feature asks.
+        ///
+        /// Empty for an item in no set, which is almost every item.
+        /// </summary>
+        private static string SetLines(
+            ItemSetDatabase sets, SkillDatabase skills, int itemId, int equipped)
+        {
+            int setIndex = ItemSets.SetIndexOf(sets, itemId);
+            if (setIndex < 0)
+                return string.Empty;
+
+            // By reference: ItemSetBlob carries two blob arrays, and a copy of
+            // it would point them at whatever sits near the copy.
+            ref ItemSetBlob set = ref sets.Value.Value.Sets[setIndex];
+
+            var lines = new StringBuilder();
+            Line(lines, $"Set: {set.SetName} — {equipped}/{set.MemberItemIds.Length} worn");
+
+            // Which step is in force, asked of the same helper the host asks, so
+            // the highlight cannot promise a bonus the stat maths is not paying.
+            ItemSets.TryHighestReached(ref set, equipped, out int active);
+
+            for (int t = 0; t < set.Thresholds.Length; t++)
+            {
+                // Flat data with no blob array inside, so this copy is safe in a
+                // way copying the set never is.
+                SetThresholdBlob step = set.Thresholds[t];
+
+                string rewards = DescribeThreshold(step, skills);
+
+                // Three states, not two. A step below the one in force is
+                // REPLACED rather than missing, and saying so is the whole of
+                // explaining that these do not stack — a player who reads
+                // "2 pieces" beside "4 pieces (active)" with no note would
+                // reasonably assume they have both.
+                string state = t == active
+                    ? " (active)"
+                    : step.RequiredPieceCount <= equipped
+                        ? " (replaced)"
+                        : $" (needs {step.RequiredPieceCount - equipped} more)";
+
+                Line(lines, $"{step.RequiredPieceCount} pieces: {rewards}{state}");
+            }
+
+            return lines.ToString();
+        }
+
+        /// <summary>What one step of a set gives, in one line.</summary>
+        private static string DescribeThreshold(
+            in SetThresholdBlob step, SkillDatabase skills)
+        {
+            var rewards = new StringBuilder();
+
+            for (int s = 0; s < StatBlock.StatCount; s++)
+            {
+                var stat = (StatKind)s;
+
+                if (Meaningful(step.FlatBonuses.Get(stat)))
+                    Comma(rewards, $"{Signed(step.FlatBonuses.Get(stat))} {stat}");
+
+                if (Meaningful(step.IncreasedBonuses.Get(stat)))
+                {
+                    Comma(rewards,
+                        $"{Signed(step.IncreasedBonuses.Get(stat))}% increased {stat}");
+                }
+            }
+
+            // The same sentence a support gem gets, because it IS one — it
+            // simply acts on every skill instead of on one link group, which is
+            // what the note beside it says.
+            if (step.HasBonusSupport)
+                Comma(rewards, $"{DescribeSupport(step.BonusSupport, skills)} (all skills)");
+
+            if (step.BonusKeystone != KeystoneEffect.None)
+                Comma(rewards, DescribeKeystone(step.BonusKeystone));
+
+            return rewards.Length > 0 ? rewards.ToString() : "nothing yet";
+        }
+
+        /// <summary>Appends within a line, comma separated.</summary>
+        private static void Comma(StringBuilder builder, string text)
+        {
+            if (builder.Length > 0)
+                builder.Append(", ");
+
+            builder.Append(text);
+        }
+
+        /// <summary>Appends a block to a part of the tooltip that may be empty.</summary>
+        private static void Append(ref string part, string block)
+        {
+            if (string.IsNullOrEmpty(block))
+                return;
+
+            part = string.IsNullOrEmpty(part) ? block : part + "\n" + block;
+        }
 
         /// <summary>Appends a line, with no leading blank one on the first.</summary>
         private static void Line(StringBuilder builder, string text)

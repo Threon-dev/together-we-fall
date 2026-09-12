@@ -133,6 +133,17 @@ namespace TogetherWeFall.Skills.Systems
         {
             float radiusSq = area.Radius * area.Radius;
 
+            // Who carries the chain onward, decided before any hit is written.
+            //
+            // The body nearest the centre rather than the first one the array
+            // happens to hold, so the same blast on the same crowd always
+            // chains from the same place — an order-of-iteration answer would
+            // make a build that looks identical behave differently depending on
+            // which enemy spawned first.
+            int chainFrom = area.ChainsRemaining > 0
+                ? NearestInside(area, targets, radiusSq)
+                : -1;
+
             for (int i = 0; i < targets.Length; i++)
             {
                 float3 offset = targets.PositionOf(i) - area.Position;
@@ -149,7 +160,7 @@ namespace TogetherWeFall.Skills.Systems
                 if (!EnemyTargets.IsInsideArc(offset, distanceSq, area.Direction, area.ArcCosine))
                     continue;
 
-                hits.Add(new PendingHit
+                var hit = new PendingHit
                 {
                     Target = targets.Entities[i],
                     Origin = targets.PositionOf(i),
@@ -157,12 +168,25 @@ namespace TogetherWeFall.Skills.Systems
                     Type = area.Type,
                     SourcePlayerId = area.SourcePlayerId,
 
-                    // An area effect does not chain. Chaining belongs to the
-                    // single-target effects that have somewhere to jump from.
-                    ChainsRemaining = 0,
+                    // An area effect chains from exactly one of the bodies it
+                    // caught, and only when something asked it to. It used to
+                    // chain from none of them, which made every chain gem in a
+                    // group with a swing, a burst or a projectile that bursts
+                    // on impact into a hole that did nothing and said nothing.
+                    ChainsRemaining = i == chainFrom ? area.ChainsRemaining : 0,
+                    ChainRange = area.ChainRange,
+                    ChainDelay = area.ChainDelay,
                     Delay = 0f,
                     ExplosionRadius = area.ExplosionRadius,
                     ExplosionDamage = area.ExplosionDamage,
+                    CullThreshold = area.CullThreshold,
+                    ManaOnKill = area.ManaOnKill,
+
+                    // Handed to every body, and each rolls its own in the hit
+                    // stage. One roll for the whole blast would be one number
+                    // deciding a crowd.
+                    CritChance = area.CritChance,
+                    CritMultiplier = area.CritMultiplier,
 
                     // Passed straight through: what the blast was carrying, every
                     // body it caught is struck by, and whether the blast was
@@ -174,8 +198,50 @@ namespace TogetherWeFall.Skills.Systems
                     // Same derivation as a projectile: depth is what a cast was
                     // when it happened, so nothing new had to be carried.
                     FromTrigger = area.TriggerDepth > 0
-                });
+                };
+
+                // The one body that chains starts its visited list with itself,
+                // exactly as a bolt does — without it the first jump lands back
+                // on the body the blast is standing on.
+                if (i == chainFrom)
+                    hit.Visited.Add(hit.Target);
+
+                hits.Add(hit);
             }
+        }
+
+        /// <summary>
+        /// The body nearest the centre of the blast, or -1 when it catches
+        /// nobody.
+        ///
+        /// Walks the same targets the loop below walks and applies the same two
+        /// tests, which is the point: a chain must start from a body that was
+        /// actually hit, not from one standing just outside the arc.
+        /// </summary>
+        private static int NearestInside(
+            in PendingArea area, in EnemyTargets targets, float radiusSq)
+        {
+            int nearest = -1;
+            float nearestSq = float.MaxValue;
+
+            for (int i = 0; i < targets.Length; i++)
+            {
+                float3 offset = targets.PositionOf(i) - area.Position;
+                offset.y = 0f;
+
+                float distanceSq = math.lengthsq(offset);
+
+                if (distanceSq > radiusSq || distanceSq >= nearestSq)
+                    continue;
+
+                if (!EnemyTargets.IsInsideArc(offset, distanceSq, area.Direction, area.ArcCosine))
+                    continue;
+
+                nearest = i;
+                nearestSq = distanceSq;
+            }
+
+            return nearest;
         }
     }
 }

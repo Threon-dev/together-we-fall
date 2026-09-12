@@ -1,34 +1,32 @@
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Mathematics;
-using Unity.Rendering;
 using TogetherWeFall.Equipment;
-using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
-using TogetherWeFall.Skills;
-using Random = Unity.Mathematics.Random;
+using TogetherWeFall.Player;
 
 namespace TogetherWeFall.Lobby
 {
     /// <summary>
-    /// Money, and it is an item.
+    /// Money: a number on the character, and an item only while it is on the
+    /// floor.
     ///
-    /// A coin is an ordinary ItemDefinition with a CurrencyValue on it: it comes
-    /// out of the same pool, occupies a cell, drops on the floor, is born AtRisk
-    /// and is lost with everything else when its owner dies for good. An int on
-    /// the character would have been half the code and none of that — and the
-    /// half it saved is the half the grid inventory had already written.
+    /// It used to be an item all the way through — a coin came out of the item
+    /// pool, took a cell, and the balance was counted by walking the bag. That
+    /// was a real answer to "what is money" and it cost the thing the bag is
+    /// for: a floor's worth of payout was forty entities and forty of sixty
+    /// squares, so the reward for clearing a room was having nowhere to put the
+    /// loot. Half of this file was the machinery for that and is gone.
+    ///
+    /// What survives is the half worth keeping: a coin is still an ordinary
+    /// ItemDefinition with a CurrencyValue, it still drops from chests and lies
+    /// on the floor. Picking it up is where it stops being an item — the pickup
+    /// stage adds its value to the purse and hands the entity straight back to
+    /// the pool. Nothing between the chest and the purse knows the difference.
     ///
     /// A struct of static methods rather than a system, exactly like GridFit and
-    /// for the same reason: two owners need the same answers and neither calls
-    /// the other. VendorTransactionSystem spends, CraftingSystem spends, and the
-    /// UI reads the balance to grey out a button.
-    ///
-    /// ponytail: one denomination. Payment takes coins whose value fits in what
-    /// is still owed and refuses if nothing does, so a purse of 5-coins cannot
-    /// buy a 3-coin item — with every coin worth 1, which is what the content
-    /// authors, that case does not arise. Making change is the upgrade path, and
-    /// it needs a reason first.
+    /// for the same reason: several owners need the same answers and none of
+    /// them calls the others. The vendor spends, the forge spends, the pickup
+    /// stage fills, and the UI reads.
     /// </summary>
     public struct Currency
     {
@@ -69,261 +67,94 @@ namespace TogetherWeFall.Lobby
         }
 
         /// <summary>
-        /// The cheapest coin in the game, by id, or zero if there is no currency
-        /// at all.
+        /// What this character is carrying, in coin.
         ///
-        /// A scan rather than a baked "this is the coin" reference, because the
-        /// alternative is a second place that has to agree with the assets. The
-        /// database is dozens of entries and a purchase happens when somebody
-        /// clicks, so the scan costs nothing anybody can measure.
+        /// A component read rather than a walk of the bag. A character with no
+        /// wallet has no money — which is every character in a scene built
+        /// before wallets existed, and the honest answer for one.
         /// </summary>
-        public static int SmallestCoinId(ItemDatabase items)
+        public static int Balance(EntityManager entityManager, Entity character)
         {
-            if (!items.Value.IsCreated)
-                return 0;
-
-            ref ItemDatabaseBlob blob = ref items.Value.Value;
-
-            int best = 0;
-            int bestValue = int.MaxValue;
-
-            for (int i = 0; i < blob.Items.Length; i++)
-            {
-                ref ItemBlob item = ref blob.Items[i];
-
-                if (item.CurrencyValue <= 0 || item.CurrencyValue >= bestValue)
-                    continue;
-
-                best = item.ItemId;
-                bestValue = item.CurrencyValue;
-            }
-
-            return best;
+            return character != Entity.Null && entityManager.HasComponent<Wallet>(character)
+                ? entityManager.GetComponentData<Wallet>(character).Coin
+                : 0;
         }
 
         /// <summary>
-        /// What is in a container, in coin.
+        /// Takes an amount out of the purse, or takes nothing and says no.
         ///
-        /// Counted from the cells, but only at each item recorded origin: an
-        /// item writes itself into every square it covers, so counting cells
-        /// would pay a 1x2 coin twice.
+        /// The two-pass dance this used to need is gone with the coins: there is
+        /// one number, so "can they afford it" and "take it" cannot come apart
+        /// half way. What is left is the rule that mattered — a payment either
+        /// happens or does not.
         /// </summary>
-        public static int Balance(EntityManager entityManager, ItemDatabase items, Entity container)
-        {
-            if (container == Entity.Null || !entityManager.HasBuffer<InventoryCell>(container))
-                return 0;
-
-            InventoryGridComponent grid =
-                entityManager.GetComponentData<InventoryGridComponent>(container);
-            DynamicBuffer<InventoryCell> cells = entityManager.GetBuffer<InventoryCell>(container);
-
-            int total = 0;
-
-            for (int i = 0; i < cells.Length; i++)
-            {
-                Entity item = cells[i].OccupyingItem;
-
-                if (item == Entity.Null || !IsOrigin(entityManager, grid, item, i))
-                    continue;
-
-                total += ValueOf(
-                    items, entityManager.GetComponentData<ItemInstance>(item).ItemId);
-            }
-
-            return total;
-        }
-
-        /// <summary>
-        /// Takes an amount out of a container, or takes nothing and says no.
-        ///
-        /// Two passes on purpose: the first only looks, the second only writes.
-        /// A payment that ran out of coins halfway would leave the buyer poorer
-        /// and empty-handed, which is the one outcome a transaction must never
-        /// produce — the same reason EquipmentSystem checks everything before
-        /// its first write.
-        /// </summary>
-        public static bool TryPay(
-            EntityManager entityManager, ItemDatabase items, Entity container, int amount)
+        public static bool TryPay(EntityManager entityManager, Entity character, int amount)
         {
             if (amount <= 0)
                 return true;
 
-            if (container == Entity.Null || !entityManager.HasBuffer<InventoryCell>(container))
+            if (character == Entity.Null || !entityManager.HasComponent<Wallet>(character))
                 return false;
 
-            InventoryGridComponent grid =
-                entityManager.GetComponentData<InventoryGridComponent>(container);
+            Wallet wallet = entityManager.GetComponentData<Wallet>(character);
 
-            using var coins = new NativeList<Entity>(16, Allocator.Temp);
+            if (wallet.Coin < amount)
+                return false;
 
-            // Gathered first, because releasing an item back to the pool writes
-            // to its transform and flags — and the cell buffer below is cleared
-            // as we go, which would upset a loop still reading it.
-            {
-                DynamicBuffer<InventoryCell> cells =
-                    entityManager.GetBuffer<InventoryCell>(container);
-
-                int remaining = amount;
-
-                for (int i = 0; i < cells.Length && remaining > 0; i++)
-                {
-                    Entity item = cells[i].OccupyingItem;
-
-                    if (item == Entity.Null || !IsOrigin(entityManager, grid, item, i))
-                        continue;
-
-                    int value = ValueOf(
-                        items, entityManager.GetComponentData<ItemInstance>(item).ItemId);
-
-                    // A coin worth more than what is still owed is skipped
-                    // rather than spent: overpaying without change is theft, and
-                    // change is the deferred half of this feature.
-                    if (value <= 0 || value > remaining)
-                        continue;
-
-                    coins.Add(item);
-                    remaining -= value;
-                }
-
-                if (remaining > 0)
-                    return false;
-            }
-
-            for (int i = 0; i < coins.Length; i++)
-            {
-                GridFit.Clear(entityManager.GetBuffer<InventoryCell>(container), coins[i]);
-
-                // Straight back to the pool. Spent money does not go anywhere —
-                // there is no vendor purse to credit, and inventing one would be
-                // an economy nobody asked for.
-                LootItemPool.Release(entityManager, coins[i]);
-            }
+            wallet.Coin -= amount;
+            entityManager.SetComponentData(character, wallet);
 
             return true;
         }
 
         /// <summary>
-        /// Pays an amount into a container as coins, taking entities from the
-        /// loot pool.
+        /// Pays an amount into the purse.
         ///
-        /// Refuses as a whole when the pool or the container cannot take all of
-        /// it, for the same reason payment does: half a refund is worse than
-        /// none. The caller is expected to have checked CoinsFor against the
-        /// free pool and the free cells first; this repeats the check because it
-        /// is cheap and because being wrong here loses items.
+        /// It cannot fail and it cannot be refused, which is the whole of what
+        /// changed: a payout used to need free entities in the item pool and
+        /// free squares in the bag, and a sale could be turned down because the
+        /// seller had nowhere to put the change. Selling a breastplate for four
+        /// coins now needs nothing at all.
         /// </summary>
-        public static bool TryGrant(
-            EntityManager entityManager,
-            ItemDatabase items,
-            in NativeArray<Entity> free,
-            Entity container,
-            int coinId,
-            int amount,
-            float4 colour,
-            ref Random random)
+        public static void Grant(EntityManager entityManager, Entity character, int amount)
         {
-            if (amount <= 0)
-                return true;
-
-            int value = ValueOf(items, coinId);
-            if (value <= 0 || coinId == 0)
-                return false;
-
-            // Integer division, deliberately not rounded up: a payout that is
-            // not a whole number of coins is one the price list should not have
-            // produced, and paying the extra would mint money.
-            int count = amount / value;
-
-            if (count <= 0 || count > free.Length)
-                return false;
-
-            if (container == Entity.Null || !entityManager.HasBuffer<InventoryCell>(container))
-                return false;
-
-            InventoryGridComponent grid =
-                entityManager.GetComponentData<InventoryGridComponent>(container);
-
-            if (!GridFit.TryGetFootprint(items, coinId, false, out int width, out int height))
-                return false;
-
-            FixedString64Bytes name = NameOf(items, coinId);
-
-            for (int i = 0; i < count; i++)
+            if (amount <= 0 ||
+                character == Entity.Null || !entityManager.HasComponent<Wallet>(character))
             {
-                DynamicBuffer<InventoryCell> cells =
-                    entityManager.GetBuffer<InventoryCell>(container);
-
-                if (!GridFit.FindFirstFit(
-                        cells, grid, width, height, Entity.Null, out int x, out int y))
-                {
-                    // Only reachable if the caller skipped its own room check.
-                    // What is already paid out stays paid — undoing it would
-                    // mean releasing entities this method has already stored,
-                    // and the caller checks precisely so this cannot happen.
-                    return false;
-                }
-
-                Entity coin = free[i];
-
-                entityManager.SetComponentData(coin, new ItemInstance
-                {
-                    ItemId = coinId,
-                    Rarity = ItemRarity.Common,
-                    RiskState = ItemRiskState.AtRisk
-                });
-
-                entityManager.SetComponentData(coin, new ItemDisplayName { Value = name });
-                entityManager.SetComponentData(
-                    coin, new URPMaterialPropertyBaseColor { Value = colour });
-
-                // The same call the pool makes when it hands an item out: this
-                // entity was something else last time it was used, and a stale
-                // socket buffer is the one part of that which does not clear
-                // itself.
-                GemSockets.Rebuild(entityManager, items, coin, ref random);
-
-                GridFit.Occupy(cells, grid, x, y, width, height, coin);
-
-                entityManager.SetComponentData(coin, new ItemGridPlacement
-                {
-                    ContainerEntity = container,
-                    OriginX = x,
-                    OriginY = y,
-                    IsRotated = false
-                });
-
-                LootItemPool.Store(entityManager, coin);
+                return;
             }
 
-            return true;
+            Wallet wallet = entityManager.GetComponentData<Wallet>(character);
+            wallet.Coin += amount;
+
+            entityManager.SetComponentData(character, wallet);
         }
 
         /// <summary>
-        /// How many coins of this kind a payout comes to. The number of free
-        /// pool entities and free cells a caller has to have.
+        /// Takes a coin off the floor and puts its value in the purse, if that
+        /// is what this item is.
+        ///
+        /// The one place an item turns into money, so the pickup stage and the
+        /// starter kit cannot disagree about what happens to a coin. The entity
+        /// goes back to the pool: it was money for exactly as long as it was
+        /// lying on the ground.
         /// </summary>
-        public static int CoinsFor(ItemDatabase items, int coinId, int amount)
+        public static bool TryCollect(
+            EntityManager entityManager, ItemDatabase items, Entity character, Entity item)
         {
-            int value = ValueOf(items, coinId);
-            return value <= 0 ? 0 : amount / value;
-        }
+            if (item == Entity.Null || !entityManager.HasComponent<ItemInstance>(item))
+                return false;
 
-        /// <summary>How many empty squares a container has left.</summary>
-        public static int FreeCells(EntityManager entityManager, Entity container)
-        {
-            if (container == Entity.Null || !entityManager.HasBuffer<InventoryCell>(container))
-                return 0;
+            int value = ValueOf(
+                items, entityManager.GetComponentData<ItemInstance>(item).ItemId);
 
-            DynamicBuffer<InventoryCell> cells = entityManager.GetBuffer<InventoryCell>(container);
+            if (value <= 0)
+                return false;
 
-            int free = 0;
-            for (int i = 0; i < cells.Length; i++)
-            {
-                if (cells[i].IsFree)
-                    free++;
-            }
+            Grant(entityManager, character, value);
+            LootItemPool.Release(entityManager, item);
 
-            return free;
+            return true;
         }
 
         public static FixedString64Bytes NameOf(ItemDatabase items, int itemId)
@@ -334,24 +165,6 @@ namespace TogetherWeFall.Lobby
 
             ref ItemBlob item = ref items.Value.Value.Items[index];
             return item.Name;
-        }
-
-        private static bool IsOrigin(
-            EntityManager entityManager,
-            in InventoryGridComponent grid,
-            Entity item,
-            int cellIndex)
-        {
-            if (!entityManager.HasComponent<ItemGridPlacement>(item) ||
-                !entityManager.HasComponent<ItemInstance>(item))
-            {
-                return false;
-            }
-
-            ItemGridPlacement placement =
-                entityManager.GetComponentData<ItemGridPlacement>(item);
-
-            return grid.IndexOf(placement.OriginX, placement.OriginY) == cellIndex;
         }
 
     }

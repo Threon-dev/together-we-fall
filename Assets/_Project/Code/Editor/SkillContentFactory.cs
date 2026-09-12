@@ -303,10 +303,10 @@ namespace TogetherWeFall.EditorTools
             SupportGem(
                 "GemRivenChain", "Riven Chain Support", rivenChain, ItemRarity.Rare, table);
 
-            KeystoneRing(
+            Ring(
                 "StormcallersCoil", "Stormcallers Coil", KeystoneEffect.AoeToChain, table);
 
-            KeystoneRing(
+            Ring(
                 "AshenSignet", "Ashen Signet", KeystoneEffect.StatusInstantResolve, table);
 
             // The third ring, and the one that ties control to the rest. Cinder
@@ -314,7 +314,7 @@ namespace TogetherWeFall.EditorTools
             // its damage into a party-wide damage multiplier — and it pulls
             // against Ashen Signet in the usual way, since a build under one is
             // never under the other.
-            KeystoneRing(
+            Ring(
                 "FrozenHourglass", "Frozen Hourglass", KeystoneEffect.SlowsAlsoWeaken, table);
 
             // The fourth keystone, and the only one of the implemented set that
@@ -326,7 +326,7 @@ namespace TogetherWeFall.EditorTools
             // It is the natural enemy of the conditional supports: a gem that
             // only acts against burning bodies finds fewer of them when every
             // reaction eats the burn.
-            KeystoneRing(
+            Ring(
                 "GluttonsMark", "Gluttons Mark", KeystoneEffect.ReactionsAlwaysConsume, table);
 
             // The fifth, and the one that only became wearable when it was
@@ -339,7 +339,7 @@ namespace TogetherWeFall.EditorTools
             // not a choice, it is an item nobody picks up.
             //
             // The day casting costs something, the affix comes back off.
-            KeystoneRing(
+            Ring(
                 "BloodwroughtBand", "Bloodwrought Band",
                 KeystoneEffect.NoManaCostDoubleCooldown, table,
                 new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 30f) });  // TUNE
@@ -393,12 +393,20 @@ namespace TogetherWeFall.EditorTools
         /// One cell, like every other gem, because a gem competes for bag space
         /// with the loot it is meant to help you take.
         /// </summary>
+        /// <remarks>
+        /// The optional second modifier is what makes a gem two-sided: the
+        /// benefit and its price on one stone. Nothing about the item changes —
+        /// still one cell, still the main-hand mask — because a gem that costs
+        /// you something is not a different kind of object, only a different
+        /// decision.
+        /// </remarks>
         internal static ItemDefinition SupportGem(
             string assetName,
             string displayName,
             SkillModifier support,
             ItemRarity rarity,
-            LootTable table)
+            LootTable table,
+            SkillModifier second = null)
         {
             ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
                 assetName, ItemFolder, out bool created);
@@ -411,6 +419,7 @@ namespace TogetherWeFall.EditorTools
                 serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.MainHand;
                 serialized.FindProperty("_gemKind").enumValueIndex = (int)GemKind.Support;
                 serialized.FindProperty("_gemSupport").objectReferenceValue = support;
+                serialized.FindProperty("_gemSupportSecond").objectReferenceValue = second;
                 serialized.FindProperty("_gridWidth").intValue = 1;
                 serialized.FindProperty("_gridHeight").intValue = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -428,12 +437,19 @@ namespace TogetherWeFall.EditorTools
         /// contrivance — which is exactly the case the "only the first applies"
         /// rule exists for, and the one a player will find on their own.
         ///
-        /// No stats. A keystone should be chosen for what it does to the rules,
-        /// not carried because it also happens to add damage.
+        /// No stats, for a keystone. A keystone should be chosen for what it
+        /// does to the rules, not carried because it also happens to add damage
+        /// — the one exception is named where it is made.
+        ///
+        /// Called with KeystoneEffect.None it is simply "a ring with affixes",
+        /// which is what it was always doing underneath: a jewel that breaks a
+        /// rule and a jewel that carries a stat are the same asset written the
+        /// same way, and a second copy of this method for the second case would
+        /// be two places to change the footprint of a ring.
         /// </summary>
-        private static ItemDefinition KeystoneRing(
+        internal static ItemDefinition Ring(
             string assetName, string displayName, KeystoneEffect effect, LootTable table,
-            ItemAffix[] affixes = null)
+            ItemAffix[] affixes = null, ItemRarity rarity = ItemRarity.Legendary)
         {
             ItemDefinition ring = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
                 assetName, ItemFolder, out bool created);
@@ -442,7 +458,7 @@ namespace TogetherWeFall.EditorTools
             {
                 var serialized = new SerializedObject(ring);
                 serialized.FindProperty("_displayName").stringValue = displayName;
-                serialized.FindProperty("_rarity").enumValueIndex = (int)ItemRarity.Legendary;
+                serialized.FindProperty("_rarity").enumValueIndex = (int)rarity;
                 serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.Ring1;
                 serialized.FindProperty("_keystone").enumValueIndex = (int)effect;
                 serialized.FindProperty("_gridWidth").intValue = 1;
@@ -479,7 +495,9 @@ namespace TogetherWeFall.EditorTools
             ModifierConditionType condition = ModifierConditionType.None,
             DamageType requiredElement = DamageType.Fire,
             StatusEffectType requiredStatus = StatusEffectType.Stun,
-            float threshold = 0.35f)
+            float threshold = 0.35f,
+            int requiredCount = 3,
+            StatusEffectType appliedStatus = StatusEffectType.None)
         {
             SkillModifier modifier = SceneBuildUtility.CreateOrLoadConfig<SkillModifier>(
                 assetName, SkillFolder, out bool created);
@@ -502,6 +520,15 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_requiredElement").enumValueIndex = (int)requiredElement;
             serialized.FindProperty("_requiredStatus").enumValueIndex = (int)requiredStatus;
             serialized.FindProperty("_threshold").floatValue = threshold;
+            serialized.FindProperty("_requiredCount").intValue = requiredCount;
+
+            // The asset, not the enum: a status override names a definition so
+            // the baker can depend on it, exactly as a skill does. None means
+            // no reference at all rather than a reference to nothing.
+            serialized.FindProperty("_appliedStatus").objectReferenceValue =
+                appliedStatus == StatusEffectType.None
+                    ? null
+                    : ElementContentFactory.Status(appliedStatus);
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
 

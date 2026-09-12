@@ -40,18 +40,25 @@ namespace TogetherWeFall.Lobby.Systems
             foreach ((DynamicBuffer<CraftRequest> requests,
                       DynamicBuffer<CraftResult> results,
                       DynamicBuffer<EquippedItem> worn,
-                      RefRO<CarriedBag> bag) in
+                      RefRO<CarriedBag> bag,
+                      Entity character) in
                      SystemAPI.Query<DynamicBuffer<CraftRequest>,
                          DynamicBuffer<CraftResult>,
                          DynamicBuffer<EquippedItem>,
                          RefRO<CarriedBag>>()
-                         .WithAll<PlayerCharacter>())
+                         .WithAll<PlayerCharacter>()
+                         .WithEntityAccess())
             {
                 if (requests.Length == 0)
                     continue;
 
+                // The character carries the purse; the bag only says what the
+                // forge is allowed to touch.
                 for (int i = 0; i < requests.Length; i++)
-                    results.Add(Apply(ref state, items, requests[i], worn, bag.ValueRO.Container));
+                {
+                    results.Add(Apply(
+                        ref state, items, requests[i], worn, character, bag.ValueRO.Container));
+                }
 
                 requests.Clear();
             }
@@ -62,6 +69,7 @@ namespace TogetherWeFall.Lobby.Systems
             ItemDatabase items,
             in CraftRequest request,
             DynamicBuffer<EquippedItem> worn,
+            Entity character,
             Entity bag)
         {
             EntityManager entityManager = state.EntityManager;
@@ -86,7 +94,7 @@ namespace TogetherWeFall.Lobby.Systems
             if (check != CraftStatus.Crafted)
                 return Reject(request, check, price);
 
-            if (!Currency.TryPay(entityManager, items, bag, price))
+            if (!Currency.TryPay(entityManager, character, price))
                 return Reject(request, CraftStatus.RejectedTooPoor, price);
 
             Perform(ref state, items, request);

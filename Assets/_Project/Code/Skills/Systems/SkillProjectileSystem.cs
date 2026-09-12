@@ -262,8 +262,25 @@ namespace TogetherWeFall.Skills.Systems
 
                     // Recorded before retiring, because the forks made from this
                     // projectile inherit it and it is the only thing standing
-                    // between them and the body they were born inside.
+                    // between them and the body they were born inside. A
+                    // piercing projectile needs it for the same reason: it is
+                    // still standing inside what it just hit.
                     projectile.LastHitTarget = Enemies[index];
+
+                    if (projectile.PiercesRemaining > 0)
+                    {
+                        projectile.PiercesRemaining--;
+
+                        // The trigger has already fired, for this impact. A
+                        // trigger goes off once per effect instance, and a
+                        // projectile that passes through a line of bodies is
+                        // one effect — leaving this set would make the number
+                        // of triggered casts depend on how crowded the room is,
+                        // which is the property that rule exists to avoid.
+                        projectile.TriggerSkillIndex = NoTrigger;
+                        return;
+                    }
+
                     Retire(ref projectile, isSpent, hitSomething: true);
                     return;
                 }
@@ -343,8 +360,21 @@ namespace TogetherWeFall.Skills.Systems
                         Type = projectile.Type,
                         SourcePlayerId = projectile.SourcePlayerId,
                         Delay = 0f,
+
+                        // The chain survives the blast now, handed to one body
+                        // inside it. A projectile with an impact radius used to
+                        // swallow every jump it was carrying — which made the
+                        // three chain gems dead weight on the one skill in the
+                        // library that bursts on impact, with nothing saying so.
+                        ChainsRemaining = projectile.ChainsRemaining,
+                        ChainRange = projectile.ChainRange,
+                        ChainDelay = projectile.ChainDelay,
                         ExplosionRadius = projectile.ExplosionRadius,
                         ExplosionDamage = projectile.ExplosionDamage,
+                        CullThreshold = projectile.CullThreshold,
+                        ManaOnKill = projectile.ManaOnKill,
+                        CritChance = projectile.CritChance,
+                        CritMultiplier = projectile.CritMultiplier,
 
                         // Whatever it gathered on the way is still on it when it
                         // bursts. A blast that arrived through a wall of fire is
@@ -383,6 +413,10 @@ namespace TogetherWeFall.Skills.Systems
                     Delay = 0f,
                     ExplosionRadius = projectile.ExplosionRadius,
                     ExplosionDamage = projectile.ExplosionDamage,
+                    CullThreshold = projectile.CullThreshold,
+                    ManaOnKill = projectile.ManaOnKill,
+                    CritChance = projectile.CritChance,
+                    CritMultiplier = projectile.CritMultiplier,
 
                     // What it picked up on the way. This is the point of the
                     // whole overlap stage: the element gathered in flight arrives

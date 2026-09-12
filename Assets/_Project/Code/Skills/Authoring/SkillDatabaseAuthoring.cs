@@ -332,6 +332,8 @@ namespace TogetherWeFall.Skills.Authoring
                         Condition = modifiers[m].Condition,
                         RequiredElement = modifiers[m].RequiredElement,
                         RequiredStatus = modifiers[m].RequiredStatus,
+                        RequiredCount = modifiers[m].RequiredCount,
+                        AppliedStatus = modifiers[m].AppliedStatusType,
                         Threshold = modifiers[m].Threshold
                     };
 

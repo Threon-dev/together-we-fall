@@ -60,6 +60,22 @@ namespace TogetherWeFall.Equipment
         public SkillModifierBlob GemSupport;
 
         /// <summary>
+        /// The second thing a two-sided support gem does — usually the price of
+        /// the first.
+        /// </summary>
+        public SkillModifierBlob GemSupportSecond;
+
+        /// <summary>
+        /// Whether that second modifier is real.
+        ///
+        /// A flag rather than testing the struct, because a default
+        /// SkillModifierBlob is a perfectly valid "increased damage by zero" —
+        /// it would fold to nothing, but it would also take a place in the
+        /// group's list and a line in the tooltip.
+        /// </summary>
+        public bool HasSupportSecond;
+
+        /// <summary>
         /// The skills this gear may come with, by stable id. Empty for
         /// everything that is not a weapon.
         ///

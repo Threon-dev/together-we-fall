@@ -74,6 +74,7 @@ namespace TogetherWeFall.UI
         private EntityQuery _npcQuery;
         private EntityQuery _meterQuery;
         private EntityQuery _skillDatabaseQuery;
+        private EntityQuery _itemSetDatabaseQuery;
         private bool _hasWorld;
 
         private VisualElement _screen;
@@ -154,6 +155,12 @@ namespace TogetherWeFall.UI
             // is a skill nobody can read off the tile.
             _skillDatabaseQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<SkillDatabase>());
+
+            // For the tooltips as well: the shop is where the piece missing from
+            // a set is actually bought, so it is the one place "3 of 4 worn" has
+            // to be readable.
+            _itemSetDatabaseQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<ItemSetDatabase>());
 
             _hasWorld = true;
         }
@@ -414,8 +421,11 @@ namespace TogetherWeFall.UI
 
             TryGetSkills(out SkillDatabase skills);
 
+            TryGetSets(out ItemSetDatabase sets);
+
             ItemTooltip.TryDescribeItem(
-                items, skills, itemId, WornRivalOf(items, itemId), out ItemTooltip.Text text);
+                items, skills, itemId, WornRivalOf(items, itemId), out ItemTooltip.Text text,
+                sets: sets, equippedFromSet: EquippedFromSet(sets, itemId));
 
             return text;
         }
@@ -447,6 +457,29 @@ namespace TogetherWeFall.UI
             return EquipmentSlots.WornRivalOf(
                 _entityManager.GetBuffer<EquippedItem>(character, isReadOnly: true),
                 items, itemId);
+        }
+
+        private bool TryGetSets(out ItemSetDatabase sets)
+        {
+            sets = default;
+
+            if (_itemSetDatabaseQuery.IsEmptyIgnoreFilter)
+                return false;
+
+            sets = _itemSetDatabaseQuery.GetSingleton<ItemSetDatabase>();
+            return sets.IsCreated;
+        }
+
+        /// <summary>
+        /// How many pieces of this item's set the shopper is wearing. Counted by
+        /// ItemSets, like the inventory panel's copy of this question.
+        /// </summary>
+        private int EquippedFromSet(ItemSetDatabase sets, int itemId)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
+                return 0;
+
+            return ItemSets.EquippedCount(_entityManager, character, sets, itemId);
         }
 
         private bool TryGetSkills(out SkillDatabase skills)
@@ -533,7 +566,7 @@ namespace TogetherWeFall.UI
 
             ReportRefusals(character);
 
-            int signature = Signature(bag, items);
+            int signature = Signature(character, bag, items);
 
             if (signature == _lastSignature)
                 return;
@@ -551,12 +584,12 @@ namespace TogetherWeFall.UI
             {
                 case NpcServiceType.Vendor:
                     _heading.text = "Trader";
-                    BuildVendor(items, bag);
+                    BuildVendor(items, character, bag);
                     break;
 
                 case NpcServiceType.Crafting:
                     _heading.text = "Forge";
-                    BuildCrafting(items, bag);
+                    BuildCrafting(items, character, bag);
                     break;
 
                 case NpcServiceType.DungeonPortal:
@@ -571,7 +604,7 @@ namespace TogetherWeFall.UI
             }
         }
 
-        private int Signature(Entity bag, ItemDatabase items)
+        private int Signature(Entity character, Entity bag, ItemDatabase items)
         {
             unchecked
             {
@@ -580,7 +613,7 @@ namespace TogetherWeFall.UI
                 hash = hash * 31 + _craftTarget.Index;
                 hash = hash * 31 + _craftSocket;
                 hash = hash * 31 + ContainerSignature(bag);
-                hash = hash * 31 + Currency.Balance(_entityManager, items, bag);
+                hash = hash * 31 + Currency.Balance(_entityManager, character);
 
                 if (_session == NpcServiceType.Vendor && TryGetVendor(out VendorComponent vendor))
                     hash = hash * 31 + ContainerSignature(vendor.StockContainer);
@@ -630,7 +663,7 @@ namespace TogetherWeFall.UI
         // Vendor
         // ─────────────────────────────────────────────────────────────────
 
-        private void BuildVendor(ItemDatabase items, Entity bag)
+        private void BuildVendor(ItemDatabase items, Entity character, Entity bag)
         {
             if (!TryGetVendor(out VendorComponent vendor) ||
                 vendor.StockContainer == Entity.Null)
@@ -656,7 +689,7 @@ namespace TogetherWeFall.UI
             _body.Add(left);
 
             VisualElement right = MakeColumn(
-                $"Your bag — {Currency.Balance(_entityManager, items, bag)} coin");
+                $"Your bag — {Currency.Balance(_entityManager, character)} coin");
             right.Add(BuildGrid(
                 bag, items, cell,
                 item => Trade(item, VendorTransactionKind.Sell),
@@ -729,7 +762,7 @@ namespace TogetherWeFall.UI
         // Crafting
         // ─────────────────────────────────────────────────────────────────
 
-        private void BuildCrafting(ItemDatabase items, Entity bag)
+        private void BuildCrafting(ItemDatabase items, Entity character, Entity bag)
         {
             if (!_entityManager.HasComponent<CraftingStation>(_npc))
             {
@@ -745,7 +778,7 @@ namespace TogetherWeFall.UI
             float cell = CellSizeFor(bagGrid.Width + 6, bagGrid.Height);
 
             VisualElement left = MakeColumn(
-                $"Your bag — {Currency.Balance(_entityManager, items, bag)} coin");
+                $"Your bag — {Currency.Balance(_entityManager, character)} coin");
 
             left.Add(BuildGrid(bag, items, cell, SelectCraftTarget, null));
             _body.Add(left);
@@ -1310,8 +1343,6 @@ namespace TogetherWeFall.UI
                     return "You can only sell what is in your bag. Take it off first.";
                 case VendorTransactionStatus.RejectedNotForSale:
                     return "Coin is not merchandise.";
-                case VendorTransactionStatus.RejectedNoChange:
-                    return "The trader has nothing to pay you with.";
                 case VendorTransactionStatus.RejectedNotStocked:
                     return "That is not on the shelf any more.";
                 default:
@@ -1517,6 +1548,7 @@ namespace TogetherWeFall.UI
 
             _characterQuery.Dispose();
             _itemDatabaseQuery.Dispose();
+            _itemSetDatabaseQuery.Dispose();
             _npcQuery.Dispose();
             _meterQuery.Dispose();
             _skillDatabaseQuery.Dispose();

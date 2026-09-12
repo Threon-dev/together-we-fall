@@ -85,11 +85,12 @@ namespace TogetherWeFall.Lobby
         /// <summary>Nowhere to put the goods — the buyer's bag or the vendor's shelf.</summary>
         RejectedNoRoom = 7,
 
-        /// <summary>The pool had no spare entities to pay out coins with.</summary>
-        RejectedNoChange = 8,
+        // RejectedNoChange used to sit here: the item pool had no spare
+        // entities to mint the payout with. A purse is a number now, so a sale
+        // can no longer fail for want of coins to hand over.
 
         /// <summary>Currency is not merchandise.</summary>
-        RejectedNotForSale = 9
+        RejectedNotForSale = 8
     }
 
     /// <summary>

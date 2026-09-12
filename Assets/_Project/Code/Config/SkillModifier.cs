@@ -21,8 +21,10 @@ namespace TogetherWeFall.Config
         [SerializeField] private SkillModifierKind _kind = SkillModifierKind.IncreasedDamage;
 
         [Tooltip("What the number means depends on the kind. Increases are " +
-                 "percentages; Added Chains, Fork and Multicast are counts; " +
-                 "Explode On Kill is the blast radius.")]
+                 "percentages; Added Chains, Fork, Multicast and Pierce are " +
+                 "counts; Explode On Kill is the blast radius; Culling Strike " +
+                 "is the life percentage below which the target simply dies; " +
+                 "Mana On Kill is flat mana per body.")]
         [SerializeField] private float _value = 25f;
 
         [Tooltip("Only Explode On Kill uses this: the blast damage as a " +
@@ -68,8 +70,20 @@ namespace TogetherWeFall.Config
         [SerializeField] private StatusEffectType _requiredStatus = StatusEffectType.Stun;
 
         [Tooltip("The fraction the condition compares against: life remaining " +
-                 "for Target Low Health and for On Low Health. 0.35 is a third.")]
+                 "for Target Low Health, Target High Health and On Low Health. " +
+                 "0.35 is a third.")]
         [SerializeField, Range(0f, 1f)] private float _threshold = 0.35f;
+
+        [Tooltip("How many enemies have to be standing together for Target " +
+                 "Crowded. Its own field rather than the value above, which is " +
+                 "what the support DOES.")]
+        [SerializeField, Range(1, 12)] private int _requiredCount = 3;
+
+        [Header("Status Override")]
+        [Tooltip("Only Status Override uses this: the status the supported " +
+                 "skill applies INSTEAD of its own. It must also be on the " +
+                 "reaction table, like any status a skill names.")]
+        [SerializeField] private StatusEffectDefinition _appliedStatus;
 
         public SkillModifierKind Kind => _kind;
         public float Value => _value;
@@ -92,5 +106,21 @@ namespace TogetherWeFall.Config
         public DamageType RequiredElement => _requiredElement;
         public StatusEffectType RequiredStatus => _requiredStatus;
         public float Threshold => Mathf.Clamp01(_threshold);
+
+        /// <summary>Clamped to a byte, which is what the blob carries it in.</summary>
+        public byte RequiredCount => (byte)Mathf.Clamp(_requiredCount, 1, 255);
+
+        /// <summary>The asset, so the baker can depend on it.</summary>
+        public StatusEffectDefinition AppliedStatus => _appliedStatus;
+
+        /// <summary>
+        /// What this support makes the skill apply, as the name two databases
+        /// share. Same shape as SkillDefinition.AppliedStatusType, and for the
+        /// same reason: authoring picks an asset, the runtime compares a value.
+        /// </summary>
+        public StatusEffectType AppliedStatusType =>
+            _kind == SkillModifierKind.StatusOverride && _appliedStatus != null
+                ? _appliedStatus.Type
+                : StatusEffectType.None;
     }
 }

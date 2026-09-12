@@ -93,7 +93,117 @@ namespace TogetherWeFall.Skills
         /// Its cooldown and its chance are not tuning. Without them "cast on
         /// kill" during a wave is a cast every frame.
         /// </summary>
-        TriggerOnCondition = 9
+        TriggerOnCondition = 9,
+
+        // ─────────────────────────────────────────────────────────────────
+        // The second batch. Appended rather than inserted, because the value
+        // is what an authored asset stores — reshuffling this enum would make
+        // every gem on disk mean something else.
+        //
+        // What they have in common is that each one is a number the fold
+        // already had somewhere and nobody could reach: the cost of a press,
+        // the cooldown, how long a zone lasts, how wide a multicast fans out.
+        // A build is only interesting where it can pay for something, and
+        // until these there was nothing to pay WITH.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Changes what one press costs, as a percentage. Negative makes it
+        /// cheaper.
+        ///
+        /// The other half of every gem that adds damage. Mana exists and is
+        /// spent, so this is the first support whose number is a price rather
+        /// than a reward — and the reason two-sided gems are worth authoring.
+        /// </summary>
+        IncreasedManaCost = 10,
+
+        /// <summary>
+        /// Shortens the cooldown, as a percentage. Negative lengthens it.
+        ///
+        /// Not the same lever as attack speed, which is a stat on the sheet and
+        /// applies to everything the character casts. This one belongs to one
+        /// link group, so making a single skill fast is a decision with a cost
+        /// instead of a number that lifts the whole bar.
+        /// </summary>
+        ReducedCooldown = 11,
+
+        /// <summary>
+        /// How long a persistent zone stays on the ground, as a percentage.
+        ///
+        /// The number increased area could not reach: a wider wall of fire and
+        /// a longer-lasting one are different purchases, and borrowing one for
+        /// the other was the thing this project already refused to do quietly.
+        /// </summary>
+        IncreasedDuration = 12,
+
+        /// <summary>
+        /// Replaces the status the supported skill applies.
+        ///
+        /// Overwrites rather than adds, exactly as an elemental conversion
+        /// does, and for the same reason: a blow carries one named status, and
+        /// a second one would have to be carried through the projectile, the
+        /// blast and the hit — three structs, for a rule nobody can read off
+        /// the tooltip anyway.
+        ///
+        /// It is the support that makes control a build rather than a property
+        /// of whichever skill happened to be authored with it: a spark that
+        /// roots is a spark that sets up the chain gem beside it.
+        /// </summary>
+        StatusOverride = 13,
+
+        /// <summary>
+        /// Widens the fan a multicast comes out in, as a percentage of the
+        /// default nine degrees. Negative tightens it.
+        ///
+        /// Nothing on its own — it needs extra casts to spread — and that is
+        /// the point: it turns Multicast into a choice between a shotgun and a
+        /// spear rather than a flat "more of it".
+        /// </summary>
+        IncreasedSpread = 14,
+
+        /// <summary>
+        /// The projectile carries on through what it hits, this many more
+        /// times.
+        ///
+        /// The third member of the family this pipeline already had two of.
+        /// Chain jumps to a new body, fork splits into two, and pierce simply
+        /// does not stop — so a line of enemies is worth arranging yourself in
+        /// front of.
+        /// </summary>
+        Pierce = 15,
+
+        /// <summary>
+        /// Anything left under this fraction of its life by the blow dies
+        /// outright. The value is a percentage.
+        ///
+        /// Resolved where health is, which is the only place that can see the
+        /// fraction. It is deliberately a kill rather than extra damage: what
+        /// makes it worth socketing is that it turns a crowd of nearly-dead
+        /// bodies into corpses on the same frame, which is what every on-kill
+        /// support in the game is waiting for.
+        /// </summary>
+        CullingStrike = 16,
+
+        /// <summary>
+        /// Gives the caster this much mana for every body this skill kills.
+        ///
+        /// The answer to the cost supports above, and the reason they are not
+        /// simply a tax: a build that kills keeps casting, and a build that
+        /// misses runs dry. Kill phase, like the explosion beside it.
+        /// </summary>
+        ManaOnKill = 17,
+
+        /// <summary>
+        /// Increased chance for this skill's blows to be critical, as a
+        /// percentage of the character's own chance.
+        ///
+        /// A multiplier of a sheet stat rather than a flat chance, which is the
+        /// same shape as increased damage — a character with no crit chance at
+        /// all still crits never, however many of these are socketed, and
+        /// finding the first item that grants some is what makes them worth
+        /// anything.
+        /// </summary>
+        IncreasedCritChance = 18
     }
 
     /// <summary>Marks the entity holding the skill queues.</summary>
@@ -299,6 +409,37 @@ namespace TogetherWeFall.Skills
         public int ForksRemaining;
 
         /// <summary>
+        /// The chance each body this strikes takes a critical blow, and what a
+        /// critical blow multiplies by.
+        ///
+        /// Carried rather than spent at the cast, because a crit is a property
+        /// of a BLOW and a projectile is not one blow: it forks, it pierces, it
+        /// bursts. Rolling once at the press meant three forks all crit or all
+        /// did not, which is a coin flip wearing a build as a costume.
+        /// </summary>
+        public float CritChance;
+
+        public float CritMultiplier;
+
+        /// <summary>
+        /// Bodies this projectile may pass through before it stops.
+        ///
+        /// A count rather than a flag, so "pierces once" and "pierces the whole
+        /// room" are the same support with a different number. Inherited by a
+        /// fork for free, like everything else in this struct — a split that
+        /// forgot how to pierce would be a fork gem quietly cancelling a pierce
+        /// gem two holes away.
+        ///
+        /// It carries the same sharp edge LastHitTarget names, and for the same
+        /// reason: only the body just passed through is remembered, so a
+        /// projectile threading a dense pack can strike a neighbour and then
+        /// that first body again. The fix is a list of everything pierced —
+        /// which is the per-projectile FixedList the fork path already decided
+        /// against.
+        /// </summary>
+        public int PiercesRemaining;
+
+        /// <summary>
         /// The body this projectile last landed on, and the one its forks must
         /// not land on again.
         ///
@@ -336,6 +477,15 @@ namespace TogetherWeFall.Skills
 
         public float ExplosionRadius;
         public float ExplosionDamage;
+
+        /// <summary>
+        /// Below this fraction of life, whatever this lands on simply dies.
+        /// Zero for almost everything.
+        /// </summary>
+        public float CullThreshold;
+
+        /// <summary>Mana the caster gets back for each body this kills.</summary>
+        public float ManaOnKill;
 
         /// <summary>
         /// Elements picked up on the way here — a lightning bolt that crossed a
@@ -416,6 +566,31 @@ namespace TogetherWeFall.Skills
         public float ExplosionRadius;
         public float ExplosionDamage;
 
+        /// <summary>
+        /// The fraction of life below which this blow finishes the target
+        /// outright, or zero.
+        ///
+        /// Carried the same way the explosion is, and for the same reason: the
+        /// stage that can answer "how much life is left" is the resolver, and
+        /// by then the skill that decided this is long gone.
+        /// </summary>
+        public float CullThreshold;
+
+        /// <summary>Mana the caster gets back if this hit kills.</summary>
+        public float ManaOnKill;
+
+        /// <summary>
+        /// The chance THIS blow is critical, and what it multiplies by.
+        ///
+        /// Rolled in the hit stage, which is the only place that knows a blow
+        /// is about to land on a particular body. A chain jump copies the whole
+        /// hit, so every jump rolls its own — which is what makes a chain build
+        /// and a crit build the same build rather than two.
+        /// </summary>
+        public float CritChance;
+
+        public float CritMultiplier;
+
         /// <summary>Elements the effect that caused this hit was carrying.</summary>
         public byte CarriedElements;
 
@@ -469,6 +644,41 @@ namespace TogetherWeFall.Skills
 
         public float ExplosionRadius;
         public float ExplosionDamage;
+
+        /// <summary>
+        /// Jumps handed to ONE body caught in this blast — the one nearest the
+        /// centre — or zero.
+        ///
+        /// An area effect used to end every chain that reached it: a swing, a
+        /// burst and a projectile that lands with an impact radius all produced
+        /// hits with no jumps left, so a chain gem in the same group was a
+        /// wasted hole that still drew a letter in the socket. Handing the
+        /// chain to one victim rather than to all of them is what keeps that
+        /// from turning a blast on a crowd into forty chains: one effect, one
+        /// chain, however many bodies it touched.
+        /// </summary>
+        public int ChainsRemaining;
+
+        public float ChainRange;
+        public float ChainDelay;
+
+        /// <summary>The fraction of life below which this blast finishes a body, or zero.</summary>
+        public float CullThreshold;
+
+        /// <summary>Mana the caster gets back per body this blast kills.</summary>
+        public float ManaOnKill;
+
+        /// <summary>
+        /// Handed to every body the blast catches, and each of them rolls its
+        /// own.
+        ///
+        /// One roll for the whole blast would make a crit build's damage swing
+        /// between nothing and everything depending on a single number, which is
+        /// the opposite of what a chance is for.
+        /// </summary>
+        public float CritChance;
+
+        public float CritMultiplier;
 
         /// <summary>Skill to cast at the centre when this resolves, or -1.</summary>
         public int TriggerSkillIndex;

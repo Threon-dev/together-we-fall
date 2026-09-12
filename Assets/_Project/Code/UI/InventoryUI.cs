@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
 using TogetherWeFall.Skills;
@@ -135,6 +136,7 @@ namespace TogetherWeFall.UI
         private EntityQuery _characterQuery;
         private EntityQuery _itemDatabaseQuery;
         private EntityQuery _skillDatabaseQuery;
+        private EntityQuery _itemSetDatabaseQuery;
 
         private int _playerId;
         private bool _hasWorld;
@@ -218,6 +220,11 @@ namespace TogetherWeFall.UI
             // it — it asks the same GemSockets the host asks.
             _skillDatabaseQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<SkillDatabase>());
+
+            // Optional, like the skill database: a scene baked before sets
+            // existed draws exactly what it drew before.
+            _itemSetDatabaseQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<ItemSetDatabase>());
 
             _hasWorld = true;
         }
@@ -464,11 +471,85 @@ namespace TogetherWeFall.UI
 
             TryGetSkills(out SkillDatabase skills);
 
+            TryGetSets(out ItemSetDatabase sets);
+
             ItemTooltip.TryDescribeItem(
                 items, skills, itemId, compare ? WornRivalOf(items, itemId) : 0,
-                out ItemTooltip.Text text);
+                out ItemTooltip.Text text,
+                sets: sets, equippedFromSet: EquippedFromSet(sets, itemId));
 
             return text;
+        }
+
+        /// <summary>
+        /// The same, for a gem that is already in a hole — so the tooltip can
+        /// say whether it is doing anything THERE.
+        ///
+        /// A separate entry point rather than an argument on the one above,
+        /// because "which skill is this supporting" is a question only a
+        /// socketed gem has an answer to, and every other caller would have to
+        /// pass nothing.
+        /// </summary>
+        private ItemTooltip.Text DescribeSocketedGem(
+            int itemId, Entity gear, int linkGroup, int socketIndex)
+        {
+            if (!TryGetItems(out ItemDatabase items) || !TryGetSkills(out SkillDatabase skills))
+                return DescribeItem(itemId, false);
+
+            var supported = default(SkillShape);
+
+            if (GemSockets.TryResolveGroupSkill(
+                    _entityManager, items, skills, gear, linkGroup, out int skillIndex))
+            {
+                supported = skills.ShapeOf(skillIndex);
+            }
+
+            TryGetSets(out ItemSetDatabase sets);
+
+            ItemTooltip.TryDescribeItem(
+                items, skills, itemId, 0, out ItemTooltip.Text text, supported,
+                GemSockets.GatherSupports(_entityManager, items, gear, linkGroup),
+                GemSockets.IsPassiveActive(_entityManager, items, gear, socketIndex),
+                GemSockets.HasPassiveActive(_entityManager, items, gear, linkGroup),
+                sets, EquippedFromSet(sets, itemId));
+
+            return text;
+        }
+
+        /// <summary>
+        /// Whether a support gem in this hole can do anything at all.
+        ///
+        /// Asked by the socket cell, which dims it when the answer is no.
+        /// Exactly the same two questions the tooltip spells out, through
+        /// exactly the same tables — the cell is the glance and the tooltip is
+        /// the sentence, and they must never disagree.
+        /// </summary>
+        private bool SupportIsLive(
+            in SkillModifierBlob support, Entity gear, int linkGroup, ItemDatabase items)
+        {
+            if (!TryGetSkills(out SkillDatabase skills))
+                return true;
+
+            if (GemSockets.TryResolveGroupSkill(
+                    _entityManager, items, skills, gear, linkGroup, out int skillIndex) &&
+                !SkillModifiers.AppliesTo(support.Kind, skills.ShapeOf(skillIndex)))
+            {
+                return false;
+            }
+
+            // A trigger with nothing behind it to cast. The first active in the
+            // group keeps the key, so a trigger gem beside a lone skill fires
+            // into an empty group — which used to be the whole feature and is
+            // now the one way to socket it wrong.
+            if (SkillModifiers.IsAutomatic(support.Kind))
+                return GemSockets.HasPassiveActive(_entityManager, items, gear, linkGroup);
+
+            if (!SkillModifiers.HasCompanion(support.Kind))
+                return true;
+
+            return GemSockets.GroupHas(
+                GemSockets.GatherSupports(_entityManager, items, gear, linkGroup),
+                SkillModifiers.NeedsCompanion(support.Kind));
         }
 
         /// <summary>
@@ -665,8 +746,12 @@ namespace TogetherWeFall.UI
             ReportEquipRefusals(character);
             ReportSocketRefusals(character);
 
+            // The purse is in the signature because it is on the panel now and
+            // nothing else in here changes when a coin is picked up: without it
+            // the gold row would be correct only until the first pickup.
             int signature = Signature(stats, slots, cells) * 31 +
-                            SocketSignature(character, slots);
+                            SocketSignature(character, slots) * 31 +
+                            Currency.Balance(_entityManager, character);
             if (signature == _lastSignature)
                 return;
 
@@ -783,6 +868,9 @@ namespace TogetherWeFall.UI
                     return "That is not yours to socket.";
                 case SocketStatus.RejectedWelded:
                     return "That is the weapon's own attack. It does not come out.";
+                case SocketStatus.RejectedPassive:
+                    return "A trigger gem is linked to it, so it casts itself. " +
+                           "Take the trigger out to put it on a key.";
                 default:
                     return "The change was refused.";
             }
@@ -830,7 +918,9 @@ namespace TogetherWeFall.UI
         {
             _statsList.Clear();
 
+            AddGoldRow(character);
             AddKeystoneRow(character);
+            AddSetRow(character);
 
             for (int s = 0; s < StatBlock.StatCount; s++)
             {
@@ -849,6 +939,26 @@ namespace TogetherWeFall.UI
         }
 
         /// <summary>
+        /// What is in the purse.
+        ///
+        /// Money stopped being an item in the bag, so without this line there is
+        /// nowhere outside a shop to see how much of it there is — and the
+        /// dungeon, where it is picked up, is the one place with no shop in it.
+        ///
+        /// Above the stats and drawn even at zero, unlike the keystone row: an
+        /// empty purse is a number a player wants, and "you have nothing" is
+        /// what an empty stat line is for.
+        /// </summary>
+        private void AddGoldRow(Entity character)
+        {
+            VisualElement row = MakeRow(
+                "Gold", Currency.Balance(_entityManager, character).ToString(), null);
+
+            row.style.width = Length.Percent(98f);
+            _statsList.Add(row);
+        }
+
+        /// <summary>
         /// Says which rule of the game this character is currently breaking, and
         /// says when a second item is being ignored.
         ///
@@ -863,6 +973,69 @@ namespace TogetherWeFall.UI
         /// a rule the player can read here; what they would do together is a
         /// design conversation, not a tooltip.
         /// </summary>
+        /// <summary>
+        /// How many pieces of this item's set are worn, counted off the
+        /// character the panel is looking at.
+        ///
+        /// The counting itself lives in ItemSets, beside the rule the host
+        /// evaluates: a panel with its own count would eventually be a panel
+        /// with a different count.
+        /// </summary>
+        private int EquippedFromSet(ItemSetDatabase sets, int itemId)
+        {
+            if (!TryGetCharacter(out Entity character, out _))
+                return 0;
+
+            return ItemSets.EquippedCount(_entityManager, character, sets, itemId);
+        }
+
+        /// <summary>
+        /// Says which set bonuses are in force, so the player can see one
+        /// working rather than infer it from tooltips.
+        ///
+        /// Beside the keystone row and drawn the same way, because it is the
+        /// same kind of fact: not a number, does not add up with anything, and
+        /// absent for a character wearing no set — a row reading "Set: none" is
+        /// a line of nothing on the shortest column of the panel.
+        ///
+        /// A set with pieces but no step reached gets a row as well, saying so:
+        /// "one of four, no bonus yet" is the one thing worth knowing while a
+        /// set is still being assembled.
+        /// </summary>
+        private void AddSetRow(Entity character)
+        {
+            if (!_entityManager.HasBuffer<ActiveSetBonusStatus>(character) ||
+                !TryGetSets(out ItemSetDatabase sets))
+            {
+                return;
+            }
+
+            DynamicBuffer<ActiveSetBonusStatus> active =
+                _entityManager.GetBuffer<ActiveSetBonusStatus>(character, isReadOnly: true);
+
+            for (int i = 0; i < active.Length; i++)
+            {
+                ActiveSetBonusStatus status = active[i];
+
+                if (status.SetIndex < 0 || status.SetIndex >= sets.SetCount)
+                    continue;
+
+                // By reference, like everywhere else a set blob is read.
+                ref ItemSetBlob set = ref sets.Value.Value.Sets[status.SetIndex];
+
+                string detail = status.IsActive
+                    ? $"{status.CurrentEquippedCount}/{set.MemberItemIds.Length} · " +
+                      $"{status.HighestActiveThreshold}-piece bonus"
+                    : $"{status.CurrentEquippedCount}/{set.MemberItemIds.Length} · " +
+                      "no bonus yet";
+
+                VisualElement row = MakeRow(set.SetName.ToString(), detail, null);
+                row.style.width = Length.Percent(98f);
+
+                _statsList.Add(row);
+            }
+        }
+
         private void AddKeystoneRow(Entity character)
         {
             if (!_entityManager.HasComponent<KeystoneComponent>(character))
@@ -1481,10 +1654,27 @@ namespace TogetherWeFall.UI
 
             if (overBar)
             {
-                if (source == DragSource.Socket && isActiveGem)
+                // The passive check is the panel agreeing with the host rather
+                // than deciding anything: SocketSystem refuses it too. Saying
+                // it here is what makes the answer arrive beside the cursor
+                // instead of one frame later.
+                if (source == DragSource.Socket && isActiveGem &&
+                    TryGetItems(out ItemDatabase barItems) &&
+                    GemSockets.IsPassiveActive(
+                        _entityManager, barItems, sourceGear, sourceSocket))
+                {
+                    ShowMessage(
+                        "A trigger gem is linked to it, so it casts itself rather than " +
+                        "answering a key.");
+                }
+                else if (source == DragSource.Socket && isActiveGem)
+                {
                     SendBindBar(sourceGear, sourceSocket, barIndex);
+                }
                 else
+                {
                     ShowMessage("Only an active gem in a socket can go on a hotkey.");
+                }
 
                 return;
             }
@@ -1742,7 +1932,7 @@ namespace TogetherWeFall.UI
             else if (!socket.IsEmpty &&
                 GemSockets.TryDescribeGem(
                     _entityManager, items, socket.InsertedGem,
-                    out GemKind kind, out _, out SkillModifierBlob support))
+                    out GemKind kind, out _, out SkillModifierBlob support, out _, out _))
             {
                 int itemId = _entityManager.GetComponentData<ItemInstance>(socket.InsertedGem).ItemId;
                 ItemRarity rarity = RarityOf(items, itemId);
@@ -1756,10 +1946,35 @@ namespace TogetherWeFall.UI
                 // arrange them — a fork that splits on impact and a multicast
                 // that fires three at once are both "support" and behave
                 // nothing alike.
+                // An active that a trigger owns is not the same thing as one on
+                // a key, and the cell has room for exactly one letter to say
+                // which: P for a passive, because the player needs to know
+                // before they try to drag it onto a hotkey and are told no.
+                bool passive = kind == GemKind.Active &&
+                               GemSockets.IsPassiveActive(
+                                   _entityManager, items, gear, socket.SocketIndex);
+
                 mark.text = kind == GemKind.Active
-                    ? "A"
+                    ? passive ? "P" : "A"
                     : SkillModifiers.Marker(SkillModifiers.PhaseOf(support.Kind));
                 mark.style.color = border;
+
+                // A support that cannot act on what it is linked to is drawn
+                // grey and marked with a dash instead of its phase.
+                //
+                // The socket still looks full, because it IS full — what the
+                // cell stops claiming is that the gem is doing something. It is
+                // the smallest honest version of the feedback: the glance says
+                // "this hole is wasted", and the tooltip says why.
+                if (kind == GemKind.Support &&
+                    !SupportIsLive(support, gear, socket.LinkGroup, items))
+                {
+                    border = new Color(0.34f, 0.34f, 0.36f);
+                    cell.style.backgroundColor = new Color(0.11f, 0.11f, 0.12f, 1f);
+
+                    mark.text = "–";
+                    mark.style.color = border;
+                }
 
                 Entity capturedGem = socket.InsertedGem;
                 int capturedIndex = socket.SocketIndex;
@@ -1772,8 +1987,12 @@ namespace TogetherWeFall.UI
                 cell.RegisterCallback<PointerUpEvent>(OnDragEnd);
 
                 // The letter in the cell says which kind of gem it is; the
-                // tooltip is where the rest of the sentence lives.
-                AttachTooltip(cell, () => DescribeItem(itemId, false));
+                // tooltip is where the rest of the sentence lives — including
+                // what this gem is doing for the skill it happens to be linked
+                // to, which is a question only a socketed gem can answer.
+                int capturedGroup = socket.LinkGroup;
+                AttachTooltip(cell, () =>
+                    DescribeSocketedGem(itemId, capturedGear, capturedGroup, capturedIndex));
             }
             else
             {
@@ -1852,16 +2071,22 @@ namespace TogetherWeFall.UI
                 border = new Color(0.45f, 0.62f, 0.85f);
                 text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}";
 
-                // A trigger gem linked beside this active takes the key away,
-                // and the player has to be able to see that before they press it
-                // twenty times. Asked of the same GemSockets the cast system
-                // asks, so the panel cannot claim a key works when the host has
-                // already decided it does not.
-                FixedList512Bytes<SkillModifierBlob> supports =
-                    GemSockets.GatherSupports(_entityManager, items, slot.Gear, linkGroup);
-
-                if (GemSockets.TryGetTrigger(supports, out SkillModifierBlob trigger))
+                // A key bound to a socket that has since become a passive — a
+                // trigger gem was linked to it after the binding was made. The
+                // binding is refused now, but one made before the gem arrived
+                // is still there and silently does nothing, so the bar says so.
+                //
+                // Asked of the same GemSockets the cast system asks, so the
+                // panel cannot claim a key works when the host has already
+                // decided it does not.
+                if (GemSockets.IsPassiveActive(
+                        _entityManager, items, slot.Gear, slot.SocketIndex))
                 {
+                    FixedList512Bytes<SkillModifierBlob> supports =
+                        GemSockets.GatherSupports(_entityManager, items, slot.Gear, linkGroup);
+
+                    GemSockets.TryGetTrigger(supports, out SkillModifierBlob trigger);
+
                     border = new Color(0.85f, 0.66f, 0.38f);
                     text = $"{HotkeyName(index)}  {skills.NameOf(skillIndex)}\n" +
                            $"auto: {trigger.TriggerCondition}";
@@ -2167,6 +2392,17 @@ namespace TogetherWeFall.UI
             return true;
         }
 
+        private bool TryGetSets(out ItemSetDatabase sets)
+        {
+            sets = default;
+
+            if (_itemSetDatabaseQuery.IsEmptyIgnoreFilter)
+                return false;
+
+            sets = _itemSetDatabaseQuery.GetSingleton<ItemSetDatabase>();
+            return true;
+        }
+
         /// <summary>
         /// Which slots this item may go in.
         ///
@@ -2375,6 +2611,7 @@ namespace TogetherWeFall.UI
             _characterQuery.Dispose();
             _itemDatabaseQuery.Dispose();
             _skillDatabaseQuery.Dispose();
+            _itemSetDatabaseQuery.Dispose();
         }
 
         /// <summary>One equipment row, and which slot dropping on it means.</summary>

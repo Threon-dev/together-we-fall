@@ -87,6 +87,13 @@ namespace TogetherWeFall.Skills.Systems
 
             zone.TickRemaining = math.max(zone.TickInterval, zone.TickRemaining + zone.TickInterval);
 
+            // Once, on the first pulse that actually lands. A trigger fires per
+            // effect instance, and a zone is one effect with a long life — per
+            // pulse would make the count depend on the duration, which is the
+            // same failure the blast rule exists to avoid.
+            int trigger = zone.TriggerSkillIndex;
+            zone.TriggerSkillIndex = -1;
+
             areas.Add(new PendingArea
             {
                 Position = position,
@@ -100,12 +107,24 @@ namespace TogetherWeFall.Skills.Systems
                 SourcePlayerId = zone.SourcePlayerId,
                 Delay = 0f,
 
-                // A pulse detonates nothing and casts nothing. Zero is a real
-                // skill index, so the trigger is said out loud rather than left
-                // at its default.
-                ExplosionRadius = 0f,
-                ExplosionDamage = 0f,
-                TriggerSkillIndex = -1,
+                // Everything the cast decided, carried by every pulse. A pulse
+                // used to detonate nothing, mark nothing and finish nothing,
+                // which made a socket full of kill-phase gems silently worth
+                // nothing on the two zone skills.
+                //
+                // Chains are the one thing left out on purpose: see the note
+                // beside the zone spawn in SkillCastSystem.
+                AppliedStatus = zone.AppliedStatus,
+                ExplosionRadius = zone.ExplosionRadius,
+                ExplosionDamage = zone.ExplosionDamage,
+                CullThreshold = zone.CullThreshold,
+                ManaOnKill = zone.ManaOnKill,
+                CritChance = zone.CritChance,
+                CritMultiplier = zone.CritMultiplier,
+
+                TriggerSkillIndex = trigger,
+                TriggerDamageScale = zone.TriggerDamageScale,
+                TriggerDepth = zone.TriggerDepth,
 
                 // The one area effect that repeats on a timer, and therefore the
                 // one that must not be announced. The disc is already burning on

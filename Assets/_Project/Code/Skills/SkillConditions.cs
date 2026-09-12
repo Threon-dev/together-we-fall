@@ -61,7 +61,28 @@ namespace TogetherWeFall.Skills
         /// enemy in front of you: "chain, but only into rooted bodies" turns a
         /// root from a defensive move into the setup for the next one.
         /// </summary>
-        TargetHasStatusEffect = 5
+        TargetHasStatusEffect = 5,
+
+        /// <summary>
+        /// The target is at or above the threshold fraction of its health.
+        ///
+        /// The mirror of TargetLowHealth, and free: it asks the same number the
+        /// other way round. What it buys is the opener — a support that pays on
+        /// the first blow against something fresh, and stops paying once the
+        /// fight is going — which is the opposite build to the one Execute
+        /// rewards.
+        /// </summary>
+        TargetHighHealth = 6,
+
+        /// <summary>
+        /// There are at least Value bodies standing near the one being aimed at.
+        ///
+        /// The one condition about the fight rather than about a single enemy,
+        /// and the reason it is worth the extra number gathered per cast: every
+        /// area support in the game is dead weight against one target, and this
+        /// is what lets a gem say so out loud — "wider, but only in a crowd".
+        /// </summary>
+        TargetCrowded = 7
     }
 
     /// <summary>
@@ -99,6 +120,17 @@ namespace TogetherWeFall.Skills
         /// <summary>The aimed target's health, from one down to zero.</summary>
         public float TargetHealthFraction;
 
+        /// <summary>
+        /// How many enemies are standing within CrowdRadius of the aimed
+        /// target, including itself.
+        ///
+        /// Counted in the same pass that finds the target, so a crowd condition
+        /// costs one walk of the enemy array that the search was doing anyway.
+        /// Zero when there is nothing to aim at, which makes every crowd
+        /// condition false rather than accidentally true.
+        /// </summary>
+        public int TargetNearbyCount;
+
         /// <summary>Whether the caster was hurt recently. Always false today.</summary>
         public bool CasterRecentlyHit;
 
@@ -116,6 +148,7 @@ namespace TogetherWeFall.Skills
             TargetElements = 0,
             TargetStatuses = 0,
             TargetHealthFraction = 1f,
+            TargetNearbyCount = 0,
             CasterRecentlyHit = false,
             SkillElement = skillElement
         };
@@ -163,10 +196,35 @@ namespace TogetherWeFall.Skills
                     return conditions.HasTarget &&
                            StatusMask.Has(conditions.TargetStatuses, modifier.RequiredStatus);
 
+                case ModifierConditionType.TargetHighHealth:
+                    return conditions.HasTarget &&
+                           conditions.TargetHealthFraction >=
+                           math.clamp(modifier.Threshold, 0f, 1f);
+
+                // A field of its own rather than Value or Threshold. Value is
+                // what the support DOES — "sixty percent more area" — and a
+                // threshold is a fraction everywhere else in this file; a
+                // number of bodies is neither, and borrowing one of them would
+                // make a crowd condition mean something different on every kind
+                // of gem it was authored onto.
+                case ModifierConditionType.TargetCrowded:
+                    return conditions.HasTarget &&
+                           conditions.TargetNearbyCount >= math.max(1, modifier.RequiredCount);
+
                 default:
                     return true;
             }
         }
+
+        /// <summary>
+        /// How far from the aimed target a body counts as part of the crowd.
+        ///
+        /// Here rather than on the asset because it is the unit the condition
+        /// is measured in, not a number to balance per gem: "surrounded" has to
+        /// mean the same thing on every gem, or two crowd supports in one group
+        /// would disagree about the same crowd.
+        /// </summary>
+        public const float CrowdRadius = 5f;
 
         /// <summary>Whether any support in this list wants the context gathered.</summary>
         public static bool AnyConditional(
@@ -200,6 +258,12 @@ namespace TogetherWeFall.Skills
 
                 case ModifierConditionType.TargetHasStatusEffect:
                     return $"only vs {modifier.RequiredStatus}";
+
+                case ModifierConditionType.TargetHighHealth:
+                    return $"only above {modifier.Threshold * 100f:0}% life";
+
+                case ModifierConditionType.TargetCrowded:
+                    return $"only against {math.max(1, modifier.RequiredCount)}+ enemies together";
 
                 default:
                     return string.Empty;

@@ -3,6 +3,7 @@ using Unity.Entities;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Loot;
 using TogetherWeFall.Player;
 
@@ -156,6 +157,13 @@ namespace TogetherWeFall.Skills.Systems
                 // Owned from this moment, so the pool cannot hand it out twice.
                 LootItemPool.Store(entityManager, item);
                 GemSockets.Rebuild(entityManager, items, item, ref random.ValueRW.Value);
+
+                // The starting coins go into the purse rather than the bag,
+                // through the same call the pickup stage uses. The kit still
+                // names them as items, because "how much money does a character
+                // start with" is content and a coin is how the content says it.
+                if (Currency.TryCollect(entityManager, items, character, item))
+                    continue;
 
                 if (i == 0)
                 {

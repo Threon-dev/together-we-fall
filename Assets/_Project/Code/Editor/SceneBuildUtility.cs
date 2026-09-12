@@ -14,6 +14,7 @@ using TogetherWeFall.Enemies.Authoring;
 using TogetherWeFall.Loot.Authoring;
 using TogetherWeFall.Lobby;
 using TogetherWeFall.Player;
+using TogetherWeFall.Equipment;
 using TogetherWeFall.Equipment.Authoring;
 using TogetherWeFall.Skills.Authoring;
 using TogetherWeFall.Shared.Authoring;
@@ -449,9 +450,40 @@ namespace TogetherWeFall.EditorTools
             tables.arraySize = 1;
             tables.GetArrayElementAtIndex(0).objectReferenceValue = table;
 
+            WriteSets(serialized.FindProperty("_sets"));
+
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             return databaseObject;
+        }
+
+        /// <summary>
+        /// Every item set in the project, wired into the bake.
+        ///
+        /// Found rather than listed, which is the one place in these builders
+        /// that scans instead of naming names — and deliberately, because the
+        /// point of a set being one asset is that a designer creates it and it
+        /// works. A list here would mean a new set needs a code change to be
+        /// baked, which is exactly what the asset exists to avoid. "Which items
+        /// exist" is still a content decision; "which sets are in the game" is
+        /// every set asset there is.
+        ///
+        /// The demo set is ensured first, so the mechanism exists in content on
+        /// a fresh project rather than only in code.
+        /// </summary>
+        private static void WriteSets(SerializedProperty list)
+        {
+            ItemContentFactory.CreateOrLoadDemoSet();
+
+            string[] guids = AssetDatabase.FindAssets($"t:{nameof(ItemSetDefinition)}");
+            list.arraySize = guids.Length;
+
+            for (int i = 0; i < guids.Length; i++)
+            {
+                list.GetArrayElementAtIndex(i).objectReferenceValue =
+                    AssetDatabase.LoadAssetAtPath<ItemSetDefinition>(
+                        AssetDatabase.GUIDToAssetPath(guids[i]));
+            }
         }
 
         /// <summary>
@@ -477,12 +509,58 @@ namespace TogetherWeFall.EditorTools
         /// </summary>
         public static GameObject CreateCharacterStats(CharacterConfig config)
         {
+            // The sheet gains the stats a new system needs, once, before it is
+            // baked. Additive and idempotent, exactly like the starter coins:
+            // a sheet somebody has tuned keeps every number they set, and one
+            // written before crits existed stops meaning "never crits, and no
+            // item can fix it".
+            //
+            // Here rather than in each scene builder because all three call
+            // this, and a rule about what a character sheet must contain should
+            // not be written down three times.
+            EnsureBaseStat(config, StatKind.CritChance, 5f);      // TUNE
+            EnsureBaseStat(config, StatKind.CritMultiplier, 1.5f);  // TUNE
+
             var statsObject = new GameObject("CharacterStats");
             CharacterStatsAuthoring authoring = statsObject.AddComponent<CharacterStatsAuthoring>();
 
             SetReference(authoring, "_config", config);
 
             return statsObject;
+        }
+
+        /// <summary>
+        /// Adds a base stat to the character sheet unless it already names one.
+        ///
+        /// Never overwrites: a value somebody tuned by hand is the whole reason
+        /// these are assets. What it fixes is the other case — a sheet authored
+        /// before a stat existed, where the missing line is not a missing number
+        /// but a system that silently never does anything.
+        /// </summary>
+        private static void EnsureBaseStat(CharacterConfig config, StatKind stat, float value)
+        {
+            if (config == null)
+                return;
+
+            var serialized = new SerializedObject(config);
+            SerializedProperty stats = serialized.FindProperty("_baseStats");
+
+            for (int i = 0; i < stats.arraySize; i++)
+            {
+                if (stats.GetArrayElementAtIndex(i)
+                        .FindPropertyRelative("_stat").enumValueIndex == (int)stat)
+                {
+                    return;
+                }
+            }
+
+            stats.arraySize++;
+
+            SerializedProperty added = stats.GetArrayElementAtIndex(stats.arraySize - 1);
+            added.FindPropertyRelative("_stat").enumValueIndex = (int)stat;
+            added.FindPropertyRelative("_value").floatValue = value;
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>

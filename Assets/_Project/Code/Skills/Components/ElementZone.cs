@@ -38,6 +38,48 @@ namespace TogetherWeFall.Skills
         public float Damage;
 
         public int SourcePlayerId;
+
+        // ─────────────────────────────────────────────────────────────────
+        // What the cast decided and the pulse has to carry.
+        //
+        // A zone used to keep four numbers and drop the rest of the fold on the
+        // floor, which made a socket full of kill-phase and status gems do
+        // nothing at all on the two zone skills — silently, which is the worst
+        // way for a gem to fail. These are the same fields a projectile already
+        // carried for the same reason: the thing that resolves the blow is a
+        // long way from the cast that decided what the blow means.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>The status every pulse marks what it catches with, or None.</summary>
+        public StatusEffectType AppliedStatus;
+
+        public float ExplosionRadius;
+        public float ExplosionDamage;
+
+        /// <summary>Fraction of life below which a pulse finishes a body, or zero.</summary>
+        public float CullThreshold;
+
+        /// <summary>Mana the caster gets back per body a pulse kills.</summary>
+        public float ManaOnKill;
+
+        /// <summary>The chance each pulse's blow is critical, and its multiplier.</summary>
+        public float CritChance;
+
+        public float CritMultiplier;
+
+        /// <summary>
+        /// Skill this zone casts, or -1 — and it fires on the FIRST pulse only.
+        ///
+        /// A trigger goes off once per effect instance, and a zone is one
+        /// effect that happens to last six seconds. Firing per pulse would make
+        /// the number of triggered casts a function of how long the zone burns,
+        /// which is the same property the rule refuses for a blast that catches
+        /// forty bodies.
+        /// </summary>
+        public int TriggerSkillIndex;
+
+        public float TriggerDamageScale;
+        public int TriggerDepth;
     }
 
     /// <summary>

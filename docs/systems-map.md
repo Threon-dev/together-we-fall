@@ -109,13 +109,41 @@
 - Кейстоуни: `Code/Equipment/Keystones.cs` — `KeystoneEffect`, `KeystoneComponent`,
   `KeystoneSet`.
 - Системи: `Code/Equipment/Systems/` — `EquipmentSystem`, `PlayerStatsSystem`,
-  `SocketSystem`.
+  `SocketSystem`, `SetBonusEvaluationSystem`.
 - База персонажа: `Code/Equipment/Authoring/CharacterStatsAuthoring.cs` ←
   `Data/CharacterConfig.asset`.
+
+## Сети екіпіровки
+- Дані: `Code/Config/ItemSetDefinition.cs` (`SetBonusThreshold`),
+  ассети — `Data/Sets/*.asset`.
+- Блоб: `Code/Equipment/Components/ItemSetComponents.cs` — `SetThresholdBlob`,
+  `ItemSetBlob`, `ItemSetDatabaseBlob`, компонент `ItemSetDatabase`; рантайм —
+  буфер `ActiveSetBonusStatus` на персонажі.
+  **`ItemSetBlob` не копіювати** — усередині два `BlobArray`, тільки `ref`.
+- Правила: `Code/Equipment/ItemSets.cs` — `SetIndexOf`, `Evaluate`,
+  `TryHighestReached`, `EquippedCount`. Один файл на три читачі: система
+  оцінки, стат-фолд, UI.
+- Система: `Code/Equipment/Systems/SetBonusEvaluationSystem.cs` — на тому ж
+  `StatsDirty`, **до** `PlayerStatsSystem` і після всіх, хто прапорець
+  піднімає; сам не опускає.
+- **Бейк — з Loot-бейкера**, разом з `ItemDatabase`:
+  `Code/Loot/Authoring/LootDatabaseAuthoring.cs` (`BuildSetDatabase`/`BuildSet`,
+  поле `_sets`). Афікси порогу складаються у два `StatBlock` уже при бейку.
+  Сети вписуються в бейкер автоматично: `SceneBuildUtility.WriteSets` знаходить
+  **усі** асети `ItemSetDefinition` у проєкті.
+- Хто ще читає: `PlayerStatsSystem` (стати + keystone),
+  `GemSockets.GatherSupports` (параметр `wearer` → «невидимий» супорт на всі
+  скіли; **не** передається з `TriggerEvaluationSystem` — тригер це факт про
+  сокет), `ItemTooltip.SetLines`, `InventoryUI.AddSetRow`, `LobbyUI`.
+- Демо-контент: `ItemContentFactory.CreateOrLoadDemoSet()` →
+  `Data/Sets/WarlordsRegalia.asset`.
 
 ## Геми й сокети
 - ECS: `Code/Equipment/Components/SocketComponents.cs` — **`GemKind`**, `GearSocket`,
   `SocketRequest`/`SocketRequestKind`, `SocketResult`/`SocketStatus`.
+- Гем несе **до двох** модифікаторів (`_gemSupport` + `_gemSupportSecond` на
+  `ItemDefinition`, `GemSupport`/`GemSupportSecond`/`HasSupportSecond` у
+  `ItemBlob`). Тому `MaxSupportsPerGroup` = 12: це модифікатори, не геми.
 - Уся логіка читання отворів: `Code/Skills/GemSockets.cs` — `TryDescribeGem`,
   `TryReadSocket`, `TryResolveActive`, `GatherSupports`, `TryGetTrigger`,
   `ArmDefaultAttack`, `IsWorn`, `Rebuild`, `RerollWelded`.
@@ -134,7 +162,31 @@
   `PendingArea`, `SkillProjectile`, `SkillPrefabs`, `SkillBudgetSettings`,
   `ProjectileActive`/`ProjectileSpent`.
 - Супорти й умови: `Code/Skills/SkillModifiers.cs` (`SkillModifierPhase`),
-  `Code/Skills/SkillConditions.cs` (`ModifierConditionType`, `CastConditions`).
+  `Code/Skills/SkillConditions.cs` (`ModifierConditionType`, `CastConditions`,
+  `CrowdRadius`).
+- **Пасив (активний гем, який кастує лише тригер)** — `GemSockets.IsPassiveActive`
+  / `FirstActiveSocket` / `HasPassiveActive`. Читають троє: `SkillCastSystem`
+  (відмова кнопці), `TriggerEvaluationSystem` (що саме стріляти),
+  `SocketSystem.BindBar` + панель (відмова в прив'язці).
+- **Чи діє гем там, де стоїть** — `SkillModifiers.AppliesTo` / `WhyInert` /
+  `NeedsCompanion` (+ `SkillDatabase.ShapeOf`). Одна таблиця на два читачі:
+  клітинка сокета в `InventoryUI` і тултіп в `ItemTooltip`.
+- **Новий вид супорта — це чотири місця**: `SkillModifierKind` у
+  `SkillComponents.cs`, гілка в `Fold`/`Accumulate` у `SkillDatabaseBlob.cs`,
+  фаза в `SkillModifiers.PhaseOf` (Cast — це default, решту вписувати) і рядок
+  у `ItemTooltip.DescribeSupport`. Плюс поле на `Config/SkillModifier.cs`, якщо
+  число не вміщається у `Value`/`SecondaryValue`.
+- Крит: стати `CritChance`/`CritMultiplier` у `StatComponents.cs`; шанс і
+  множник їдуть з фолду крізь `SkillProjectile`/`PendingArea`/`ElementZone` у
+  `PendingHit`, **кидок і подія `OnCrit` — у `SkillHitSystem.Apply`** (раз на
+  удар, з тілом, по якому влучило). Видно через `DamageEvent.Crit` →
+  `DamageFeedback.Crit` → `Emphasis` у `DamageNumberSystem`.
+- Мітка від зони присутністю (а не пульсом) — `ElementReactionSystem`:
+  `GatherZones` + `ReactJob.StandingInZones` / `NeedsRenewing`. Там же єдиний
+  `Apply`, через який проходить кожен статус.
+- Добивання (`CullingStrike`) вирішує `DamageResolutionSystem`, мана за
+  вбивство (`ManaOnKill`) — `DeathReactionSystem.GrantMana`. Обидва їдуть із
+  касту як поля на `PendingHit`/`PendingArea`/`SkillProjectile`→`DamageEvent`.
 - Тригери: `Code/Skills/Components/TriggerComponents.cs` — `TriggerConditionType`,
   `TriggerEvent`, `TriggerCooldown`; логіка —
   `Code/Skills/Systems/TriggerEvaluationSystem.cs`. Події шлють
@@ -184,7 +236,11 @@
 - Кузня: `Code/Lobby/Components/CraftingComponents.cs` (`CraftOperation`,
   `CraftingStation`, `CraftRequest`/`CraftResult`), `Systems/CraftingSystem.cs`.
 - Гроші: `Code/Lobby/Currency.cs` — `BasePrice`, `ValueOf`, `Balance`, `TryPay`,
-  `TryGrant`. Монета — звичайний предмет (`Data/Items/GoldSliver.asset`).
+  `Grant`, **`TryCollect`**. Баланс — це `Wallet` на персонажі
+  (`Code/Player/Components/PlayerResources.cs`), **не** обхід сумки. Монета
+  лишається предметом (`Data/Items/GoldSliver.asset`), поки лежить на підлозі;
+  `ItemPickupSystem` і `StarterKitSystem` переганяють її в гаманець через
+  `TryCollect`.
 - Портал і вихід зі сцени: `Systems/DungeonPortalSystem.cs` +
   `Code/Lobby/SceneLoadBridge.cs` (**єдиний, хто кличе `LoadScene`**).
 - Авторинг: `Code/Lobby/Authoring/LobbyNpcAuthoring.cs` (один бейкер на всі види NPC);

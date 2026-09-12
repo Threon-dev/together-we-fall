@@ -119,7 +119,8 @@ namespace TogetherWeFall.Equipment.Systems
             if (!IsInBag(entityManager, request.Gem, bag))
                 return Reject(request, SocketStatus.RejectedNotCarried);
 
-            if (!GemSockets.TryDescribeGem(entityManager, items, request.Gem, out _, out _, out _))
+            if (!GemSockets.TryDescribeGem(
+                    entityManager, items, request.Gem, out _, out _, out _, out _, out _))
                 return Reject(request, SocketStatus.RejectedNotAGem);
 
             if (!entityManager.HasBuffer<GearSocket>(request.Gear))
@@ -252,6 +253,15 @@ namespace TogetherWeFall.Equipment.Systems
                     out _, out _))
             {
                 return Reject(request, SocketStatus.RejectedNotActive);
+            }
+
+            // A passive answers its trigger and nothing else. Refused here as
+            // well as in the panel, because the panel is a client: the rule has
+            // to hold for a client that asks anyway.
+            if (GemSockets.IsPassiveActive(
+                    entityManager, items, request.Gear, request.SocketIndex))
+            {
+                return Reject(request, SocketStatus.RejectedPassive);
             }
 
             SkillSlot slot = bar[request.BarSlotIndex];

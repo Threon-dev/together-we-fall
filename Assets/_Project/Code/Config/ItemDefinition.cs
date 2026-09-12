@@ -111,6 +111,11 @@ namespace TogetherWeFall.Config
                  "to it.")]
         [SerializeField] private SkillModifier _gemSupport;
 
+        [Tooltip("A second modifier on the same gem, usually the price of the " +
+                 "first: more damage for more mana, more chains for less area. " +
+                 "Leave empty for an ordinary support — one hole, one effect.")]
+        [SerializeField] private SkillModifier _gemSupportSecond;
+
         [Header("Built-in skills")]
         [Tooltip("What this weapon may come with. One is rolled per instance " +
                  "when the item is handed out — two for a two-handed weapon — " +
@@ -264,6 +269,18 @@ namespace TogetherWeFall.Config
         /// <summary>The modifier a Support gem carries, or null.</summary>
         public SkillModifier GemSupportModifier =>
             _gemKind == GemKind.Support ? _gemSupport : null;
+
+        /// <summary>
+        /// The second modifier on a two-sided support gem, or null.
+        ///
+        /// Two rather than a list, and that is the whole of the decision: one
+        /// benefit and one price is what makes a gem a choice, while a list is
+        /// an item with an arbitrary number of lines and no shape. The pair is
+        /// gathered into the same flat list of supports the fold already walks,
+        /// so nothing downstream knows a gem can carry two.
+        /// </summary>
+        public SkillModifier GemSupportModifierSecond =>
+            _gemKind == GemKind.Support ? _gemSupportSecond : null;
 
         public int SocketCount => Mathf.Clamp(_socketCount, 0, MaxSockets);
 

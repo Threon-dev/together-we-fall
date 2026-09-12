@@ -34,4 +34,29 @@ namespace TogetherWeFall.Player
     {
         public float Current;
     }
+
+    /// <summary>
+    /// How much money a character is carrying.
+    ///
+    /// A number, and that is the change: money used to be an item. A coin was an
+    /// ordinary ItemDefinition that came out of the item pool, occupied a cell,
+    /// and was counted by walking the bag — which was a real answer to "what is
+    /// money" and the wrong one to live with. Forty coins meant forty pool
+    /// entities and forty squares of a sixty-square bag, so the reward for
+    /// clearing a floor was a bag with no room for the loot.
+    ///
+    /// What is kept from the old model is the part worth keeping: a coin still
+    /// exists as an item OUT IN THE WORLD. It drops from a chest, lies on the
+    /// floor, and is walked over — and picking it up is the moment it stops
+    /// being an item and becomes this number. Nothing between the chest and the
+    /// purse had to change.
+    ///
+    /// Beside Mana rather than in the lobby, because it is the same kind of
+    /// thing: a pool on the character that one system spends and another fills.
+    /// The lobby is only where it is currently spent.
+    /// </summary>
+    public struct Wallet : IComponentData
+    {
+        public int Coin;
+    }
 }

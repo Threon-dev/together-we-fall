@@ -38,20 +38,52 @@ namespace TogetherWeFall.Skills
         /// 512 with room to spare; three would have meant supports silently
         /// vanishing out of a fully socketed weapon.
         /// </summary>
-        public const int MaxSupportsPerGroup = 6;
+        /// <summary>
+        /// The most MODIFIERS one link group can feed a skill.
+        ///
+        /// Twelve, not six, since a support gem may be two-sided: six holes
+        /// beside an active, each able to carry a benefit and its price. It has
+        /// never been a balance figure, only a count of what fits — and what
+        /// fits is still arithmetic. A support is thirty-two bytes and the list
+        /// is a FixedList512Bytes, which holds fifteen of them; twelve leaves
+        /// room, six would have meant the price of a gem silently going missing
+        /// out of a fully socketed weapon while its benefit stayed.
+        /// </summary>
+        public const int MaxSupportsPerGroup = 12;
 
-        /// <summary>What a gem is, read out of the item database.</summary>
+        /// <summary>
+        /// The most set bonuses that may add a support to one cast.
+        ///
+        /// Three, because twelve plus three is what the list holds. A fourth
+        /// active set carrying a support is ignored rather than allowed to push
+        /// a gem out — and a build wearing four sets at once is not a layout
+        /// anybody has authored.
+        /// </summary>
+        public const int MaxSetSupports = 3;
+
+        /// <summary>
+        /// What a gem is, read out of the item database.
+        ///
+        /// The second support comes back beside the first, and false for
+        /// hasSecond when there is none. Callers that do not care pass a
+        /// discard, which is most of them: only the fold and the tooltip have
+        /// any use for a gem's second half.
+        /// </summary>
         public static bool TryDescribeGem(
             EntityManager entityManager,
             ItemDatabase items,
             Entity gem,
             out GemKind kind,
             out int skillId,
-            out SkillModifierBlob support)
+            out SkillModifierBlob support,
+            out SkillModifierBlob second,
+            out bool hasSecond)
         {
             kind = GemKind.None;
             skillId = 0;
             support = default;
+            second = default;
+            hasSecond = false;
 
             if (gem == Entity.Null || !entityManager.Exists(gem) ||
                 !entityManager.HasComponent<ItemInstance>(gem))
@@ -73,6 +105,8 @@ namespace TogetherWeFall.Skills
             kind = item.GemKind;
             skillId = item.GemSkillId;
             support = item.GemSupport;
+            second = item.GemSupportSecond;
+            hasSecond = item.HasSupportSecond;
 
             return kind != GemKind.None;
         }
@@ -135,7 +169,7 @@ namespace TogetherWeFall.Skills
                 return false;
 
             if (!TryDescribeGem(entityManager, items, socket.InsertedGem,
-                    out GemKind kind, out int skillId, out _))
+                    out GemKind kind, out int skillId, out _, out _, out _))
             {
                 return false;
             }
@@ -161,10 +195,40 @@ namespace TogetherWeFall.Skills
         /// the PoE rule and is free here: the group is walked once and the
         /// actives are not consulted.
         /// </summary>
+        /// <param name="wearer">
+        /// The character this gear is on, or Entity.Null. Named only by the
+        /// callers that FOLD a cast, and what it adds is the set bonuses that
+        /// carry a support: those act on everything the wearer casts rather
+        /// than on one link group, which is the one way they differ from a gem.
+        ///
+        /// Deliberately not passed by the caller that hunts for a trigger. A
+        /// trigger is a fact about a socket — it fired because of what is in a
+        /// particular hole — and a set that made every link group triggerable
+        /// would be a very different feature from "+1 chain to your skills".
+        /// </param>
         public static FixedList512Bytes<SkillModifierBlob> GatherSupports(
-            EntityManager entityManager, ItemDatabase items, Entity gear, int linkGroup)
+            EntityManager entityManager,
+            ItemDatabase items,
+            Entity gear,
+            int linkGroup,
+            Entity wearer = default)
         {
             var supports = new FixedList512Bytes<SkillModifierBlob>();
+
+            // The wearer's set bonuses first, before the gear is even looked at:
+            // they belong to the character rather than to the item, so a cast
+            // that names no gear at all still gets them. First also settles the
+            // order for the two modifiers that overwrite rather than add — a gem
+            // the player socketed beats a set's, the same way round a gem beats
+            // the skill's innate modifier.
+            AppendSetSupports(entityManager, wearer, ref supports);
+
+            // Where the socketed ones start. The ceiling below counts from here
+            // rather than from zero, so a fully socketed weapon keeps every
+            // modifier it has whether or not a set happens to be active — a gem
+            // that stops working because a helmet was put on would be the worst
+            // possible way to learn about this feature.
+            int fromSets = supports.Length;
 
             if (linkGroup < 0 || gear == Entity.Null || !entityManager.Exists(gear) ||
                 !entityManager.HasBuffer<GearSocket>(gear))
@@ -180,7 +244,8 @@ namespace TogetherWeFall.Skills
                     continue;
 
                 if (!TryDescribeGem(entityManager, items, sockets[i].InsertedGem,
-                        out GemKind kind, out _, out SkillModifierBlob support))
+                        out GemKind kind, out _, out SkillModifierBlob support,
+                        out SkillModifierBlob second, out bool hasSecond))
                 {
                     continue;
                 }
@@ -189,16 +254,235 @@ namespace TogetherWeFall.Skills
                     continue;
 
                 // Past capacity the extra supports are ignored rather than
-                // allocating mid-cast. Five is more than any authored layout can
-                // hold beside an active, so reaching this needs a layout nobody
-                // has written yet.
-                if (supports.Length >= MaxSupportsPerGroup)
+                // allocating mid-cast. Twelve is what six two-sided gems come
+                // to, which is more than any authored layout can hold beside an
+                // active, so reaching this needs a layout nobody has written yet.
+                if (supports.Length - fromSets >= MaxSupportsPerGroup ||
+                    supports.Length >= supports.Capacity)
+                {
                     break;
+                }
 
                 supports.Add(support);
+
+                // The price, immediately after its benefit. Both halves go into
+                // the same flat list, so the fold below has no idea that one
+                // gem can carry two — which is exactly why this was cheap.
+                if (hasSecond && supports.Length - fromSets < MaxSupportsPerGroup &&
+                    supports.Length < supports.Capacity)
+                {
+                    supports.Add(second);
+                }
             }
 
             return supports;
+        }
+
+        /// <summary>
+        /// The invisible supports: what the wearer's active set bonuses add to
+        /// every skill they cast.
+        ///
+        /// Three at most, and that is arithmetic rather than a rule about how
+        /// many sets a build may have: twelve socketed modifiers plus three is
+        /// exactly what a FixedList512Bytes holds, so the two ceilings together
+        /// can never overflow the list the fold walks.
+        /// </summary>
+        private static void AppendSetSupports(
+            EntityManager entityManager,
+            Entity wearer,
+            ref FixedList512Bytes<SkillModifierBlob> supports)
+        {
+            if (wearer == Entity.Null || !entityManager.Exists(wearer) ||
+                !entityManager.HasBuffer<ActiveSetBonusStatus>(wearer))
+            {
+                return;
+            }
+
+            DynamicBuffer<ActiveSetBonusStatus> active =
+                entityManager.GetBuffer<ActiveSetBonusStatus>(wearer, true);
+
+            for (int i = 0; i < active.Length; i++)
+            {
+                if (!active[i].IsActive || !active[i].HasBonusSupport)
+                    continue;
+
+                if (supports.Length >= MaxSetSupports)
+                    break;
+
+                supports.Add(active[i].BonusSupport);
+            }
+        }
+
+        /// <summary>
+        /// The skill a link group actually casts, if anything in it does.
+        ///
+        /// The panel's question rather than the host's: before it draws a
+        /// support gem it wants to know what that gem is supporting, so it can
+        /// say when the answer is "nothing it can act on". The first active in
+        /// the group wins, which is also the only one a group is authored to
+        /// hold — a weapon welds one skill per group.
+        /// </summary>
+        public static bool TryResolveGroupSkill(
+            EntityManager entityManager,
+            ItemDatabase items,
+            SkillDatabase skills,
+            Entity gear,
+            int linkGroup,
+            out int skillIndex)
+        {
+            skillIndex = -1;
+
+            if (linkGroup < 0 || gear == Entity.Null || !entityManager.Exists(gear) ||
+                !entityManager.HasBuffer<GearSocket>(gear))
+            {
+                return false;
+            }
+
+            DynamicBuffer<GearSocket> sockets = entityManager.GetBuffer<GearSocket>(gear, true);
+
+            for (int i = 0; i < sockets.Length; i++)
+            {
+                if (sockets[i].LinkGroup != linkGroup)
+                    continue;
+
+                if (TryResolveActive(entityManager, items, skills, gear, i, out skillIndex, out _))
+                    return true;
+            }
+
+            skillIndex = -1;
+            return false;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Which active answers the key, and which one the trigger casts.
+        //
+        // A group with a trigger gem in it used to make EVERY active in the
+        // group automatic, the welded weapon attack included — so socketing
+        // Cast on Kill into a sword's group took the sword away, and the thing
+        // that was supposed to cause kills could no longer be swung.
+        //
+        // The rule now: the FIRST active in the group keeps the key, and every
+        // active behind it is a passive the trigger casts. That is the shape
+        // the build was always reaching for — swing the weapon, and the gem
+        // beside it goes off on its own — and it is also, finally, an answer to
+        // what an active gem is FOR now that weapons roll their own skills.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The socket holding the active that answers the key in this group, or
+        /// -1 when the group has no active at all.
+        ///
+        /// Socket order, so on a weapon it is the welded head — which is the
+        /// whole reason the rule reads as "the weapon keeps its attack".
+        /// </summary>
+        public static int FirstActiveSocket(
+            EntityManager entityManager, ItemDatabase items, Entity gear, int linkGroup)
+        {
+            if (linkGroup < 0 || gear == Entity.Null || !entityManager.Exists(gear) ||
+                !entityManager.HasBuffer<GearSocket>(gear))
+            {
+                return -1;
+            }
+
+            DynamicBuffer<GearSocket> sockets = entityManager.GetBuffer<GearSocket>(gear, true);
+
+            for (int i = 0; i < sockets.Length; i++)
+            {
+                if (sockets[i].LinkGroup != linkGroup)
+                    continue;
+
+                // A welded socket is an active without a gem in it — the id is
+                // the skill. Asked before the gem, because a welded socket
+                // never holds one.
+                if (sockets[i].IsWelded && sockets[i].WeldedSkillId != 0)
+                    return i;
+
+                if (sockets[i].IsEmpty)
+                    continue;
+
+                if (TryDescribeGem(entityManager, items, sockets[i].InsertedGem,
+                        out GemKind kind, out _, out _, out _, out _) &&
+                    kind == GemKind.Active)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Whether this socket holds an active that only a trigger may cast.
+        ///
+        /// The one question three callers must answer identically: the cast
+        /// system, to refuse the key; the trigger stage, to know what it is
+        /// allowed to fire; and the panel, to refuse the binding and say why.
+        /// A passive the key could still cast would be a skill going off twice.
+        /// </summary>
+        public static bool IsPassiveActive(
+            EntityManager entityManager, ItemDatabase items, Entity gear, int socketIndex)
+        {
+            if (!TryReadSocket(entityManager, gear, socketIndex, out GearSocket socket))
+                return false;
+
+            // Nothing passive about a hole with no skill in it.
+            if (!socket.IsWelded && socket.IsEmpty)
+                return false;
+
+            FixedList512Bytes<SkillModifierBlob> supports =
+                GatherSupports(entityManager, items, gear, socket.LinkGroup);
+
+            if (!TryGetTrigger(supports, out _))
+                return false;
+
+            return socketIndex != FirstActiveSocket(
+                entityManager, items, gear, socket.LinkGroup);
+        }
+
+        /// <summary>
+        /// Whether this group has anything for its trigger gem to cast.
+        ///
+        /// False is a trigger gem doing nothing — it fires, finds no passive
+        /// beside it, and stops there. The panel says so rather than letting
+        /// the player wonder why their kills are quiet.
+        /// </summary>
+        public static bool HasPassiveActive(
+            EntityManager entityManager, ItemDatabase items, Entity gear, int linkGroup)
+        {
+            int first = FirstActiveSocket(entityManager, items, gear, linkGroup);
+
+            if (first < 0 || !entityManager.HasBuffer<GearSocket>(gear))
+                return false;
+
+            DynamicBuffer<GearSocket> sockets = entityManager.GetBuffer<GearSocket>(gear, true);
+
+            for (int i = first + 1; i < sockets.Length; i++)
+            {
+                if (sockets[i].LinkGroup != linkGroup || sockets[i].IsEmpty)
+                    continue;
+
+                if (TryDescribeGem(entityManager, items, sockets[i].InsertedGem,
+                        out GemKind kind, out _, out _, out _, out _) &&
+                    kind == GemKind.Active)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Whether a gathered group holds a support of this kind.</summary>
+        public static bool GroupHas(
+            in FixedList512Bytes<SkillModifierBlob> supports, SkillModifierKind kind)
+        {
+            for (int i = 0; i < supports.Length; i++)
+            {
+                if (supports[i].Kind == kind)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

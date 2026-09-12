@@ -81,6 +81,32 @@ namespace TogetherWeFall.Combat
         public float ExplosionDamage;
 
         /// <summary>
+        /// The fraction of life below which this blow simply finishes the
+        /// target, or zero.
+        ///
+        /// Rides along for the same reason the explosion does: the resolver is
+        /// the only place that can see how much life is left, and by the time
+        /// it looks, the skill that decided this is long gone.
+        /// </summary>
+        public float CullThreshold;
+
+        /// <summary>
+        /// Mana the source gets back if this blow kills. Read off the killing
+        /// blow only, exactly like the explosion.
+        /// </summary>
+        public float ManaOnKill;
+
+        /// <summary>
+        /// Whether the hit stage rolled this blow critical.
+        ///
+        /// The amount already carries the multiplier — this is here so the
+        /// number on screen can say so. Without it a critical blow and a lucky
+        /// one look identical, and a build bought entirely for crit would have
+        /// nothing to show for itself.
+        /// </summary>
+        public bool Crit;
+
+        /// <summary>
         /// Elements riding along with this blow that are not its own — what the
         /// projectile picked up on the way.
         ///
@@ -154,6 +180,15 @@ namespace TogetherWeFall.Combat
 
         public float ExplosionRadius;
         public float ExplosionDamage;
+
+        /// <summary>
+        /// Mana owed to the killer for this body.
+        ///
+        /// Beside the explosion because it is the same kind of fact — what the
+        /// killing blow was carrying — and read by the same system, one frame
+        /// later, on the main thread where a character's pool can be written.
+        /// </summary>
+        public float ManaOnKill;
     }
 
     /// <summary>
@@ -176,6 +211,15 @@ namespace TogetherWeFall.Combat
 
         /// <summary>Whether this was the blow that finished it.</summary>
         public bool Killing;
+
+        /// <summary>
+        /// Whether anything that landed this frame was a critical blow.
+        ///
+        /// One flag for the frame, like the amount beside it: five projectiles
+        /// on one body are one number, and if any of them crit the number is
+        /// worth looking at.
+        /// </summary>
+        public bool Crit;
     }
 
     /// <summary>
