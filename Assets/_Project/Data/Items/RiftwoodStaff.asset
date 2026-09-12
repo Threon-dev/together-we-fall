@@ -24,9 +24,16 @@ MonoBehaviour:
   _gemKind: 0
   _gemSkill: {fileID: 0}
   _gemSupport: {fileID: 0}
-  _innateSkill: {fileID: 11400000, guid: f5c4a9839765d0a43b3427d890064343, type: 2}
-  _socketCount: 6
-  _linkGroups: 010000000000000000000000000000000000000002000000
+  _innateSkills:
+  - {fileID: 11400000, guid: 71aa63aee176fe24da8942e9741e163e, type: 2}
+  - {fileID: 11400000, guid: c285cdaebef8ef04995da09e4d3d8ac0, type: 2}
+  - {fileID: 11400000, guid: 51270fa37fa92874996a86d0eba13f54, type: 2}
+  - {fileID: 11400000, guid: 9bba0c071f7e904439068a4ed9004162, type: 2}
+  - {fileID: 11400000, guid: 18616343e86cf6649958e0cf132bbcd6, type: 2}
+  - {fileID: 11400000, guid: 31252027d06338444b3f3fcbeb8efad5, type: 2}
+  - {fileID: 11400000, guid: ae7078d2768dd1a4b851e979784d7867, type: 2}
+  _socketCount: 14
+  _linkGroups: 0000000000000000000000000000000000000000000000000000000001000000010000000100000001000000010000000100000001000000
   _gridWidth: 1
   _gridHeight: 4
   _canRotate: 1

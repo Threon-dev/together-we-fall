@@ -31,9 +31,9 @@ namespace TogetherWeFall.EditorTools
         public static SkillDefinition[] CreateStarterSkills()
         {
             SkillModifier fork = Modifier("SupportFork", SkillModifierKind.Fork, 1f);
-            SkillModifier multicast = Modifier("SupportMulticast", SkillModifierKind.Multicast, 2f);
+            SkillModifier multicast = Modifier("SupportMulticast", SkillModifierKind.Multicast, 1f);  // TUNE
             SkillModifier area = Modifier("SupportGreaterArea", SkillModifierKind.IncreasedArea, 40f);
-            SkillModifier chain = Modifier("SupportChain", SkillModifierKind.AddedChains, 3f);
+            SkillModifier chain = Modifier("SupportChain", SkillModifierKind.AddedChains, 2f);  // TUNE
             SkillModifier brutality =
                 Modifier("SupportBrutality", SkillModifierKind.IncreasedDamage, 35f);
 
@@ -58,6 +58,7 @@ namespace TogetherWeFall.EditorTools
                     skill.DamageType = DamageType.Physical;
                     skill.BaseDamage = 28f;
                     skill.Cooldown = 0.9f;
+                    skill.ManaCost = 10f;   // TUNE
                     skill.Range = 20f;
                     skill.BaseChains = 2;
                     skill.ChainRange = 9f;
@@ -79,6 +80,7 @@ namespace TogetherWeFall.EditorTools
                     skill.DamageType = DamageType.Physical;
                     skill.BaseDamage = 16f;
                     skill.Cooldown = 0.3f;
+                    skill.ManaCost = 4f;   // TUNE
                     skill.Range = 22f;
                     skill.ProjectileSpeed = 30f;
 
@@ -97,6 +99,7 @@ namespace TogetherWeFall.EditorTools
                     skill.DamageType = DamageType.Fire;
                     skill.BaseDamage = 42f;
                     skill.Cooldown = 1.5f;
+                    skill.ManaCost = 18f;   // TUNE
                     skill.Range = 18f;
                     skill.Radius = 4f;
                     skill.Modifiers = new[] { area, explode };
@@ -115,6 +118,7 @@ namespace TogetherWeFall.EditorTools
                     skill.DamageType = DamageType.Physical;
                     skill.BaseDamage = 34f;
                     skill.Cooldown = 0.6f;
+                    skill.ManaCost = 5f;   // TUNE
                     skill.Range = 5f;
                     skill.Radius = 4.5f;
                     skill.ArcDegrees = 140f;
@@ -161,6 +165,10 @@ namespace TogetherWeFall.EditorTools
             // floor, not a build — and it is the one skill whose damage comes
             // almost entirely from the weapon holding it, which is exactly what
             // makes swapping a dagger for a Dawnbringer felt rather than read.
+            // Both stay free — ManaCost is left at its zero default, and that is
+            // a rule rather than an omission. A built-in attack is what the
+            // player falls back on when the pool is empty, so charging for it
+            // would make running out of mana mean standing still.
             strike =
                 Skill("WeaponStrike", "Weapon Strike", skill =>
                 {
@@ -216,6 +224,7 @@ namespace TogetherWeFall.EditorTools
                 // out, not the damage.
                 skill.BaseDamage = 9f;
                 skill.Cooldown = 4f;
+                    skill.ManaCost = 20f;   // TUNE
                 skill.Range = 14f;
                 skill.Radius = 3f;
                 skill.ZoneDuration = 6f;
@@ -267,8 +276,8 @@ namespace TogetherWeFall.EditorTools
             SkillModifier castOnKill = Modifier(
                 "SupportCastOnKill", SkillModifierKind.TriggerOnCondition, 0f,
                 triggerCondition: TriggerConditionType.OnKill,
-                triggerCooldown: 3f,
-                procChance: 0.35f);
+                triggerCooldown: 1.5f,                                          // TUNE
+                procChance: 1f);                                                // TUNE
 
             SkillModifier kindledChain = Modifier(
                 "SupportKindledChain", SkillModifierKind.AddedChains, 3f,
@@ -320,9 +329,20 @@ namespace TogetherWeFall.EditorTools
             KeystoneRing(
                 "GluttonsMark", "Gluttons Mark", KeystoneEffect.ReactionsAlwaysConsume, table);
 
-            // NoManaCostDoubleCooldown stays deliberately item-less. There is no
-            // mana, so today it is the downside with none of the upside, and an
-            // item nobody would wear is worse than an effect waiting for one.
+            // The fifth, and the one that only became wearable when it was
+            // allowed to carry an affix. There is still no mana, so the
+            // keystone half is pure downside — cooldowns double — and the
+            // increased damage beside it is what pays for that. It is the one
+            // place the "no stats on a keystone" rule is deliberately broken,
+            // and the reason is the rule's own: a keystone should be chosen for
+            // what it does to the rules, and an effect with no upside at all is
+            // not a choice, it is an item nobody picks up.
+            //
+            // The day casting costs something, the affix comes back off.
+            KeystoneRing(
+                "BloodwroughtBand", "Bloodwrought Band",
+                KeystoneEffect.NoManaCostDoubleCooldown, table,
+                new[] { new ItemAffix(StatKind.Damage, ModifierKind.Increased, 30f) });  // TUNE
         }
 
         /// <summary>
@@ -412,7 +432,8 @@ namespace TogetherWeFall.EditorTools
         /// not carried because it also happens to add damage.
         /// </summary>
         private static ItemDefinition KeystoneRing(
-            string assetName, string displayName, KeystoneEffect effect, LootTable table)
+            string assetName, string displayName, KeystoneEffect effect, LootTable table,
+            ItemAffix[] affixes = null)
         {
             ItemDefinition ring = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
                 assetName, ItemFolder, out bool created);
@@ -426,6 +447,18 @@ namespace TogetherWeFall.EditorTools
                 serialized.FindProperty("_keystone").enumValueIndex = (int)effect;
                 serialized.FindProperty("_gridWidth").intValue = 1;
                 serialized.FindProperty("_gridHeight").intValue = 1;
+
+                SerializedProperty array = serialized.FindProperty("_affixes");
+                array.arraySize = affixes == null ? 0 : affixes.Length;
+
+                for (int i = 0; affixes != null && i < affixes.Length; i++)
+                {
+                    SerializedProperty element = array.GetArrayElementAtIndex(i);
+                    element.FindPropertyRelative("_stat").enumValueIndex = (int)affixes[i].Stat;
+                    element.FindPropertyRelative("_kind").enumValueIndex = (int)affixes[i].Kind;
+                    element.FindPropertyRelative("_value").floatValue = affixes[i].Value;
+                }
+
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -504,6 +537,7 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_damageType").enumValueIndex = (int)fields.DamageType;
             serialized.FindProperty("_baseDamage").floatValue = fields.BaseDamage;
             serialized.FindProperty("_cooldown").floatValue = fields.Cooldown;
+            serialized.FindProperty("_manaCost").floatValue = fields.ManaCost;
             serialized.FindProperty("_range").floatValue = fields.Range;
             serialized.FindProperty("_radius").floatValue = fields.Radius;
             serialized.FindProperty("_arcDegrees").floatValue = fields.ArcDegrees;
@@ -550,6 +584,14 @@ namespace TogetherWeFall.EditorTools
             public DamageType DamageType = DamageType.Physical;
             public float BaseDamage = 20f;
             public float Cooldown = 0.5f;
+
+            /// <summary>
+            /// Mana the press costs. Zero by default, which is the right default
+            /// for the one skill that must never cost anything — a weapon's
+            /// built-in attack, where an empty pool would mean no attack at all.
+            /// </summary>
+            public float ManaCost;
+
             public float Range = 20f;
             public float Radius;
             public float ArcDegrees = 360f;

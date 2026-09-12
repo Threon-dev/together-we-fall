@@ -17,6 +17,7 @@ MonoBehaviour:
   _damageType: 3
   _baseDamage: 8
   _cooldown: 0.6
+  _manaCost: 7
   _range: 20
   _radius: 0
   _arcDegrees: 360

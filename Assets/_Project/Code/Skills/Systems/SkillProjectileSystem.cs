@@ -388,7 +388,11 @@ namespace TogetherWeFall.Skills.Systems
                     // whole overlap stage: the element gathered in flight arrives
                     // at the target beside the projectile's own.
                     CarriedElements = projectile.CarriedElements,
-                    AppliedStatus = projectile.AppliedStatus
+                    AppliedStatus = projectile.AppliedStatus,
+
+                    // A projectile from a triggered cast carries the depth it
+                    // was cast at, so what fired it is already written down.
+                    FromTrigger = projectile.TriggerDepth > 0
                 };
 
                 hit.Visited.Add(target);

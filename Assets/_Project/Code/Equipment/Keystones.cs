@@ -70,7 +70,12 @@ namespace TogetherWeFall.Equipment
         /// because the seam is the interesting part — a keystone that touches
         /// the numbers of the cast itself rather than what the cast produces —
         /// and because the day casting costs something, that is one line in this
-        /// same branch. Deliberately left off the sample items until then.
+        /// same branch.
+        ///
+        /// Worn by Bloodwrought Band, which is the one keystone ring carrying a
+        /// stat — the increased damage beside it is what makes an effect that is
+        /// currently all cost worth picking up at all. The affix comes off the
+        /// day casting costs something.
         /// </summary>
         NoManaCostDoubleCooldown = 3,
 

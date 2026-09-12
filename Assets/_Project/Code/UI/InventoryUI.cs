@@ -1785,17 +1785,14 @@ namespace TogetherWeFall.UI
             return box;
         }
 
-        /// <summary>What the player actually presses. Matches PlayerInputReader.</summary>
-        private static string HotkeyName(int index)
-        {
-            switch (index)
-            {
-                case 0: return "LMB";
-                case 1: return "RMB";
-                case 2: return "Q";
-                default: return "R";
-            }
-        }
+        /// <summary>
+        /// What the player actually presses.
+        ///
+        /// Asked of the reader that binds the keys rather than answered here.
+        /// It used to be a copy of that switch, which is fine right up until a
+        /// key moves and one of the two panels keeps advertising the old one.
+        /// </summary>
+        private static string HotkeyName(int index) => PlayerInputReader.CastSlotName(index);
 
         /// <summary>Starts a drag from a gem sitting in a socket.</summary>
         /// <summary>

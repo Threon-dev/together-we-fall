@@ -51,7 +51,7 @@ namespace TogetherWeFall.Equipment
     /// The layout is authored on the item and fixed. Rolling sockets and links
     /// per drop is a whole feature of its own and sits on top of this one.
     /// </summary>
-    [InternalBufferCapacity(6)]
+    [InternalBufferCapacity(14)]
     public struct GearSocket : IBufferElementData
     {
         public int SocketIndex;

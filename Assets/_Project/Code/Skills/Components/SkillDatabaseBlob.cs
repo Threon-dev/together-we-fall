@@ -101,6 +101,17 @@ namespace TogetherWeFall.Skills
         public float BaseDamage;
         public float Cooldown;
 
+        /// <summary>
+        /// Mana one press costs. Zero is free.
+        ///
+        /// Charged per REQUEST, not per effect: multicast is one cooldown and
+        /// several projectiles, and the cost follows the cooldown for the same
+        /// reason — a support that fires three shots must not also triple the
+        /// bill, or "more projectiles" would quietly also mean "a third of the
+        /// casts".
+        /// </summary>
+        public float ManaCost;
+
         /// <summary>How far the skill reaches, and how far a projectile travels.</summary>
         public float Range;
 
@@ -167,6 +178,10 @@ namespace TogetherWeFall.Skills
 
         public float Damage;
         public float Cooldown;
+
+        /// <summary>What this press will cost, after the fold. Zero is free.</summary>
+        public float ManaCost;
+
         public float Range;
         public float Radius;
         public float ArcCosine;
@@ -260,6 +275,18 @@ namespace TogetherWeFall.Skills
         /// </summary>
         public float RangeOf(int index)
             => IsValidIndex(index) ? Value.Value.Skills[index].Range : 0f;
+
+        /// <summary>
+        /// What a press of this skill costs.
+        ///
+        /// Beside RangeOf and for the same reason it exists: a caller that wants
+        /// one field and not the fold. Safe in the same way, too — no support
+        /// scales the cost, so asking before the fold and after it give the same
+        /// answer. The day one does, this becomes wrong and the compiler will
+        /// not say so, which is why ResolvedSkill carries the cost as well.
+        /// </summary>
+        public float ManaCostOf(int index)
+            => IsValidIndex(index) ? Value.Value.Skills[index].ManaCost : 0f;
 
         /// <summary>
         /// Everything the supports of one cast add up to, before the maths.
@@ -451,6 +478,15 @@ namespace TogetherWeFall.Skills
                 Type = type,
                 Damage = damage,
                 Cooldown = skill.Cooldown / attackSpeed,
+
+                // Passed through untouched. No support changes what a skill
+                // costs, and none should by accident: a reduced-cost support is
+                // a new modifier kind with its own fold entry, not a number
+                // borrowed from increased damage the way zone duration almost
+                // was. It is in the resolved struct anyway so that the panel and
+                // the host read the SAME number — a bar that advertises a price
+                // the cast does not charge is worse than no price at all.
+                ManaCost = skill.ManaCost,
                 Range = skill.Range,
                 Radius = skill.Radius * (1f + increasedArea * 0.01f),
                 ArcCosine = math.cos(math.radians(math.clamp(skill.ArcDegrees, 0f, 360f) * 0.5f)),

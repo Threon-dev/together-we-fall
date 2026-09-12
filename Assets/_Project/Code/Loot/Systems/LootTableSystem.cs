@@ -250,8 +250,16 @@ namespace TogetherWeFall.Loot.Systems
 
             // Read here rather than passed down: this method is reached from the
             // drop path only, and the system already refuses to run without it.
+            //
+            // The random goes with it because handing an item out is itself a
+            // roll now — a weapon picks the skills it comes with — and it is the
+            // same stream that chose the rarity, so one source answers for
+            // everything about how this drop turned out.
+            RefRW<LootRandom> random = SystemAPI.GetSingletonRW<LootRandom>();
+
             LootItemPool.Activate(
-                state.EntityManager, SystemAPI.GetSingleton<ItemDatabase>(), free, ready);
+                state.EntityManager, SystemAPI.GetSingleton<ItemDatabase>(), free, ready,
+                ref random.ValueRW.Value);
         }
 
         private static float4 ColorFor(in NativeArray<RarityColor> colors, ItemRarity rarity)

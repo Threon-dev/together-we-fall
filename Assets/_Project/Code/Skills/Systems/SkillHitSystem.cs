@@ -131,7 +131,13 @@ namespace TogetherWeFall.Skills.Systems
                     // elements beside it — which is why a stun and an ignite
                     // need no separate path, only a different name.
                     AppliedStatus = hit.AppliedStatus,
-                    FromReaction = hit.FromReaction
+                    FromReaction = hit.FromReaction,
+
+                    // Nothing in combat reads this. It is here because a chain
+                    // jump copies the whole hit, so a build that casts on kill
+                    // stays labelled all the way down a chain — and the damage
+                    // meter is the only thing that ever asks.
+                    FromTrigger = hit.FromTrigger
                 });
 
                 dealt = hit.Damage;

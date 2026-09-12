@@ -7,6 +7,7 @@ using TogetherWeFall.Interaction;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Skills;
+using Random = Unity.Mathematics.Random;
 
 namespace TogetherWeFall.Loot
 {
@@ -61,7 +62,8 @@ namespace TogetherWeFall.Loot
             EntityManager entityManager,
             ItemDatabase items,
             in NativeArray<Entity> free,
-            NativeList<ItemDrop> drops)
+            NativeList<ItemDrop> drops,
+            ref Random random)
         {
             int count = math.min(free.Length, drops.Length);
 
@@ -97,11 +99,12 @@ namespace TogetherWeFall.Loot
                     ContainerEntity = Entity.Null
                 });
 
-                // The holes this item is supposed to have, and the attack welded
-                // into the first of them. Done here because this is the one
-                // moment an item's identity changes, which is exactly what the
-                // rebuild has always said it was for.
-                GemSockets.Rebuild(entityManager, items, item);
+                // The holes this item is supposed to have, and the skills it
+                // rolled into the head of each link group. Done here because
+                // this is the one moment an item's identity changes, which is
+                // exactly what the rebuild has always said it was for — and a
+                // roll is the part of an identity that must happen exactly once.
+                GemSockets.Rebuild(entityManager, items, item, ref random);
 
                 // Last, for the same reason as everywhere else: the moment this
                 // goes up the resolver can hand it to somebody.
@@ -135,21 +138,33 @@ namespace TogetherWeFall.Loot
         public static void Release(EntityManager entityManager, in NativeArray<Entity> taken)
         {
             for (int i = 0; i < taken.Length; i++)
+                Release(entityManager, taken[i]);
+        }
+
+        /// <summary>
+        /// One item back to the pool.
+        ///
+        /// The shape Store above already had, and the one callers with a single
+        /// entity actually want. A caller holding one item was otherwise obliged
+        /// to build a one-element NativeArray to say so — which allocates inside
+        /// whatever loop it is in, and, under a `using`, does not compile at all:
+        /// writing through the indexer of a using variable is CS1654.
+        /// </summary>
+        public static void Release(EntityManager entityManager, Entity item)
+        {
+            Park(entityManager, item);
+
+            entityManager.SetComponentEnabled<InteractableTag>(item, false);
+            entityManager.SetComponentEnabled<InteractionTriggered>(item, false);
+
+            // Both flags, or the pool query would never see it again and the
+            // item would leak out of a fixed pool one drop at a time.
+            entityManager.SetComponentEnabled<ItemStored>(item, false);
+
+            entityManager.SetComponentData(item, new ItemGridPlacement
             {
-                Park(entityManager, taken[i]);
-
-                entityManager.SetComponentEnabled<InteractableTag>(taken[i], false);
-                entityManager.SetComponentEnabled<InteractionTriggered>(taken[i], false);
-
-                // Both flags, or the pool query would never see it again and the
-                // item would leak out of a fixed pool one drop at a time.
-                entityManager.SetComponentEnabled<ItemStored>(taken[i], false);
-
-                entityManager.SetComponentData(taken[i], new ItemGridPlacement
-                {
-                    ContainerEntity = Entity.Null
-                });
-            }
+                ContainerEntity = Entity.Null
+            });
         }
 
         private static void Park(EntityManager entityManager, Entity item)

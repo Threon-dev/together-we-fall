@@ -132,10 +132,15 @@ namespace TogetherWeFall.Loot.Authoring
 
                         DependsOn(item);
 
-                        // The welded skill too: its name is what the id is
-                        // hashed from, so renaming it has to re-bake this.
-                        if (item.InnateSkill != null)
-                            DependsOn(item.InnateSkill);
+                        // The welded skills too: a name is what the id is
+                        // hashed from, so renaming one has to re-bake this.
+                        SkillDefinition[] innate = item.InnateSkills;
+
+                        for (int skill = 0; skill < innate.Length; skill++)
+                        {
+                            if (innate[skill] != null)
+                                DependsOn(innate[skill]);
+                        }
                     }
                 }
             }
@@ -275,10 +280,27 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.GemSkillId = item.GemSkillId;
                 blob.GemSupport = BuildSupport(item.GemSupportModifier);
 
-                // An id rather than an index, like every other cross-database
+                // Ids rather than indices, like every other cross-database
                 // reference here: the item database and the skill database are
                 // baked by two authoring objects that share no ordering.
-                blob.InnateSkillId = item.InnateSkillId;
+                blob.InnateSkillIds = new FixedList64Bytes<int>();
+
+                for (int candidate = 0;
+                     candidate < item.InnateSkillCandidateCount &&
+                     blob.InnateSkillIds.Length < blob.InnateSkillIds.Capacity;
+                     candidate++)
+                {
+                    int skillId = item.InnateSkillIdAt(candidate);
+
+                    if (skillId != 0)
+                        blob.InnateSkillIds.Add(skillId);
+                }
+
+                // Through the property, which caps it by how many candidates
+                // were actually authored: a two-handed weapon with one named
+                // skill rolls one, rather than welding the same attack twice.
+                blob.ActiveSkillCount =
+                    Mathf.Min(item.ActiveSkillCount, blob.InnateSkillIds.Length);
 
                 blob.SocketCount = item.SocketCount;
                 blob.LinkGroups = new FixedList32Bytes<byte>();
@@ -296,6 +318,9 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.GridWidth = item.GridWidth;
                 blob.GridHeight = item.GridHeight;
                 blob.CanRotate = item.CanRotate;
+
+                // Through the property too: it refuses a value on a gem.
+                blob.CurrencyValue = item.CurrencyValue;
 
                 // Through the property too: it refuses a keystone on a gem, and
                 // a gem is the one item that can never be worn.

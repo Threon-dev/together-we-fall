@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: SupportChain
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillModifier
   _kind: 2
-  _value: 3
+  _value: 2
   _secondaryValue: 60
   _convertTo: 1

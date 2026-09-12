@@ -40,6 +40,7 @@ namespace TogetherWeFall.Player
         private InputAction _aimStickAction;
         private InputAction _interactAction;
         private InputAction _inventoryAction;
+        private InputAction _cancelAction;
         private InputAction _primaryCastAction;
         private InputAction _secondaryCastAction;
         private InputAction _thirdCastAction;
@@ -96,6 +97,14 @@ namespace TogetherWeFall.Player
             _inventoryAction.AddBinding("<Keyboard>/i");
             _inventoryAction.AddBinding("<Gamepad>/select");
 
+            // Closing whatever is open. Deliberately not the same button that
+            // opened it: an NPC panel is opened by the interact key, and using
+            // that key to close it would mean walking away from a vendor was the
+            // only reliable way to stop talking to them.
+            _cancelAction = new InputAction("Cancel", InputActionType.Button);
+            _cancelAction.AddBinding("<Keyboard>/escape");
+            _cancelAction.AddBinding("<Gamepad>/buttonEast");
+
             // Held rather than pressed: in this genre you hold the button down
             // and the cooldown decides the rhythm. Which is also why the host
             // owns the cooldown and this only reports the button.
@@ -123,6 +132,7 @@ namespace TogetherWeFall.Player
             _aimStickAction.Enable();
             _interactAction.Enable();
             _inventoryAction.Enable();
+            _cancelAction.Enable();
             _primaryCastAction.Enable();
             _secondaryCastAction.Enable();
             _thirdCastAction.Enable();
@@ -167,6 +177,12 @@ namespace TogetherWeFall.Player
             => _initialized && _inventoryAction.WasPressedThisFrame();
 
         /// <summary>
+        /// Whether the player asked to close whatever panel is open. A view
+        /// preference like the one above, and it never travels either.
+        /// </summary>
+        public bool WasCancelPressed() => _initialized && _cancelAction.WasPressedThisFrame();
+
+        /// <summary>
         /// Whether a cast button is down. Held rather than pressed, so holding
         /// the button casts at whatever rate the host allows.
         /// </summary>
@@ -187,6 +203,28 @@ namespace TogetherWeFall.Player
 
         /// <summary>How many cast slots this reader has bindings for.</summary>
         public int CastSlotCount => 4;
+
+        /// <summary>
+        /// What the player actually presses for a cast slot.
+        ///
+        /// Here rather than in either panel that draws it, because this class is
+        /// what decides it — the bindings are twenty lines up. Two panels each
+        /// keeping their own switch is two things to forget the day a key moves,
+        /// and the one that got forgotten would be lying to the player about
+        /// which button does what.
+        ///
+        /// Static, so a panel can label a key before any reader exists.
+        /// </summary>
+        public static string CastSlotName(int slot)
+        {
+            switch (slot)
+            {
+                case 0: return "LMB";
+                case 1: return "RMB";
+                case 2: return "Q";
+                default: return "R";
+            }
+        }
 
         private Vector3 ReadMoveDirection()
         {
@@ -271,6 +309,7 @@ namespace TogetherWeFall.Player
             _aimStickAction?.Dispose();
             _interactAction?.Dispose();
             _inventoryAction?.Dispose();
+            _cancelAction?.Dispose();
             _primaryCastAction?.Dispose();
             _secondaryCastAction?.Dispose();
             _thirdCastAction?.Dispose();

@@ -32,7 +32,21 @@ namespace TogetherWeFall.Equipment
         MoveSpeed = 4,
         FireResistance = 5,
         ColdResistance = 6,
-        LightningResistance = 7
+        LightningResistance = 7,
+
+        /// <summary>
+        /// The mana pool, as a stat rather than a number of its own.
+        ///
+        /// Appended here instead of given its own component for the reason the
+        /// enum's header already gives: the fold that turns base plus equipment
+        /// into a final number exists and works, and a second pool with its own
+        /// maths would be a second place "+20% maximum mana" has to be taught
+        /// about. A ring that raises it is an ordinary affix.
+        /// </summary>
+        MaxMana = 8,
+
+        /// <summary>Mana returned per second. Flat, so a regen affix is a flat affix.</summary>
+        ManaRegen = 9
     }
 
     /// <summary>
@@ -62,7 +76,7 @@ namespace TogetherWeFall.Equipment
     /// </summary>
     public struct StatBlock
     {
-        public const int StatCount = (int)StatKind.LightningResistance + 1;
+        public const int StatCount = (int)StatKind.ManaRegen + 1;
 
         public FixedList64Bytes<float> Values;
 

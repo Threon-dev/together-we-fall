@@ -63,7 +63,7 @@ namespace TogetherWeFall.EditorTools
             {
                 // The classic: burn the charge off a shocked target.
                 Rule("ReactionShockedByFire", DamageType.Lightning, DamageType.Fire,
-                    ElementReactionKind.BonusDamage, multiplier: 1.6f, consumes: true),
+                    ElementReactionKind.BonusDamage, multiplier: 1.5f, consumes: true),  // TUNE
 
                 // Steam. A blast rather than a status, because a status that
                 // reduced an enemy's accuracy would have nothing to reduce —

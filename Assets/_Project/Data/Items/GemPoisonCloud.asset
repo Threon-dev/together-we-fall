@@ -22,7 +22,7 @@ MonoBehaviour:
   _gemKind: 1
   _gemSkill: {fileID: 11400000, guid: 31252027d06338444b3f3fcbeb8efad5, type: 2}
   _gemSupport: {fileID: 0}
-  _innateSkill: {fileID: 0}
+  _innateSkills: []
   _socketCount: 0
   _linkGroups: 
   _gridWidth: 1

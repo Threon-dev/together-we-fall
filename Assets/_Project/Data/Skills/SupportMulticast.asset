@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: SupportMulticast
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillModifier
   _kind: 4
-  _value: 2
+  _value: 1
   _secondaryValue: 60
   _convertTo: 1

@@ -12,6 +12,7 @@ using TogetherWeFall.DebugTools;
 using TogetherWeFall.Dungeon;
 using TogetherWeFall.Enemies.Authoring;
 using TogetherWeFall.Loot.Authoring;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Player;
 using TogetherWeFall.Equipment.Authoring;
 using TogetherWeFall.Skills.Authoring;
@@ -111,9 +112,12 @@ namespace TogetherWeFall.EditorTools
             GameObject debugTools,
             DungeonDirector dungeon = null,
             InventoryUI inventoryUI = null,
+            LobbyUI lobbyUI = null,
+            SceneLoadBridge sceneLoader = null,
             VfxPresenter vfxPresenter = null,
             CurtainPresenter curtainPresenter = null,
-            AudioPresenter audioPresenter = null)
+            AudioPresenter audioPresenter = null,
+            PlayerHud playerHud = null)
         {
             var bootstrapObject = new GameObject("GameBootstrap");
             GameBootstrap bootstrap = bootstrapObject.AddComponent<GameBootstrap>();
@@ -133,9 +137,12 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_actionPublisher").objectReferenceValue =
                 player.GetComponent<PlayerActionPublisher>();
             serialized.FindProperty("_inventoryUI").objectReferenceValue = inventoryUI;
+            serialized.FindProperty("_lobbyUI").objectReferenceValue = lobbyUI;
+            serialized.FindProperty("_sceneLoader").objectReferenceValue = sceneLoader;
             serialized.FindProperty("_vfxPresenter").objectReferenceValue = vfxPresenter;
             serialized.FindProperty("_curtainPresenter").objectReferenceValue = curtainPresenter;
             serialized.FindProperty("_audioPresenter").objectReferenceValue = audioPresenter;
+            serialized.FindProperty("_playerHud").objectReferenceValue = playerHud;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -552,6 +559,61 @@ namespace TogetherWeFall.EditorTools
             SetReference(ui, "_document", document);
 
             return ui;
+        }
+
+        /// <summary>
+        /// The lobby panels: the NPC prompt, the shop, the forge, the portal and
+        /// the damage meter.
+        ///
+        /// Its own UIDocument beside the inventory one rather than a section
+        /// inside it. They are shown at different times by different things, and
+        /// a panel that has to ask another panel whether it may draw is a
+        /// dependency neither of them needs.
+        /// </summary>
+        public static LobbyUI CreateLobbyUI(PanelSettings panelSettings)
+        {
+            var uiObject = new GameObject("LobbyUI");
+
+            UIDocument document = uiObject.AddComponent<UIDocument>();
+            document.panelSettings = panelSettings;
+
+            LobbyUI ui = uiObject.AddComponent<LobbyUI>();
+            SetReference(ui, "_document", document);
+
+            return ui;
+        }
+
+        /// <summary>
+        /// The one object allowed to swap a scene. Everything that decides WHEN
+        /// happens in ECS; this only does it.
+        /// </summary>
+        public static SceneLoadBridge CreateSceneLoadBridge()
+        {
+            var bridgeObject = new GameObject("SceneLoadBridge");
+            return bridgeObject.AddComponent<SceneLoadBridge>();
+        }
+
+        /// <summary>
+        /// The orbs and the skill bar.
+        ///
+        /// Its own UIDocument on the shared panel settings, sorted between the
+        /// damage numbers and the inventory: the HUD must sit over the numbers
+        /// floating off a crowd, and under the panel the player deliberately
+        /// opened. Sorting is the only place that can be said, because the
+        /// panels build themselves lazily and in no fixed order.
+        /// </summary>
+        public static PlayerHud CreatePlayerHud(PanelSettings panelSettings)
+        {
+            var hudObject = new GameObject("PlayerHud");
+
+            UIDocument document = hudObject.AddComponent<UIDocument>();
+            document.panelSettings = panelSettings;
+            document.sortingOrder = -0.5f;
+
+            PlayerHud hud = hudObject.AddComponent<PlayerHud>();
+            SetReference(hud, "_document", document);
+
+            return hud;
         }
 
         /// <summary>

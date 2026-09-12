@@ -26,7 +26,14 @@ namespace TogetherWeFall.Config
             new ItemStatValue(StatKind.AttackSpeed, 1f),
             new ItemStatValue(StatKind.Armour, 0f),
             new ItemStatValue(StatKind.MaxHealth, 100f),
-            new ItemStatValue(StatKind.MoveSpeed, 6f)
+            new ItemStatValue(StatKind.MoveSpeed, 6f),
+
+            // TUNE, and the pair that decides whether mana is a resource or a
+            // formality: a hundred points against a six-mana skill is sixteen
+            // casts, and eight a second puts one back. Nothing here is balanced
+            // against anything else — see the note on the build library.
+            new ItemStatValue(StatKind.MaxMana, 100f),
+            new ItemStatValue(StatKind.ManaRegen, 8f)
         };
 
         [Header("Starting kit")]

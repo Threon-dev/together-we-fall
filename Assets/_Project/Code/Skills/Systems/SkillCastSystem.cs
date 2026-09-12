@@ -267,7 +267,22 @@ namespace TogetherWeFall.Skills.Systems
             // is the downside alone — see KeystoneEffect for why it is here
             // anyway.
             if (keystone == KeystoneEffect.NoManaCostDoubleCooldown)
+            {
                 resolved.Cooldown *= 2f;
+
+                // The upside, finally. The keystone was authored as the shape of
+                // a trade it could not make — there was nothing to not pay — and
+                // this is the one line its comment promised.
+                resolved.ManaCost = 0f;
+            }
+
+            // Checked here and spent at the bottom, for the same reason the
+            // cooldown is: a cast that finds nothing to do must cost nothing.
+            // Refusing quietly, like the silence and the trigger-gem refusals
+            // above — a message every frame the button is held is worse than
+            // the empty bar the player is already looking at.
+            if (!HasMana(ref state, character, resolved.ManaCost))
+                return;
 
             // TEMPORARY DIAGNOSTIC — delete once the gem chain is trusted.
             //
@@ -321,16 +336,54 @@ namespace TogetherWeFall.Skills.Systems
 
             slot.CooldownRemaining = resolved.Cooldown;
             slots[request.SlotIndex] = slot;
+
+            SpendMana(ref state, character, resolved.ManaCost);
+        }
+
+        /// <summary>
+        /// Whether the caster can pay, treating a character with no mana
+        /// component as able to pay anything.
+        ///
+        /// That default is the same shape as the StatusGate one beside it: a
+        /// character that never got the component is not a character who is
+        /// permanently out of mana, it is a character mana does not apply to.
+        /// The alternative fails closed, and the symptom would be every button
+        /// in a half-built scene silently doing nothing.
+        /// </summary>
+        private bool HasMana(ref SystemState state, Entity character, float cost)
+        {
+            if (cost <= 0f)
+                return true;
+
+            return !state.EntityManager.HasComponent<Mana>(character) ||
+                   state.EntityManager.GetComponentData<Mana>(character).Current >= cost;
+        }
+
+        private void SpendMana(ref SystemState state, Entity character, float cost)
+        {
+            if (cost <= 0f || !state.EntityManager.HasComponent<Mana>(character))
+                return;
+
+            Mana mana = state.EntityManager.GetComponentData<Mana>(character);
+            mana.Current = math.max(0f, mana.Current - cost);
+
+            state.EntityManager.SetComponentData(character, mana);
         }
 
         /// <summary>
         /// Casts a skill that something other than a player asked for.
         ///
-        /// Two things it deliberately does not do. It charges no cooldown: a
+        /// Three things it deliberately does not do. It charges no cooldown: a
         /// trigger is a consequence, and a consequence that could be rate-limited
-        /// by the slot it was never in makes no sense. And it does not check
-        /// whether the caster still has that skill equipped — the moment that
-        /// decided this was going to happen has already passed.
+        /// by the slot it was never in makes no sense. It charges no mana, for
+        /// the same reason and with the same force — a player who paid for the
+        /// shot has paid for what the shot causes, and billing them again for a
+        /// chain of triggers would make an expensive build cost more the better
+        /// it worked. What keeps THAT from being free damage is the depth budget
+        /// below and the trigger gem's own cooldown, which is where the limit on
+        /// automatic casting has always lived. And it does not check whether the
+        /// caster still has that skill equipped — the moment that decided this
+        /// was going to happen has already passed.
         ///
         /// The depth budget is the only rail. Two skills that trigger each other
         /// are an easy thing to author by accident, and without a ceiling the
@@ -621,7 +674,11 @@ namespace TogetherWeFall.Skills.Systems
                 Delay = 0f,
                 ExplosionRadius = skill.ExplosionRadius,
                 ExplosionDamage = skill.ExplosionDamage,
-                AppliedStatus = skill.AppliedStatus
+                AppliedStatus = skill.AppliedStatus,
+
+                // Depth zero is a key press; anything deeper got here because
+                // something else fired.
+                FromTrigger = context.Depth > 0
             };
 
             hit.Visited.Add(targets.Entities[index]);

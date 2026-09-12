@@ -111,17 +111,20 @@ namespace TogetherWeFall.Config
                  "to it.")]
         [SerializeField] private SkillModifier _gemSupport;
 
-        [Header("Built-in skill")]
-        [Tooltip("The attack this gear comes with. It is welded into socket 0 " +
-                 "when the item is handed out: it cannot be taken out, and the " +
-                 "supports linked to that socket customise it. Leave empty for " +
-                 "anything that is not a weapon.")]
-        [SerializeField] private SkillDefinition _innateSkill;
+        [Header("Built-in skills")]
+        [Tooltip("What this weapon may come with. One is rolled per instance " +
+                 "when the item is handed out — two for a two-handed weapon — " +
+                 "and welded into the first socket of its link group: it cannot " +
+                 "be taken out, and the supports sharing that group customise " +
+                 "it. Leave empty for anything that is not a weapon; a list of " +
+                 "one is a weapon that always comes with the same attack.")]
+        [SerializeField] private SkillDefinition[] _innateSkills =
+            Array.Empty<SkillDefinition>();
 
         [Header("Sockets")]
         [Tooltip("Holes in this piece of gear. Fixed per item — rolling them " +
                  "per drop is a feature of its own on top of this one.")]
-        [SerializeField, Range(0, 6)] private int _socketCount;
+        [SerializeField, Range(0, 16)] private int _socketCount;
 
         [Tooltip("Which link group each socket belongs to, one entry per " +
                  "socket. Supports affect the actives sharing their group: " +
@@ -135,6 +138,14 @@ namespace TogetherWeFall.Config
         [SerializeField, Range(1, 4)] private int _gridWidth = 1;
 
         [SerializeField, Range(1, 4)] private int _gridHeight = 1;
+
+        [Header("Currency")]
+        [Tooltip("What this item is worth as money. Zero for everything that is " +
+                 "not currency, which is almost everything. A coin is an " +
+                 "ordinary item: it drops, occupies a cell and is lost on " +
+                 "death — that is the whole reason money is not an int on the " +
+                 "character.")]
+        [SerializeField, Min(0)] private int _currencyValue;
 
         [Tooltip("Whether the player may turn this item on its side to make it " +
                  "fit. Off by default: rotation is a property of a specific " +
@@ -199,24 +210,73 @@ namespace TogetherWeFall.Config
                 : 0;
 
         /// <summary>
-        /// The skill this gear is born holding, as a stable id, or zero.
+        /// How many skills this weapon comes with: two in both hands, one in
+        /// one, none at all for everything that is not a weapon.
+        ///
+        /// Derived rather than authored, for the reason two-handedness itself is
+        /// derived: "a one-handed weapon with two attacks" is a state that
+        /// should not exist, and the cheapest way to make it impossible is to
+        /// not offer the field. It is what the hands can hold, so it follows
+        /// from how many hands the thing takes.
+        ///
+        /// Capped by how many candidates were authored, because rolling two
+        /// distinct skills out of a list of one is not a thing that can happen.
+        /// </summary>
+        public int ActiveSkillCount
+        {
+            get
+            {
+                int authored = _innateSkills == null ? 0 : _innateSkills.Length;
+                if (authored == 0)
+                    return 0;
+
+                return Mathf.Min(IsTwoHanded ? 2 : 1, authored);
+            }
+        }
+
+        /// <summary>How many skills this weapon may roll from.</summary>
+        public int InnateSkillCandidateCount =>
+            _innateSkills == null ? 0 : _innateSkills.Length;
+
+        /// <summary>
+        /// One candidate skill, as a stable id, or zero.
         ///
         /// The same id an active gem uses, and deliberately so: a welded skill
         /// is not a second kind of thing, it is a gem that was put in at the
         /// forge instead of by the player. Everything downstream reads it
         /// through the socket it sits in and cannot tell the difference.
         /// </summary>
-        public int InnateSkillId =>
-            _innateSkill != null ? ComputeId(_innateSkill.DisplayName) : 0;
+        public int InnateSkillIdAt(int index)
+        {
+            if (_innateSkills == null || index < 0 || index >= _innateSkills.Length ||
+                _innateSkills[index] == null)
+            {
+                return 0;
+            }
 
-        /// <summary>The asset itself, for the baker to depend on.</summary>
-        public SkillDefinition InnateSkill => _innateSkill;
+            return ComputeId(_innateSkills[index].DisplayName);
+        }
+
+        /// <summary>The assets themselves, for the baker to depend on.</summary>
+        public SkillDefinition[] InnateSkills =>
+            _innateSkills ?? Array.Empty<SkillDefinition>();
 
         /// <summary>The modifier a Support gem carries, or null.</summary>
         public SkillModifier GemSupportModifier =>
             _gemKind == GemKind.Support ? _gemSupport : null;
 
-        public int SocketCount => Mathf.Clamp(_socketCount, 0, 6);
+        public int SocketCount => Mathf.Clamp(_socketCount, 0, MaxSockets);
+
+        /// <summary>
+        /// The most holes one item may have.
+        ///
+        /// Six while a weapon held one skill, which is where the number came
+        /// from: one active and five supports. A two-handed weapon holds two
+        /// skills and six supports each, so the ceiling is fourteen — and the
+        /// two extra are room for a layout nobody has authored yet rather than
+        /// a plan.
+        /// </summary>
+        public const int MaxSockets = 16;
 
         /// <summary>
         /// Which link group a socket belongs to.
@@ -241,7 +301,17 @@ namespace TogetherWeFall.Config
         /// the only item that fits in more than one place is a ring, and that
         /// rule belongs in one method instead of in every ring asset.
         /// </summary>
-        public ushort AllowedSlots => EquipmentSlots.AllowedMask(_slot);
+        public ushort AllowedSlots =>
+            CurrencyValue > 0 ? (ushort)0 : EquipmentSlots.AllowedMask(_slot);
+
+        /// <summary>
+        /// What this item is worth as money, or zero.
+        ///
+        /// Zeroed on a gem for the same reason a keystone is: a coin that also
+        /// casts something is a state with no meaning, and the cheapest place to
+        /// make it impossible is where the value is read from.
+        /// </summary>
+        public int CurrencyValue => _gemKind == GemKind.None ? Mathf.Max(0, _currencyValue) : 0;
 
         /// <summary>The id systems, save data and the network refer to this item by.</summary>
         public int ItemId => ComputeId(DisplayName);

@@ -286,6 +286,7 @@ namespace TogetherWeFall.Skills.Authoring
                 blob.Type = skill.DamageType;
                 blob.BaseDamage = skill.BaseDamage;
                 blob.Cooldown = skill.Cooldown;
+                blob.ManaCost = skill.ManaCost;
                 blob.Range = skill.Range;
                 blob.Radius = skill.Radius;
                 blob.ArcDegrees = skill.ArcDegrees;

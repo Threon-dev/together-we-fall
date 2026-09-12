@@ -428,6 +428,13 @@ namespace TogetherWeFall.Skills
         /// reaction from feeding itself.
         /// </summary>
         public bool FromReaction;
+
+        /// <summary>
+        /// Whether the cast behind this hit was fired by a trigger. Read by
+        /// nothing in combat; carried so the damage meter can split a build into
+        /// what the player pressed and what the build did on its own.
+        /// </summary>
+        public bool FromTrigger;
     }
 
     /// <summary>

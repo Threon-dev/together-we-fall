@@ -31,6 +31,11 @@ namespace TogetherWeFall.Config
         [Tooltip("Seconds between casts, before attack speed is applied.")]
         [SerializeField, Min(0.05f)] private float _cooldown = 0.5f;
 
+        [Tooltip("Mana the cast costs. Zero is free, which is what every skill " +
+                 "authored before mana existed is — a weapon's built-in attack " +
+                 "should stay free, or an empty pool means no attack at all.")]
+        [SerializeField, Min(0f)] private float _manaCost;
+
         [Tooltip("How far the skill reaches. For a projectile, how far it flies.")]
         [SerializeField, Min(1f)] private float _range = 20f;
 
@@ -93,6 +98,7 @@ namespace TogetherWeFall.Config
 
         public float BaseDamage => _baseDamage;
         public float Cooldown => _cooldown;
+        public float ManaCost => _manaCost;
         public float Range => _range;
         public float Radius => _radius;
         public float ArcDegrees => _arcDegrees;

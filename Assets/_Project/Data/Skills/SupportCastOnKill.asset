@@ -18,8 +18,8 @@ MonoBehaviour:
   _convertTo: 1
   _triggeredSkill: {fileID: 0}
   _triggerCondition: 0
-  _triggerCooldown: 3
-  _procChance: 0.35
+  _triggerCooldown: 1.5
+  _procChance: 1
   _condition: 0
   _requiredElement: 1
   _threshold: 0.35

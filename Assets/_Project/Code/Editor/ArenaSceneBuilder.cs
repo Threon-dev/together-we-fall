@@ -138,9 +138,10 @@ namespace TogetherWeFall.EditorTools
             SkillContentFactory.CreateBuildContent(lootTable);
 
             // The library: a gem for every skill above, the supports that ask a
-            // question before they act, and the four-link staff to put them in.
-            // Without a weapon that links four holes, most of the combinations
-            // the gems were written for cannot be assembled at all.
+            // question before they act, and the two-handed staff to put them
+            // in: two rolled skills, six support holes each. Without a weapon
+            // that links that many, most of the combinations the gems were
+            // written for cannot be assembled at all.
             BuildLibraryFactory.CreateGems(lootTable);
 
             // Every weapon gets the attack it is born with, where it does not
@@ -195,10 +196,14 @@ namespace TogetherWeFall.EditorTools
             AudioPresenter audioPresenter = SceneBuildUtility.CreateAudioPresenter(
                 SceneBuildUtility.CreateAudioConfig("AudioConfig"));
 
+            // The orbs and the skill bar. Between the damage numbers and the
+            // inventory, so it covers neither.
+            PlayerHud playerHud = SceneBuildUtility.CreatePlayerHud(panelSettings);
+
             SceneBuildUtility.CreateBootstrap(
                 cameraRig, player, debugTools, dungeon: null, inventoryUI: inventoryUI,
                 vfxPresenter: vfxPresenter, curtainPresenter: curtainPresenter,
-                audioPresenter: audioPresenter);
+                audioPresenter: audioPresenter, playerHud: playerHud);
 
             BuildNavMesh(ground);
 

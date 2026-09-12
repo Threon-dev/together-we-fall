@@ -26,8 +26,28 @@ namespace TogetherWeFall.DebugTools.Authoring
                  "something landed, not to light up the arena.")]
         [SerializeField, Range(0.02f, 0.5f)] private float _flashSeconds = 0.12f;
 
+        [Tooltip("Seconds of damage history the meter keeps. The window every " +
+                 "rate on the panel is worked out over, so short enough to " +
+                 "react and long enough that one slow skill is not a spike.")]
+        [SerializeField, Range(1f, 30f)] private float _meterWindow = 6f;
+
+        [Tooltip("How far it slides to each side. Zero is a dummy that stands " +
+                 "still, which is most of them — a moving target is for " +
+                 "checking that a projectile skill leads properly.")]
+        [SerializeField, Min(0f)] private float _patrolDistance;
+
+        [Tooltip("Full sweeps per second.")]
+        [SerializeField, Range(0.05f, 2f)] private float _patrolFrequency = 0.25f;
+
+        [Tooltip("Which way it slides, in world space. Normalised at bake time.")]
+        [SerializeField] private Vector3 _patrolAxis = Vector3.right;
+
         public float MaxHealth => _maxHealth;
         public float FlashSeconds => _flashSeconds;
+        public float MeterWindow => _meterWindow;
+        public float PatrolDistance => _patrolDistance;
+        public float PatrolFrequency => _patrolFrequency;
+        public Vector3 PatrolAxis => _patrolAxis;
 
         private sealed class TrainingDummyBaker : Baker<TrainingDummyAuthoring>
         {
@@ -83,6 +103,47 @@ namespace TogetherWeFall.DebugTools.Authoring
                 });
 
                 AddComponent(entity, new URPMaterialPropertyBaseColor { Value = restColor });
+
+                // Every dummy is metered. A dummy exists to be measured against,
+                // and one that took damage without recording it would be the odd
+                // one out for no reason a player could see.
+                AddComponent(entity, new DamageMeter { Window = authoring.MeterWindow });
+                AddBuffer<DamageMeterEntry>(entity);
+
+                // Present and down, so clearing the log later costs no
+                // structural change — the same reason the claim flag is baked
+                // onto a chest.
+                AddComponent<DamageMeterReset>(entity);
+                SetComponentEnabled<DamageMeterReset>(entity, false);
+
+                AddPatrol(entity, authoring);
+            }
+
+            /// <summary>
+            /// Only for a dummy that was asked to move. Without the component no
+            /// system touches its transform, which is how a still dummy stays
+            /// still with no branch anywhere.
+            /// </summary>
+            private void AddPatrol(Entity entity, TrainingDummyAuthoring authoring)
+            {
+                if (authoring.PatrolDistance <= 0f)
+                    return;
+
+                float3 axis = authoring.PatrolAxis;
+
+                // A zero axis would be a dummy that patrols nowhere while still
+                // paying for a job. Falling back beats refusing: the author asked
+                // for movement.
+                if (math.lengthsq(axis) < 1e-6f)
+                    axis = new float3(1f, 0f, 0f);
+
+                AddComponent(entity, new DummyPatrol
+                {
+                    Origin = authoring.transform.position,
+                    Axis = math.normalize(axis),
+                    Distance = authoring.PatrolDistance,
+                    Frequency = authoring.PatrolFrequency
+                });
             }
 
             private float4 ReadBodyColor(TrainingDummyAuthoring authoring)

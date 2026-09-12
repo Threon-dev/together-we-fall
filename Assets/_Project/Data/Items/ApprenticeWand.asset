@@ -22,7 +22,8 @@ MonoBehaviour:
   _gemKind: 1
   _gemSkill: {fileID: 11400000, guid: a7c5d9db9d7e0f142a31bf9dae068cbb, type: 2}
   _gemSupport: {fileID: 0}
-  _innateSkill: {fileID: 11400000, guid: f5c4a9839765d0a43b3427d890064343, type: 2}
+  _innateSkills:
+  - {fileID: 11400000, guid: f5c4a9839765d0a43b3427d890064343, type: 2}
   _socketCount: 6
   _linkGroups: 000000000000000001000000010000000200000003000000
   _gridWidth: 1

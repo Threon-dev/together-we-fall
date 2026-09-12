@@ -103,3 +103,6 @@ InitTestScene*.unity*
 
 # Entities-generated scene dependency cache
 /[Aa]ssets/SceneDependencyCache*
+
+# Knowledge-graph output from the graphify skill. Regenerated on demand.
+graphify-out/

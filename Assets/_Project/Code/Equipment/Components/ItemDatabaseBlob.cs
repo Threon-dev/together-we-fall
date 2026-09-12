@@ -60,16 +60,36 @@ namespace TogetherWeFall.Equipment
         public SkillModifierBlob GemSupport;
 
         /// <summary>
-        /// The skill this gear comes with, by stable id. Zero for everything
-        /// that is not a weapon.
+        /// The skills this gear may come with, by stable id. Empty for
+        /// everything that is not a weapon.
         ///
         /// It answers "what does wearing this let me do", which used to have no
         /// answer at all: a sword with no gem in it was a sword you could not
-        /// swing. Welded into socket 0 when the item is handed out, so the rest
-        /// of the pipeline still finds it exactly where it finds every other
-        /// skill — in a hole.
+        /// swing. A list rather than one id because a weapon ROLLS what it comes
+        /// with, out of what its kind can carry — so two staves off the same
+        /// floor are two different weapons, and the choice a player makes is
+        /// which one to keep rather than which gem to buy.
+        ///
+        /// One of these is welded into the first socket of each link group when
+        /// the item is handed out, so the rest of the pipeline still finds a
+        /// skill exactly where it finds every other one — in a hole.
+        ///
+        /// A FixedList rather than a BlobArray, for the same reason LinkGroups
+        /// is one: the values are flat, the ceiling is small, and a second blob
+        /// pointer is a second thing that breaks the day somebody copies this
+        /// struct instead of taking it by reference.
         /// </summary>
-        public int InnateSkillId;
+        public FixedList64Bytes<int> InnateSkillIds;
+
+        /// <summary>
+        /// How many of those are actually welded on: two for a two-handed
+        /// weapon, one for a one-handed one, zero otherwise.
+        ///
+        /// Baked rather than recomputed, because the rule it comes from lives on
+        /// the authoring asset and the host must not have a second opinion about
+        /// how many hands a thing takes.
+        /// </summary>
+        public int ActiveSkillCount;
 
         /// <summary>How many holes this gear has.</summary>
         public int SocketCount;
@@ -94,6 +114,18 @@ namespace TogetherWeFall.Equipment
 
         /// <summary>Whether the player may turn it on its side.</summary>
         public bool CanRotate;
+
+        /// <summary>
+        /// What this item is worth as money. Zero for everything that is not
+        /// currency.
+        ///
+        /// A field on an ordinary item rather than a separate kind of thing,
+        /// because a coin IS an ordinary item: it comes out of the loot pool,
+        /// takes a cell, drops on the floor and is lost with the rest of what
+        /// its owner was carrying. That last part is the whole argument — an int
+        /// on the character would have needed its own rule about dying.
+        /// </summary>
+        public int CurrencyValue;
 
         /// <summary>
         /// The combat rule this item inverts while worn, or None.

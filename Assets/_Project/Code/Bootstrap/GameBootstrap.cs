@@ -6,6 +6,7 @@ using TogetherWeFall.Curtain;
 using TogetherWeFall.DebugTools;
 using TogetherWeFall.Dungeon;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Player;
 using TogetherWeFall.UI;
 using TogetherWeFall.Vfx;
@@ -44,6 +45,20 @@ namespace TogetherWeFall.Bootstrap
         [Tooltip("Optional. Absent in scenes with no loot to carry.")]
         [SerializeField] private InventoryUI _inventoryUI;
 
+        [Tooltip("Optional. Present in the lobby and absent everywhere else — " +
+                 "it draws the NPC prompt, the shop, the forge, the portal and " +
+                 "the damage meter.")]
+        [SerializeField] private LobbyUI _lobbyUI;
+
+        [Tooltip("Optional. The one thing about leaving a scene that needs " +
+                 "Unity. Without it the portal fades the screen and nothing " +
+                 "loads.")]
+        [SerializeField] private SceneLoadBridge _sceneLoader;
+
+        [Tooltip("Optional. Without it the pools and cooldowns still run and " +
+                 "simply cannot be seen.")]
+        [SerializeField] private PlayerHud _playerHud;
+
         [Tooltip("Optional. Without it the game plays identically and looks flat.")]
         [SerializeField] private VfxPresenter _vfxPresenter;
 
@@ -76,15 +91,27 @@ namespace TogetherWeFall.Bootstrap
             if (_inventoryUI != null)
                 _inventoryUI.Initialize(_input, _positionPublisher.PlayerId);
 
-            // The panel does not reach into the publisher; the publisher is
+            // The same player id, from the same place. The HUD is told who to
+            // watch rather than looking for "the character" — in coop there are
+            // several and only one of them is this screen's.
+            if (_playerHud != null)
+                _playerHud.Initialize(_positionPublisher.PlayerId);
+
+            if (_lobbyUI != null)
+                _lobbyUI.Initialize(_input, _player.transform, _positionPublisher.PlayerId);
+
+            if (_sceneLoader != null)
+                _sceneLoader.Initialize();
+
+            // The panels do not reach into the publisher; the publisher is
             // handed a question to ask. Wiring in one direction from one place
-            // is the whole reason this class exists.
+            // is the whole reason this class exists — and two panels are one
+            // question, because "is anything taking the clicks" is what the
+            // publisher actually wants to know.
             if (_actionPublisher != null)
             {
                 _actionPublisher.Initialize(
-                    _input,
-                    _positionPublisher.PlayerId,
-                    _inventoryUI != null ? () => _inventoryUI.IsCapturingInput : (System.Func<bool>)null);
+                    _input, _positionPublisher.PlayerId, CreateUiCaptureProbe());
             }
 
             // After the camera, because the presenter shakes it.
@@ -101,6 +128,27 @@ namespace TogetherWeFall.Bootstrap
                 _audioPresenter.Initialize(_cameraRig.transform);
 
             _hud.Initialize(CreateEnemyCountProvider(), CreateStatusProvider());
+        }
+
+        /// <summary>
+        /// Whether any panel is currently taking the player's clicks, or null
+        /// when this scene has no panels at all.
+        ///
+        /// One delegate rather than a list the publisher walks: the publisher
+        /// has no business knowing that panels are what does it, let alone how
+        /// many there are.
+        /// </summary>
+        private System.Func<bool> CreateUiCaptureProbe()
+        {
+            InventoryUI inventory = _inventoryUI;
+            LobbyUI lobby = _lobbyUI;
+
+            if (inventory == null && lobby == null)
+                return null;
+
+            return () =>
+                (inventory != null && inventory.IsCapturingInput) ||
+                (lobby != null && lobby.IsCapturingInput);
         }
 
         /// <summary>

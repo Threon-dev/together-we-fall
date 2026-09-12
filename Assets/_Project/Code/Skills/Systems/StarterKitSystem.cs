@@ -68,6 +68,10 @@ namespace TogetherWeFall.Skills.Systems
                 .Build();
 
             state.RequireForUpdate<ItemDatabase>();
+
+            // The same stream the loot roller uses. A weapon rolls the skills it
+            // comes with when it is handed out, and the kit hands out a weapon.
+            state.RequireForUpdate<LootRandom>();
             state.RequireForUpdate<SkillDatabase>();
             state.RequireForUpdate<StarterItem>();
             state.RequireForUpdate(_pendingQuery);
@@ -110,6 +114,11 @@ namespace TogetherWeFall.Skills.Systems
 
             using NativeArray<Entity> free = _freeItemQuery.ToEntityArray(Allocator.Temp);
 
+            // Held across the loop below, which the comment there says is free
+            // of structural changes — and that is exactly what makes holding a
+            // singleton reference through it safe.
+            RefRW<LootRandom> random = SystemAPI.GetSingletonRW<LootRandom>();
+
             if (free.Length < itemIds.Length)
             {
                 UnityEngine.Debug.LogWarning(
@@ -146,7 +155,7 @@ namespace TogetherWeFall.Skills.Systems
 
                 // Owned from this moment, so the pool cannot hand it out twice.
                 LootItemPool.Store(entityManager, item);
-                GemSockets.Rebuild(entityManager, items, item);
+                GemSockets.Rebuild(entityManager, items, item, ref random.ValueRW.Value);
 
                 if (i == 0)
                 {

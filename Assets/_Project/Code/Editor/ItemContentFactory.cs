@@ -65,12 +65,17 @@ namespace TogetherWeFall.EditorTools
                 return;
 
             var serialized = new SerializedObject(item);
-            SerializedProperty innate = serialized.FindProperty("_innateSkill");
+            SerializedProperty innate = serialized.FindProperty("_innateSkills");
 
-            if (innate.objectReferenceValue != null)
+            // A list now, because a weapon rolls what it comes with out of what
+            // its kind can carry. An ordinary sword carries one thing, so its
+            // list is one long and the roll has one outcome — which is the same
+            // weapon it was before this existed.
+            if (innate.arraySize > 0)
                 return;
 
-            innate.objectReferenceValue = skill;
+            innate.arraySize = 1;
+            innate.GetArrayElementAtIndex(0).objectReferenceValue = skill;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -194,6 +199,25 @@ namespace TogetherWeFall.EditorTools
                         {
                             new ItemAffix(StatKind.Damage, ModifierKind.Increased, 45f),
                             new ItemAffix(StatKind.AttackSpeed, ModifierKind.Increased, 25f)
+                        }),
+
+                    // Glass Cannon, and it needed no keystone: "double your
+                    // damage, halve your life" is two affixes the stat fold
+                    // already understands, and a KeystoneEffect for it would be
+                    // an enum value with no branch behind it. Worth saying out
+                    // loud because it is the boundary — a keystone is for rules
+                    // no stat can express, and this one is only numbers.
+                    //
+                    // TUNE, and loudly: the downside is invisible today. The
+                    // player has no health, so this is +100% damage for free
+                    // until the Downed model lands.
+                    ("Glass Cannon", ItemRarity.Legendary, EquipmentSlot.Ring1,
+                        1, 1, false, false,
+                        new ItemStatValue[0],
+                        new[]
+                        {
+                            new ItemAffix(StatKind.Damage, ModifierKind.Increased, 100f),
+                            new ItemAffix(StatKind.MaxHealth, ModifierKind.Increased, -50f)
                         }),
 
                     ("Heart of the Fall", ItemRarity.Mythic, EquipmentSlot.Amulet,

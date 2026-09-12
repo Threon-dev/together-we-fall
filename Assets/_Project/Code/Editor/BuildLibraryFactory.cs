@@ -17,7 +17,8 @@ namespace TogetherWeFall.EditorTools
     /// that makes every mechanism visible by holding a button; this one authors
     /// ENOUGH of each mechanism that combinations nobody wrote down start
     /// existing — ten actives across five elements, supports that ask questions
-    /// about the target, and a weapon with a four-link to put them in.
+    /// about the target, and the two-handed weapon that rolls two skills of
+    /// its own with six holes behind each to put them in.
     ///
     /// Nothing here needed a line of system code, and that is the claim being
     /// tested. A poison cloud that stacks, a spit that leaves a pool where it
@@ -36,6 +37,16 @@ namespace TogetherWeFall.EditorTools
     public static class BuildLibraryFactory
     {
         private const string ItemFolder = "Assets/_Project/Data/Items";
+
+        /// <summary>
+        /// How many holes one skill gets: itself and six to change it with.
+        ///
+        /// The same number as GemSockets.MaxSupportsPerGroup plus the skill, and
+        /// deliberately not read from it — that constant is the ceiling the cast
+        /// fold will honour, this is what an author chose to cut. Equal today,
+        /// and a weapon with fewer holes is ordinary content rather than a bug.
+        /// </summary>
+        private const int SocketsPerSkill = 7;
 
         /// <summary>
         /// Every skill in the library, for the skill database.
@@ -88,6 +99,7 @@ namespace TogetherWeFall.EditorTools
                     // TUNE
                     skill.BaseDamage = 15f;
                     skill.Cooldown = 0.5f;
+                    skill.ManaCost = 6f;   // TUNE
                     skill.Range = 20f;
                     skill.ProjectileSpeed = 26f;
 
@@ -107,6 +119,7 @@ namespace TogetherWeFall.EditorTools
                     // arrives before the enemy has moved.
                     skill.BaseDamage = 10f;
                     skill.Cooldown = 0.4f;
+                    skill.ManaCost = 5f;   // TUNE
                     skill.Range = 22f;
                     skill.ProjectileSpeed = 34f;
 
@@ -134,6 +147,7 @@ namespace TogetherWeFall.EditorTools
                     // owns the support.
                     skill.BaseDamage = 8f;
                     skill.Cooldown = 0.6f;
+                    skill.ManaCost = 7f;   // TUNE
                     skill.Range = 20f;
                     skill.ProjectileSpeed = 28f;
                     skill.BaseChains = 2;
@@ -152,6 +166,7 @@ namespace TogetherWeFall.EditorTools
                     // about where the pool will end up.
                     skill.BaseDamage = 12f;
                     skill.Cooldown = 0.9f;
+                    skill.ManaCost = 8f;   // TUNE
                     skill.Range = 18f;
                     skill.ProjectileSpeed = 14f;
 
@@ -167,6 +182,7 @@ namespace TogetherWeFall.EditorTools
                     // TUNE
                     skill.BaseDamage = 20f;
                     skill.Cooldown = 0.8f;
+                    skill.ManaCost = 5f;   // TUNE
                     skill.Range = 3f;
                     skill.Radius = 2.5f;
                     skill.ArcDegrees = 90f;
@@ -186,6 +202,7 @@ namespace TogetherWeFall.EditorTools
                     // TUNE
                     skill.BaseDamage = 18f;
                     skill.Cooldown = 0.7f;
+                    skill.ManaCost = 7f;   // TUNE
                     skill.Range = 3f;
                     skill.Radius = 2.5f;
                     skill.ArcDegrees = 45f;
@@ -210,6 +227,7 @@ namespace TogetherWeFall.EditorTools
                     // TUNE
                     skill.BaseDamage = 12f;
                     skill.Cooldown = 1.2f;
+                    skill.ManaCost = 14f;   // TUNE
 
                     // Range is how far the burst may be placed. A nova is meant
                     // to go off on top of the caster, so it is short rather than
@@ -236,6 +254,7 @@ namespace TogetherWeFall.EditorTools
                     // stands in it, which is the whole of what a cloud is.
                     skill.BaseDamage = 5f;
                     skill.Cooldown = 5f;
+                    skill.ManaCost = 25f;   // TUNE
                     skill.Range = 16f;
                     skill.Radius = 3.5f;
                     skill.ZoneDuration = 6f;
@@ -254,6 +273,7 @@ namespace TogetherWeFall.EditorTools
                     // come from, this is the skill that proves it.
                     skill.BaseDamage = 4f;
                     skill.Cooldown = 0.3f;
+                    skill.ManaCost = 3f;   // TUNE
                     skill.Range = 18f;
                     skill.ProjectileSpeed = 30f;
                 });
@@ -295,7 +315,8 @@ namespace TogetherWeFall.EditorTools
 
             ActiveGems(skills, table);
             SupportGems(table);
-            CreateLinkedStaff(table);
+            CreateLinkedStaff(skills, table);
+            CreateTestbedPair(table);
         }
 
         /// <summary>
@@ -353,7 +374,7 @@ namespace TogetherWeFall.EditorTools
             // one to forget.
             SkillContentFactory.SupportGem(
                 "GemChain", "Chain Support",
-                SkillContentFactory.Modifier("SupportChain", SkillModifierKind.AddedChains, 3f),
+                SkillContentFactory.Modifier("SupportChain", SkillModifierKind.AddedChains, 2f),   // TUNE
                 ItemRarity.Uncommon, table);
 
             SkillContentFactory.SupportGem(
@@ -363,7 +384,7 @@ namespace TogetherWeFall.EditorTools
 
             SkillContentFactory.SupportGem(
                 "GemMulticast", "Multicast Support",
-                SkillContentFactory.Modifier("SupportMulticast", SkillModifierKind.Multicast, 2f),
+                SkillContentFactory.Modifier("SupportMulticast", SkillModifierKind.Multicast, 1f), // TUNE
                 ItemRarity.Rare, table);
 
             // Conversion is unconditional: it changes what the supported skill
@@ -427,47 +448,38 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
-        /// A weapon with a four-link, which is the piece the library actually
-        /// needed.
+        /// The two-handed weapon, as the model now says a two-handed weapon is:
+        /// two skills it rolled for itself, and six holes to change each of
+        /// them with.
         ///
-        /// Every combination in the design notes wants an active and two or
-        /// three supports in ONE group, and the only weapon in the game links
-        /// its six holes as [0,0,1,1,2,3] — a pair, a pair and two singles. So
-        /// none of the interesting builds could be assembled at all, whatever
-        /// gems the player owned. That is a content gap rather than a code one,
-        /// and this is the content.
+        /// Fourteen sockets in two groups of seven. The head of a group holds a
+        /// skill and the six behind it are supports linked to it, so the two
+        /// halves never touch: a Chain in the left seven changes the left skill
+        /// and is invisible to the right. That is not a rule anybody wrote for
+        /// this weapon — it is what a link group has always meant, and the whole
+        /// of "a two-handed weapon has two skills" is that the layout names two
+        /// groups instead of one.
         ///
-        /// The layout is [1,0,0,0,0,2]: the welded attack alone in its own
-        /// group, four linked holes for a build, and one lone hole for a second
-        /// skill meant to stay unmodified — a wall of fire to shoot through,
-        /// say. Keeping the innate attack out of the four-link matters: a
-        /// trigger gem in that group would otherwise take the left mouse button
-        /// away from the weapon's own attack as well.
+        /// What it rolls from is authored here as a list, and the list IS the
+        /// "suitable for this weapon" rule for now: everything cast at range and
+        /// nothing swung. A kind on the skill and a kind on the weapon would be
+        /// the real version, and both are concepts the project does not have —
+        /// a list of seven says the same thing today and is deleted the day it
+        /// does not.
         /// </summary>
-        private static ItemDefinition CreateLinkedStaff(LootTable table)
+        private static ItemDefinition CreateLinkedStaff(
+            SkillDefinition[] skills, LootTable table)
         {
             ItemDefinition staff = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
                 "RiftwoodStaff", ItemFolder, out bool created);
 
+            var serialized = new SerializedObject(staff);
+
             if (created)
             {
-                SkillContentFactory.CreateDefaultAttacks(out _, out SkillDefinition bolt);
-
-                var serialized = new SerializedObject(staff);
                 serialized.FindProperty("_displayName").stringValue = "Riftwood Staff";
                 serialized.FindProperty("_rarity").enumValueIndex = (int)ItemRarity.Epic;
                 serialized.FindProperty("_slot").enumValueIndex = (int)EquipmentSlot.MainHand;
-                serialized.FindProperty("_isTwoHanded").boolValue = true;
-                serialized.FindProperty("_innateSkill").objectReferenceValue = bolt;
-                serialized.FindProperty("_socketCount").intValue = 6;
-
-                SerializedProperty groups = serialized.FindProperty("_linkGroups");
-                var layout = new[] { 1, 0, 0, 0, 0, 2 };
-                groups.arraySize = layout.Length;
-
-                for (int i = 0; i < layout.Length; i++)
-                    groups.GetArrayElementAtIndex(i).intValue = layout[i];
-
                 serialized.FindProperty("_gridWidth").intValue = 1;
                 serialized.FindProperty("_gridHeight").intValue = 4;
                 serialized.FindProperty("_canRotate").boolValue = true;
@@ -475,12 +487,141 @@ namespace TogetherWeFall.EditorTools
                 // TUNE. A staff is worth carrying for its holes rather than its
                 // numbers, so the damage is ordinary on purpose.
                 WriteStat(serialized.FindProperty("_baseStats"), StatKind.Damage, 18f);
-
-                serialized.ApplyModifiedPropertiesWithoutUndo();
             }
+
+            // Written every rebuild, unlike the numbers above.
+            //
+            // Both hands, the layout and the skill pool are STRUCTURE rather
+            // than balance — they are what makes this item the shape it is, and
+            // the same class of thing as the reference lists the reaction table
+            // rewrites for exactly this reason. A staff authored before it held
+            // two skills comes back with six holes and one group, and the
+            // symptom is not a missing field: it is a weapon that quietly has
+            // one skill in a game where two-handed means two.
+            serialized.FindProperty("_isTwoHanded").boolValue = true;
+            serialized.FindProperty("_socketCount").intValue = SocketsPerSkill * 2;
+
+            // Two groups of seven: the head of each holds a skill the staff
+            // rolled, and the six behind it are what changes that skill. The
+            // whole of the two-handed rule is in this array — nothing else in
+            // the pipeline had to learn that a weapon can have two skills.
+            SerializedProperty groups = serialized.FindProperty("_linkGroups");
+            groups.arraySize = SocketsPerSkill * 2;
+
+            for (int i = 0; i < groups.arraySize; i++)
+                groups.GetArrayElementAtIndex(i).intValue = i < SocketsPerSkill ? 0 : 1;
+
+            // What a staff can come with: everything cast at range, and nothing
+            // swung. This IS the "suitable for this weapon" rule for now — an
+            // authored list per item rather than a kind on the skill, because a
+            // weapon kind is a concept the project does not have yet and a list
+            // is the smallest thing that means the same today.
+            var pool = new[]
+            {
+                Named(skills, "Firebolt"),
+                Named(skills, "Frost Lance"),
+                Named(skills, "Arc"),
+                Named(skills, "Toxic Spit"),
+                Named(skills, "Frost Nova"),
+                Named(skills, "Poison Cloud"),
+                Named(skills, "Spark")
+            };
+
+            SerializedProperty innate = serialized.FindProperty("_innateSkills");
+            innate.arraySize = pool.Length;
+
+            for (int i = 0; i < pool.Length; i++)
+                innate.GetArrayElementAtIndex(i).objectReferenceValue = pool[i];
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
 
             SceneBuildUtility.EnsureInLootTable(table, staff);
             return staff;
+        }
+
+        /// <summary>
+        /// The pair the emergence test is run on: holes with nothing already in
+        /// them.
+        ///
+        /// Every weapon in the game rolls its own skills and welds one into the
+        /// head of each link group, which is the model working as intended and
+        /// also the reason a named combination cannot be assembled by hand —
+        /// there is no free head to put a chosen active gem in. A weapon with an
+        /// EMPTY skill pool gets no weld at all (ActiveSkillCount is zero, so
+        /// Weld returns immediately), and every socket including the head is the
+        /// player's.
+        ///
+        /// Two items rather than one, because the question is partly whether a
+        /// link group ends at the item: the wand's four holes are one group, the
+        /// focus's two are another, and a support in one must be invisible to
+        /// the other. One hand each, so the bar binds them without a drag —
+        /// right hand speaks LMB, left speaks RMB.
+        ///
+        /// A testbed rather than content: no stats, so nothing it does can be
+        /// blamed on its numbers, and it is in the loot table only so the
+        /// dungeon can produce one too.
+        /// </summary>
+        private static void CreateTestbedPair(LootTable table)
+        {
+            Testbed("TestbedWand", "Testbed Wand", EquipmentSlot.MainHand,
+                new[] { 0, 0, 0, 0 }, table);
+
+            Testbed("TestbedFocus", "Testbed Focus", EquipmentSlot.OffHand,
+                new[] { 0, 0 }, table);
+        }
+
+        private static void Testbed(
+            string assetName, string displayName, EquipmentSlot slot,
+            int[] groups, LootTable table)
+        {
+            ItemDefinition item = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
+                assetName, ItemFolder, out bool created);
+
+            var serialized = new SerializedObject(item);
+
+            if (created)
+            {
+                serialized.FindProperty("_displayName").stringValue = displayName;
+                serialized.FindProperty("_rarity").enumValueIndex = (int)ItemRarity.Epic;
+                serialized.FindProperty("_slot").enumValueIndex = (int)slot;
+                serialized.FindProperty("_gridWidth").intValue = 1;
+                serialized.FindProperty("_gridHeight").intValue = 2;
+            }
+
+            // Written every rebuild, for the same reason the staff's layout is:
+            // the holes and the empty pool ARE what this item is, and a testbed
+            // that came back from an older run with a welded skill in socket
+            // zero would be a testbed that cannot hold the gem being tested.
+            serialized.FindProperty("_isTwoHanded").boolValue = false;
+            serialized.FindProperty("_socketCount").intValue = groups.Length;
+            serialized.FindProperty("_innateSkills").arraySize = 0;
+
+            SerializedProperty links = serialized.FindProperty("_linkGroups");
+            links.arraySize = groups.Length;
+
+            for (int i = 0; i < groups.Length; i++)
+                links.GetArrayElementAtIndex(i).intValue = groups[i];
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            SceneBuildUtility.EnsureInLootTable(table, item);
+        }
+
+        /// <summary>
+        /// One skill out of the library by display name.
+        ///
+        /// By name rather than by index, because the pool below is a content
+        /// decision and an index into CreateSkills is a thing that silently
+        /// means something else the day a skill is inserted in the middle.
+        /// </summary>
+        private static SkillDefinition Named(SkillDefinition[] skills, string displayName)
+        {
+            for (int i = 0; i < skills.Length; i++)
+            {
+                if (skills[i] != null && skills[i].DisplayName == displayName)
+                    return skills[i];
+            }
+
+            return null;
         }
 
         private static void WriteStat(SerializedProperty array, StatKind stat, float value)
@@ -512,13 +653,39 @@ namespace TogetherWeFall.EditorTools
             var config = SceneBuildUtility.CreateOrLoadConfig<CharacterConfig>("CharacterConfig");
 
             // The staff first, because it is the thing everything else goes
-            // into, then one gem per hole of the build being tested plus the
-            // wall to shoot through.
+            // into, and then every support gem in the game.
+            //
+            // All of them rather than a chosen few: the staff has twelve support
+            // holes now, and a kit that hands out four of them is a kit that
+            // decides the build. What is being tested is which combinations are
+            // worth making, and that question needs the whole set on the table.
+            //
+            // No active gems. A weapon rolls the skills it comes with, so what
+            // an active gem is for is a question this change has reopened — the
+            // ones a previous run of this menu added are left where they are
+            // rather than taken back, because this menu only ever adds.
             var wanted = new[]
             {
                 "RiftwoodStaff",
-                "GemSpark", "GemChain", "GemDevour", "GemCastOnKill", "GemCastOnCrit",
-                "GemCinderWall"
+
+                // The pair with free head sockets, and the active gems the
+                // written test build needs in them. Everything else in this kit
+                // is a support; these are the only way to choose which skill is
+                // being supported, because every other weapon rolls that for
+                // itself.
+                "TestbedWand", "TestbedFocus", "GemSpark", "GemCinderWall",
+
+                // Shape: how much exists and how big it is.
+                "GemChain", "GemFork", "GemMulticast", "GemGreaterArea", "GemBrutality",
+
+                // Element.
+                "GemHoarfrost",
+
+                // Conditional: the same gem twice over, depending on the target.
+                "GemDevour", "GemExecute", "GemKindledChain", "GemRivenChain",
+
+                // Trigger: two of these three have no event to fire on yet.
+                "GemCastOnKill", "GemCastOnCrit", "GemCastOnLowHealth"
             };
 
             var serialized = new SerializedObject(config);

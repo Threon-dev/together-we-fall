@@ -1,7 +1,9 @@
 using Unity.Collections;
 using Unity.Entities;
+using TogetherWeFall.Combat;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Inventory;
+using TogetherWeFall.Lobby;
 using TogetherWeFall.Shared;
 using TogetherWeFall.Skills;
 
@@ -115,6 +117,26 @@ namespace TogetherWeFall.Player.Systems
                 typeof(PlayerCharacter),
                 typeof(PlayerStats),
 
+                // The same Health every enemy carries, and the same buffer the
+                // damage resolver reads. Nothing hurts a player yet — enemies
+                // do not attack — so today this is a pool that only ever goes
+                // down by being spent. It is here in this shape rather than as
+                // a number of its own so that the day something does write a
+                // DamageEvent at a player, no system has to learn anything.
+                //
+                // Dead and DamageFeedback come along because the resolver's job
+                // declares them present. The death systems cannot reach a
+                // character: they query LocalTransform and a sheet is not a body
+                // in the world. So Dead on a player is a raised flag nothing
+                // consumes — which is precisely the Downed seam, waiting.
+                typeof(Health),
+                typeof(DamageEvent),
+                typeof(Dead),
+                typeof(DamageFeedback),
+
+                // Current alone. Its ceiling and its refill rate are stats.
+                typeof(Mana),
+
                 // Beside the stats because it is derived exactly as they are:
                 // read off the gear by PlayerStatsSystem on the same dirty flag.
                 typeof(KeystoneComponent),
@@ -127,6 +149,17 @@ namespace TogetherWeFall.Player.Systems
                 typeof(CarriedBag),
                 typeof(InventoryPlacementRequest),
                 typeof(InventoryPlacementResult),
+
+                // The lobby queues. On every character rather than only on one
+                // standing in a lobby, because "does this character have the
+                // buffer yet" is a question no system should have to ask before
+                // it can answer a click — and five empty buffers cost a
+                // character nothing in a scene with no NPCs in it.
+                typeof(NpcSessionOpened),
+                typeof(VendorTransactionRequest),
+                typeof(VendorTransactionResult),
+                typeof(CraftRequest),
+                typeof(CraftResult),
 
                 // Left empty here and filled by SkillLoadoutSystem: the skill
                 // database rides in a SubScene, which may not have loaded yet.
@@ -152,6 +185,20 @@ namespace TogetherWeFall.Player.Systems
                 Final = StatBlock.Zero(),
                 Version = 0
             });
+
+            // Zero, not full. Nobody knows how big these are until the sheet is
+            // computed, and PlayerResourceSystem fills them the first frame it
+            // reads a real one. Guessing a hundred here would be a second place
+            // that has an opinion about how much life a character has.
+            state.EntityManager.SetComponentData(entity, new Health { Current = 0f, Max = 0f });
+            state.EntityManager.SetComponentData(entity, new Mana { Current = 0f });
+
+            // Down from birth. Dead is enableable and an archetype creates it
+            // raised, so a character would otherwise be born dead — invisible
+            // today because nothing reads it, and a mystery on the day
+            // something does.
+            state.EntityManager.SetComponentEnabled<Dead>(entity, false);
+            state.EntityManager.SetComponentEnabled<DamageFeedback>(entity, false);
 
             // Dirty from birth, so the first recompute happens without anyone
             // having to equip something to trigger it.

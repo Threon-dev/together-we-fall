@@ -169,7 +169,11 @@ namespace TogetherWeFall.Skills.Systems
                     // itself a reaction decides whether these hits may start one.
                     CarriedElements = area.CarriedElements,
                     AppliedStatus = area.AppliedStatus,
-                    FromReaction = area.FromReaction
+                    FromReaction = area.FromReaction,
+
+                    // Same derivation as a projectile: depth is what a cast was
+                    // when it happened, so nothing new had to be carried.
+                    FromTrigger = area.TriggerDepth > 0
                 });
             }
         }

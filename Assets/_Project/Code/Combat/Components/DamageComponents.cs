@@ -122,6 +122,19 @@ namespace TogetherWeFall.Combat
         /// is worded this way round: the default has to be the ordinary case.
         /// </summary>
         public bool FromReaction;
+
+        /// <summary>
+        /// Whether the cast behind this blow was fired by a trigger rather than
+        /// by a key press.
+        ///
+        /// Nothing in combat reads it — it changes no damage and gates no rule.
+        /// It exists for the damage meter, which is the one place the question
+        /// "is my trigger gem actually firing" has to have an answer, and
+        /// answering it any other way meant carrying a skill index through four
+        /// more structs. Derived rather than authored: a cast at depth zero is a
+        /// button, and everything deeper is a consequence.
+        /// </summary>
+        public bool FromTrigger;
     }
 
     /// <summary>
