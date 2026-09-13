@@ -33,6 +33,14 @@ namespace TogetherWeFall.EditorTools
         private const int Unarmed = 0;
         private const int OneHanded = 1;
         private const int TwoHanded = 2;
+        private const int Bow = 3;
+
+        /// <summary>
+        /// Standing easy, out of a fight. Only ever a locomotion blend: Weapon
+        /// stays Unarmed underneath it, so a flinch or a cast from a stroll plays
+        /// the bare-handed one.
+        /// </summary>
+        private const int Relaxed = -1;
 
         /// <summary>
         /// The pack's draw and sheath take a full second, which is a second of
@@ -53,7 +61,8 @@ namespace TogetherWeFall.EditorTools
         {
             (Unarmed, "Unarmed", "Unarmed-"),
             (OneHanded, "Armed", "Armed-"),
-            (TwoHanded, "2Hand-Sword", "2Hand-Sword-")
+            (TwoHanded, "2Hand-Sword", "2Hand-Sword-"),
+            (Bow, "2Hand-Bow", "2Hand-Bow-")
         };
 
         /// <summary>
@@ -81,6 +90,10 @@ namespace TogetherWeFall.EditorTools
             controller.AddParameter("Grip", AnimatorControllerParameterType.Int);
             controller.AddParameter("Draw", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Sheath", AnimatorControllerParameterType.Trigger);
+
+            // A bow held drawn between shots, for as long as the presenter says
+            // the fight is still going.
+            controller.AddParameter("Aiming", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Cast", AnimatorControllerParameterType.Trigger);
@@ -138,17 +151,17 @@ namespace TogetherWeFall.EditorTools
             stances.blendParameter = "WeaponBlend";
             stances.useAutomaticThresholds = false;
 
+            // Out of a fight: the pack's Relax set, just below bare-handed guard
+            // on the line so the two ease into each other. Walks rather than
+            // strafes at half a stick — nobody strafes on a stroll.
+            AddStanceTree(stances, Relaxed, "Relax", "Relax-Idle", "Relax-Walk", "Relax-Run", "Forward");
+
             foreach ((int held, string folder, string prefix) in Stances)
             {
-                BlendTree tree = stances.CreateBlendTreeChild(held);
-                tree.name = folder;
-                tree.blendType = BlendTreeType.FreeformDirectional2D;
-                tree.blendParameter = "MoveX";
-                tree.blendParameterY = "MoveZ";
-
-                tree.AddChild(LoadClip(folder, prefix + "Idle"), Vector2.zero);
-                AddRing(tree, folder, prefix + "Strafe", 0.5f);
-                AddRing(tree, folder, prefix + "Run", 1f);
+                // Spelled as the pack spells it: the bow's forward runs are
+                // "Foward", and a clip that fails to load is a hole in the ring.
+                AddStanceTree(stances, held, folder, prefix + "Idle", prefix + "Strafe", prefix + "Run",
+                    held == Bow ? "Foward" : "Forward");
             }
 
             AnimatorState death = machine.AddState("Death");
@@ -163,6 +176,26 @@ namespace TogetherWeFall.EditorTools
             AnimatorStateTransition rise = death.AddTransition(locomotion);
             rise.AddCondition(AnimatorConditionMode.IfNot, 0f, "Dead");
             rise.duration = 0.3f;
+        }
+
+        /// <summary>
+        /// One stance's locomotion: idle in the middle, a ring at half a stick,
+        /// a ring of runs at the edge — the three blended by WeaponBlend at
+        /// this threshold.
+        /// </summary>
+        private static void AddStanceTree(
+            BlendTree stances, float threshold, string folder,
+            string idle, string halfGait, string runGait, string runForward)
+        {
+            BlendTree tree = stances.CreateBlendTreeChild(threshold);
+            tree.name = folder;
+            tree.blendType = BlendTreeType.FreeformDirectional2D;
+            tree.blendParameter = "MoveX";
+            tree.blendParameterY = "MoveZ";
+
+            tree.AddChild(LoadClip(folder, idle), Vector2.zero);
+            AddRing(tree, folder, halfGait, 0.5f);
+            AddRing(tree, folder, runGait, 1f, runForward);
         }
 
         private static void AddUpperBodyLayer(AnimatorController controller)
@@ -211,6 +244,19 @@ namespace TogetherWeFall.EditorTools
                 "2Hand-Sword-Attack1", "2Hand-Sword-Attack2", "2Hand-Sword-Attack3", "2Hand-Sword-Attack4",
                 "2Hand-Sword-Attack5", "2Hand-Sword-Attack6", "2Hand-Sword-Attack7", "2Hand-Sword-Attack8");
 
+            // A bow in the left hand: spells come out of the right one, a
+            // projectile is the bow itself, and a melee arc is the pack's bow
+            // bash. The chain bolt is a spell, not a shot — it jumps, it does
+            // not fly.
+            AddCast(machine, empty, Bow, SkillEffectKind.ChainBolt, "Armed", "Armed-Cast-R-Attack1");
+            AddCast(machine, empty, Bow, SkillEffectKind.AreaBurst, "Armed", "Armed-Cast-R-AOE1");
+            AddCast(machine, empty, Bow, SkillEffectKind.PersistentZone, "Armed", "Armed-Cast-R-Summon1");
+            AddShot(machine, empty);
+
+            AddSwings(machine, empty, Bow, "2Hand-Bow",
+                "2Hand-Bow-Attack1", "2Hand-Bow-Attack2", "2Hand-Bow-Attack3",
+                "2Hand-Bow-Attack4", "2Hand-Bow-Attack5", "2Hand-Bow-Attack6");
+
             foreach ((int held, string folder, string prefix) in Stances)
             {
                 AddOneShot(machine, empty, $"{StanceName(held)} Hit", LoadClip(folder, prefix + "GetHit-F1"),
@@ -228,6 +274,43 @@ namespace TogetherWeFall.EditorTools
                 Is("Draw"), EqualTo("Grip", TwoHanded)).speed = DrawSpeed;
             AddOneShot(machine, empty, "Sheath Two-Handed", LoadClip("2Hand-Sword", "2Hand-Sword-Sheath-Back-Unarmed"),
                 Is("Sheath"), EqualTo("Grip", TwoHanded)).speed = DrawSpeed;
+            AddOneShot(machine, empty, "Draw Bow", LoadClip("2Hand-Bow", "2Hand-Bow-Unsheath-Back-Unarmed"),
+                Is("Draw"), EqualTo("Grip", Bow)).speed = DrawSpeed;
+            AddOneShot(machine, empty, "Sheath Bow", LoadClip("2Hand-Bow", "2Hand-Bow-Sheath-Back-Unarmed"),
+                Is("Sheath"), EqualTo("Grip", Bow)).speed = DrawSpeed;
+        }
+
+        /// <summary>
+        /// A bow shot: the string let go, then held drawn until the fight
+        /// pauses.
+        ///
+        /// The arrow has already left at the press, so the release plays at
+        /// once, with no pull first. The drawn pose between shots is what makes
+        /// the next press read as letting go again rather than as a bow jerking
+        /// from rest; Aiming, from the presenter, is what finally lowers it.
+        ///
+        /// The pack aims in nine directions. The middle one, because the
+        /// character already turns to face the aim.
+        /// </summary>
+        private static void AddShot(AnimatorStateMachine machine, AnimatorState empty)
+        {
+            AnimatorState release = machine.AddState("Bow Release");
+            release.motion = LoadClip("2Hand-Bow", "2Hand-Bow-Aiming-Fire", "2Hand-Bow-Aiming-Fire-CM");
+
+            Enter(machine, release,
+                Is("Cast"), EqualTo("CastKind", (int)SkillEffectKind.Projectile), EqualTo("Weapon", Bow));
+
+            AnimatorState hold = machine.AddState("Bow Hold");
+            hold.motion = LoadClip("2Hand-Bow", "2Hand-Bow-Aiming-Pull", "2Hand-Bow-Aiming-Pull-CM");
+
+            AnimatorStateTransition nock = release.AddTransition(hold);
+            nock.hasExitTime = true;
+            nock.exitTime = 0.9f;
+            nock.duration = 0.1f;
+
+            AnimatorStateTransition lower = hold.AddTransition(empty);
+            lower.AddCondition(AnimatorConditionMode.IfNot, 0f, "Aiming");
+            lower.duration = 0.25f;
         }
 
         private static void AddCast(
@@ -393,6 +476,7 @@ namespace TogetherWeFall.EditorTools
         {
             OneHanded => "One-Handed",
             TwoHanded => "Two-Handed",
+            Bow => "Bow",
             _ => "Unarmed"
         };
 
@@ -463,18 +547,19 @@ namespace TogetherWeFall.EditorTools
             return material;
         }
 
-        private static void AddRing(BlendTree tree, string folder, string gait, float radius)
+        private static void AddRing(
+            BlendTree tree, string folder, string gait, float radius, string forward = "Forward")
         {
             float d = radius * Mathf.Sqrt(0.5f);
 
-            tree.AddChild(LoadClip(folder, $"{gait}-Forward"), new Vector2(0f, radius));
-            tree.AddChild(LoadClip(folder, $"{gait}-Forward-Right"), new Vector2(d, d));
+            tree.AddChild(LoadClip(folder, $"{gait}-{forward}"), new Vector2(0f, radius));
+            tree.AddChild(LoadClip(folder, $"{gait}-{forward}-Right"), new Vector2(d, d));
             tree.AddChild(LoadClip(folder, $"{gait}-Right"), new Vector2(radius, 0f));
             tree.AddChild(LoadClip(folder, $"{gait}-Backward-Right"), new Vector2(d, -d));
             tree.AddChild(LoadClip(folder, $"{gait}-Backward"), new Vector2(0f, -radius));
             tree.AddChild(LoadClip(folder, $"{gait}-Backward-Left"), new Vector2(-d, -d));
             tree.AddChild(LoadClip(folder, $"{gait}-Left"), new Vector2(-radius, 0f));
-            tree.AddChild(LoadClip(folder, $"{gait}-Forward-Left"), new Vector2(-d, d));
+            tree.AddChild(LoadClip(folder, $"{gait}-{forward}-Left"), new Vector2(-d, d));
         }
 
         /// <summary>

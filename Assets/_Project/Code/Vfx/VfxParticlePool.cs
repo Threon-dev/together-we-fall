@@ -64,6 +64,13 @@ namespace TogetherWeFall.Vfx
             internal float[] TrailWidths;
 
             /// <summary>
+            /// Mesh renderers under the root — an arrow, rather than a particle
+            /// effect. The only thing a tint reaches: particles carry their own
+            /// colours, and overriding them would flatten the effect.
+            /// </summary>
+            internal MeshRenderer[] Meshes;
+
+            /// <summary>
             /// Which systems are the body — simulated in local space, so they
             /// ride along with the root — as opposed to what the body leaves
             /// behind in the world. Read once, when the instance is made.
@@ -175,6 +182,9 @@ namespace TogetherWeFall.Vfx
                 instance.Trails[i].Clear();
             }
 
+            // A pooled arrow that flew through fire last time is not on fire now.
+            Tint(instance, null);
+
             instance.Emitting = true;
 
             // Owned by the caller until released. The tick leaves it alone.
@@ -184,6 +194,34 @@ namespace TogetherWeFall.Vfx
                 _live.Add(instance);
 
             return instance;
+        }
+
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static MaterialPropertyBlock _tintBlock;
+
+        /// <summary>
+        /// Colours a rented instance's meshes, or clears the colour with null.
+        /// Mesh renderers only — see Instance.Meshes.
+        /// </summary>
+        public void Tint(Instance instance, Color? color)
+        {
+            if (instance == null || instance.Meshes.Length == 0)
+                return;
+
+            _tintBlock ??= new MaterialPropertyBlock();
+
+            for (int i = 0; i < instance.Meshes.Length; i++)
+            {
+                if (color == null)
+                {
+                    instance.Meshes[i].SetPropertyBlock(null);
+                    continue;
+                }
+
+                _tintBlock.Clear();
+                _tintBlock.SetColor(BaseColorId, color.Value);
+                instance.Meshes[i].SetPropertyBlock(_tintBlock);
+            }
         }
 
         /// <summary>
@@ -308,6 +346,7 @@ namespace TogetherWeFall.Vfx
                 Systems = systems,
                 Trails = trails,
                 TrailWidths = widths,
+                Meshes = root.GetComponentsInChildren<MeshRenderer>(true),
                 Body = body,
                 TrailSeconds = trailSeconds
             };

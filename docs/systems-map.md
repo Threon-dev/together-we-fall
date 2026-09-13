@@ -33,7 +33,9 @@
   `Assets/ExplosiveLLC/RPG Character Mecanim Animation Pack`. Збирає
   `Code/Editor/CharacterContentFactory.cs`: `Art/Characters/PlayerLocomotion.controller`
   (**перезбирається на місці при кожному білді сцени**, GUID той самий) —
-  Base: 1D по `WeaponBlend` між трьома стійками (Unarmed / Armed / 2Hand-Sword),
+  Base: 1D по `WeaponBlend`: Relax (−1, поза боєм — `_relaxDelay` без кастів і
+  отриманих ударів, зброя не в руці) / Unarmed / Armed / 2Hand-Sword / 2Hand-Bow;
+  сусідні стійки презентер згладжує, дальні — стрибком під draw/sheath,
   у кожній 2D freeform (idle, strafe на 0.5, run на 1) + Death з Any State;
   Upper Body (маска з паку): каст start→end по `CastKind`+`Weapon`, свінги по
   `AttackIndex` (4 на стійку: парні б'ють праворуч, непарні ліворуч — напрям
@@ -52,6 +54,15 @@
   предмети в `Data/Items/Weapons/Swords/`, grip-префаби в `Art/Weapons/`
   (руків'я в нулі, лезо +Z, ширина +Y; міряється з меша, пишеться один раз),
   URP-матеріали в `Art/Weapons/Materials/`.
+- Луки: той самий `WeaponContentFactory.CreateBows` — пак `Dimasjk Studio/.../Bows & Quivers
+  Part 1` (лук + тятива в один grip-префаб, колчан, стріла `Arrow_01`); предмети в
+  `Data/Items/Weapons/Bows/` (`HuntersBow` отримує лише тіло/колчан/іконку,
+  `ElderwoodBow` — новий). `ItemDefinition._stance` (`WeaponStance.Bow`) і `_backModel`
+  (колчан) → `WeaponModel.Stance` = 3 / `Back`. Лук — у **лівій** руці, колчан весь час
+  на спині. Вшита атака `WeaponArrow` (`SkillContentFactory.CreateArrowAttack`, у
+  стартовому списку скілів) з сетом `VfxWeaponArrow`, де снаряд — модель стріли.
+  Аніматор: стійка `2Hand-Bow` (біг у паку — `Run-Foward`), Projectile при луці —
+  `Bow Release` → `Bow Hold` поки `Aiming`, закляття правою рукою, `Attack1..6` як удари.
   URP-копії матеріалів — `Art/Characters/Fina/` (оригінали — built-in шейдери
   Unity-chan, в URP розові); ці не перезбираються — видалити, щоб згенерувати.
 
@@ -367,7 +378,10 @@
   `SkillProjectile.VfxId` / `PendingHit.VfxId` → `VfxEvent.VfxId`.
   Каст оголошує `SkillCastSystem` (`CastVfxPoint`), удар — `SkillHitSystem.Apply`,
   трейл тягне `VfxPresenter.DrawTrails` запитом `ProjectileActive` (події на це
-  немає й не буде — снаряд це прапорець у пулі).
+  немає й не буде — снаряд це прапорець у пулі). **Сам снаряд без меша**
+  (`SceneBuildUtility.CreateProjectilePrefab`): вигляд — лише сет. Колір
+  підхопленого елемента (`URPMaterialPropertyBaseColor` на сутності) `DrawTrails`
+  кладе на `MeshRenderer` слідувача через `VfxParticlePool.Tint`; частинки не фарбуються.
   Контент і список для презентера: `Code/Editor/SkillVfxContentFactory.cs`
   (шлях до паку — одна константа `Pack`).
 - Системи: `Code/Vfx/Systems/` — `VfxEventRegistry`, `DamageNumber`, `StatusTint`.

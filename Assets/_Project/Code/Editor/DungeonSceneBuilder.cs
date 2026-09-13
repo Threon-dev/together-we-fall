@@ -69,8 +69,6 @@ namespace TogetherWeFall.EditorTools
 
             // White as well, for the same reason: the cast writes the element
             // colour onto every projectile it fires.
-            Material projectileMaterial =
-                SceneBuildUtility.CreateMaterial("SkillProjectile", Color.white);
 
             GameObject enemyPrefab = SceneBuildUtility.CreateEnemyPrefab(enemyConfig, enemyMaterial);
             GameObject chestPrefab = SceneBuildUtility.CreateChestPrefab(lootConfig, chestMaterial);
@@ -78,7 +76,7 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateLootItemPrefab(lootConfig, lootItemMaterial);
             LootTable lootTable = ItemContentFactory.CreateOrLoadTreasureTable();
             GameObject projectilePrefab =
-                SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
+                SceneBuildUtility.CreateProjectilePrefab();
 
             // White too: the pool writes the element colour onto every zone.
             GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(

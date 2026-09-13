@@ -63,6 +63,20 @@ namespace TogetherWeFall.Config
     }
 
     /// <summary>
+    /// How a worn weapon is carried, drawn and used on the body. Presentation
+    /// only — no system reads it, and a bow and a sword with the same numbers
+    /// play identically.
+    /// </summary>
+    public enum WeaponStance : byte
+    {
+        /// <summary>A sword in the right hand, one or both hands by IsTwoHanded.</summary>
+        Blade = 0,
+
+        /// <summary>A bow in the left hand: drawn, loosed, and carried across the back.</summary>
+        Bow = 1
+    }
+
+    /// <summary>
     /// One kind of item. A ScriptableObject, consistently with LootTable and the
     /// SkillDefinition that will follow: item data is authored, not coded.
     ///
@@ -88,6 +102,14 @@ namespace TogetherWeFall.Config
                  "+Z, width along +Y. Empty for anything not seen on the body. " +
                  "Reaches the character only through a scene rebuild.")]
         [SerializeField] private GameObject _model;
+
+        [Tooltip("Worn on the back beside the model for as long as the item is " +
+                 "equipped, drawn or not — a quiver. Same grip convention, with " +
+                 "the origin where it is mounted.")]
+        [SerializeField] private GameObject _backModel;
+
+        [Tooltip("How the model is carried, drawn and used on the body.")]
+        [SerializeField] private WeaponStance _stance = WeaponStance.Blade;
 
         [SerializeField] private ItemRarity _rarity = ItemRarity.Common;
         [SerializeField] private EquipmentSlot _slot = EquipmentSlot.MainHand;
@@ -174,6 +196,8 @@ namespace TogetherWeFall.Config
         public Sprite Icon => _icon;
 
         public GameObject Model => _model;
+        public GameObject BackModel => _backModel;
+        public WeaponStance Stance => _stance;
 
         public ItemRarity Rarity => _rarity;
         public EquipmentSlot Slot => _slot;

@@ -73,8 +73,6 @@ namespace TogetherWeFall.EditorTools
             var vfxConfig = SceneBuildUtility.CreateOrLoadConfig<VfxConfig>("VfxConfig");
             var lootConfig = SceneBuildUtility.CreateOrLoadConfig<LootConfig>("LootConfig");
 
-            Material projectileMaterial =
-                SceneBuildUtility.CreateMaterial("SkillProjectile", Color.white);
             Material zoneMaterial =
                 SceneBuildUtility.CreateMaterial("ElementZone", Color.white);
             Material chestMaterial =
@@ -84,7 +82,7 @@ namespace TogetherWeFall.EditorTools
 
             GameObject enemyPrefab = SceneBuildUtility.CreateEnemyPrefab(enemyConfig, enemyMaterial);
             GameObject projectilePrefab =
-                SceneBuildUtility.CreateProjectilePrefab(projectileMaterial);
+                SceneBuildUtility.CreateProjectilePrefab();
             GameObject zonePrefab = SceneBuildUtility.CreateZonePrefab(zoneMaterial);
             GameObject chestPrefab = SceneBuildUtility.CreateChestPrefab(lootConfig, chestMaterial);
             GameObject lootItemPrefab =

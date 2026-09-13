@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
 using TogetherWeFall.UI;
@@ -125,7 +126,8 @@ namespace TogetherWeFall.Vfx
             _flyingQuery = _entityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<SkillProjectile>(),
                 ComponentType.ReadOnly<ProjectileActive>(),
-                ComponentType.ReadOnly<LocalTransform>());
+                ComponentType.ReadOnly<LocalTransform>(),
+                ComponentType.ReadOnly<URPMaterialPropertyBaseColor>());
 
             for (int i = 0; i < _skillVfx.Length; i++)
             {
@@ -540,6 +542,8 @@ namespace TogetherWeFall.Vfx
                 _flyingQuery.ToComponentDataArray<SkillProjectile>(Allocator.Temp);
             using NativeArray<LocalTransform> transforms =
                 _flyingQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+            using NativeArray<URPMaterialPropertyBaseColor> colours =
+                _flyingQuery.ToComponentDataArray<URPMaterialPropertyBaseColor>(Allocator.Temp);
 
             // Marked before anything is added, so a projectile that is still in
             // the air keeps the trail it already has and everything else is
@@ -564,10 +568,22 @@ namespace TogetherWeFall.Vfx
                     ? Quaternion.LookRotation(velocity)
                     : Quaternion.identity;
 
+                // What it picked up on the way, on the model itself: the
+                // projectile has no body of its own any more to wear the colour
+                // the overlap system gives it. Only once it carries something —
+                // a plain shot keeps the colours it was modelled with.
+                Color? carried = projectiles[i].CarriedElements != 0
+                    ? ToColor(colours[i].Value)
+                    : null;
+
                 if (_trails.TryGetValue(projectile, out VfxParticlePool.Instance live))
                 {
                     _goneTrails.Remove(projectile);
                     live.Transform.SetPositionAndRotation(position, rotation);
+
+                    if (carried != null)
+                        _particles.Tint(live, carried);
+
                     continue;
                 }
 
@@ -584,7 +600,13 @@ namespace TogetherWeFall.Vfx
                 // still flies and still hits; it simply flies bare, which under
                 // the kind of barrage that reaches the ceiling is invisible.
                 if (rented != null)
+                {
                     _trails.Add(projectile, rented);
+
+                    // A fork is born carrying what its parent carried.
+                    if (carried != null)
+                        _particles.Tint(rented, carried);
+                }
             }
 
             for (int i = 0; i < _goneTrails.Count; i++)

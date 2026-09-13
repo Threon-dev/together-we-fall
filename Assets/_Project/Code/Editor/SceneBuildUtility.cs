@@ -133,7 +133,11 @@ namespace TogetherWeFall.EditorTools
                 SerializedProperty entry = models.GetArrayElementAtIndex(models.arraySize - 1);
                 entry.FindPropertyRelative("ItemId").intValue = item.ItemId;
                 entry.FindPropertyRelative("Prefab").objectReferenceValue = item.Model;
-                entry.FindPropertyRelative("TwoHanded").boolValue = item.IsTwoHanded;
+                entry.FindPropertyRelative("Back").objectReferenceValue = item.BackModel;
+
+                // The numbers CharacterContentFactory files its stances under.
+                entry.FindPropertyRelative("Stance").intValue =
+                    item.Stance == WeaponStance.Bow ? 3 : item.IsTwoHanded ? 2 : 1;
             }
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -412,18 +416,18 @@ namespace TogetherWeFall.EditorTools
         /// The projectile prefab. Small, colliderless, and tinted per instance
         /// by the damage type of whatever fired it.
         /// </summary>
-        public static GameObject CreateProjectilePrefab(Material material)
+        public static GameObject CreateProjectilePrefab()
         {
-            GameObject source = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            source.name = "SkillProjectilePrefab";
-            source.transform.localScale = new Vector3(0.32f, 0.32f, 0.32f);
-            source.GetComponent<MeshRenderer>().sharedMaterial = material;
-
-            // Projectiles find their targets by distance, not by physics. A
-            // collider would be one more component on something the game
-            // creates and destroys by the dozen.
-            Object.DestroyImmediate(source.GetComponent<BoxCollider>());
-
+            // Bodiless. What a projectile looks like is its skill's visual set —
+            // a fireball, an arrow — drawn by the presenter along its flight.
+            // A cube underneath showed through every one of them, and flew on
+            // its own whenever a set's pool ran out. The colour override stays
+            // on the entity: the presenter reads it to tint a model that has
+            // flown through a zone.
+            //
+            // No collider either: projectiles find their targets by distance,
+            // and their walls by ray.
+            var source = new GameObject("SkillProjectilePrefab");
             source.AddComponent<SkillProjectileAuthoring>();
 
             return SaveAsPrefab(source, "SkillProjectilePrefab");

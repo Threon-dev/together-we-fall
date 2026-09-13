@@ -118,6 +118,7 @@ namespace TogetherWeFall.EditorTools
             // table somebody tuned only ever gains the swords it is missing.
             // After the sample items, which two of the swords give a body to.
             WeaponContentFactory.CreateSwords(table);
+            WeaponContentFactory.CreateBows(table);
             return table;
         }
 

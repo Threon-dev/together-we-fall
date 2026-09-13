@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxWeaponArrow
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 0}
+  _projectile: {fileID: 5793227601758880575, guid: 1197ebc056fedd64f9683a4e270352d0,
+    type: 3}
+  _hit: {fileID: 0}
+  _scale: 1
+  _lift: 0
+  _yaw: 0
+  _sweepsRight: 0

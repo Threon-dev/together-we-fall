@@ -139,8 +139,9 @@ namespace TogetherWeFall.EditorTools
             // and the database below must contain them or a welded weapon
             // resolves to nothing.
             CreateDefaultAttacks(out SkillDefinition strike, out SkillDefinition bolt);
+            SkillDefinition arrow = CreateArrowAttack();
 
-            return new[] { splinter, nova, lance, sweep, wall, strike, bolt };
+            return new[] { splinter, nova, lance, sweep, wall, strike, bolt, arrow };
         }
 
 
@@ -198,6 +199,28 @@ namespace TogetherWeFall.EditorTools
             // resolves to nothing is a weapon that cannot attack, and the
             // failure is silent — the socket looks full and the key does nothing.
         }
+
+        /// <summary>
+        /// The shot a bow is born with: the weapon bolt's numbers, a little
+        /// longer and faster, flying as an arrow.
+        ///
+        /// Its own skill rather than the bolt with another look, because the
+        /// look belongs to the skill — and a wand firing the same bolt should
+        /// not start firing arrows. Create-or-load, and in the starter list, for
+        /// the reason the other two are: a welded id the database has never
+        /// heard of is a bow that cannot shoot.
+        /// </summary>
+        public static SkillDefinition CreateArrowAttack()
+            => Skill("WeaponArrow", "Weapon Arrow", skill =>
+            {
+                skill.Effect = SkillEffectKind.Projectile;
+                skill.DamageType = DamageType.Physical;
+                skill.BaseDamage = 6f;
+                skill.Cooldown = 0.55f;
+                skill.Range = 24f;
+                skill.ProjectileSpeed = 32f;
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+            });
 
         /// <summary>
         /// The zone skill, create-or-load, named rather than counted.

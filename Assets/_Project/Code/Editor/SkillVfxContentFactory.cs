@@ -67,6 +67,17 @@ namespace TogetherWeFall.EditorTools
                     projectile: null,
                     hit: $"{Pack}/Range_attack/Hit_frost.prefab"));
 
+            // The arrow in flight is the arrow model itself, which the weapon
+            // factory writes before this runs. No flash at the bow, and no hit
+            // effect: the arrow stays where it struck for the release fade,
+            // which says "hit" better than a puff would.
+            Assign(
+                "WeaponArrow",
+                Set("VfxWeaponArrow",
+                    cast: null,
+                    projectile: WeaponContentFactory.ArrowModelPath,
+                    hit: null));
+
             AssetDatabase.SaveAssets();
         }
 
