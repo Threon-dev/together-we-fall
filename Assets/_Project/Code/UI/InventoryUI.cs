@@ -111,12 +111,11 @@ namespace TogetherWeFall.UI
         /// <summary>
         /// How many squares are stacked down each side of the character.
         ///
-        /// Four and four, with the two weapons in a row underneath, which is
-        /// exactly the ten slots a character has. The fifth row is why the
-        /// sidebar's height budget did not have to change: it was already
-        /// measured for five rows of slots when they were a two-column list.
+        /// Five and five, weapons included, which is exactly the ten slots a
+        /// character has — and five rows is what the sidebar's height budget
+        /// was already measured for when they were a two-column list.
         /// </summary>
-        private const int DollRails = 4;
+        private const int DollRails = 5;
 
         /// <summary>Space between the squares, and between them and the portrait.</summary>
         private const float DollGap = 4f;
@@ -1192,9 +1191,9 @@ namespace TogetherWeFall.UI
         /// above a chest above a belt is a sentence the player reads without
         /// being told; ten labelled boxes in a two-column list is a form.
         ///
-        /// The character in the middle is the whole point of the arrangement,
-        /// which is why the rails are four and four rather than five and five:
-        /// there has to be something between them worth looking at.
+        /// The character in the middle is the whole point of the arrangement:
+        /// every square hangs on one side of it or the other, weapons too, so
+        /// nothing sits between the portrait and the top of the panel.
         /// </summary>
         private void RebuildSlots(DynamicBuffer<EquippedItem> slots, ItemDatabase items)
         {
@@ -1214,7 +1213,7 @@ namespace TogetherWeFall.UI
             float rails = DollRails * step - DollGap;
 
             float frameWidth = _sidebarWidth - 2f * (square + DollGap);
-            Ugui.TopLeft(_portraitFrame, square + DollGap, step, frameWidth, rails);
+            Ugui.TopLeft(_portraitFrame, square + DollGap, 0f, frameWidth, rails);
 
             if (_portrait != null && rails > 1f)
                 _portrait.SetAspect(frameWidth / rails);
@@ -1239,7 +1238,7 @@ namespace TogetherWeFall.UI
                 });
             }
 
-            Ugui.Size(_dollRoot, height: (DollRails + 1) * step - DollGap);
+            Ugui.Size(_dollRoot, height: rails);
         }
 
         /// <summary>
@@ -1250,53 +1249,39 @@ namespace TogetherWeFall.UI
         private Vector2 DollCorner(EquipmentSlot slot, float square, float step)
         {
             SlotPlace place = Doll[(int)slot];
-
-            switch (place.Rail)
-            {
-                // The rails start one row down, because the weapons are above
-                // them and above the portrait.
-                case 0:
-                    return new Vector2(0f, (place.Index + 1) * step);
-
-                case 1:
-                    return new Vector2(_sidebarWidth - square, (place.Index + 1) * step);
-
-                default:
-                    // The weapons sit in a row of their own across the top,
-                    // centred on the portrait rather than on a rail.
-                    float left = (_sidebarWidth - (2f * square + DollGap)) * 0.5f;
-                    return new Vector2(left + place.Index * step, 0f);
-            }
+            float left = place.Rail == 0 ? 0f : _sidebarWidth - square;
+            return new Vector2(left, place.Index * step);
         }
 
         /// <summary>
         /// Which rail each slot hangs on, in the buffer's own order.
         ///
-        /// The weapons crown the whole thing, main hand left and off hand right,
-        /// because they are the two the player changes most and the two a build
-        /// is named after. Under them the body reads top to bottom on the left —
-        /// head, chest, hands — and the small things on the right: neck, waist,
-        /// feet. The rings close both rails on the same line, one either side,
-        /// so the pair reads as a pair rather than as two entries in a list.
+        /// The weapons open both rails, main hand left and off hand right, at
+        /// either side of the character rather than above it — they are the two
+        /// the player changes most and the two a build is named after. Under
+        /// them the body reads top to bottom on the left — head, chest, hands —
+        /// and the small things on the right: neck, waist, feet. The rings close
+        /// both rails on the same line, one either side, so the pair reads as a
+        /// pair rather than as two entries in a list.
         /// </summary>
         private static readonly SlotPlace[] Doll =
         {
-            new SlotPlace(2, 0), // MainHand
-            new SlotPlace(2, 1), // OffHand
-            new SlotPlace(0, 0), // Helmet
-            new SlotPlace(0, 1), // Chest
-            new SlotPlace(0, 2), // Gloves
-            new SlotPlace(1, 2), // Boots
-            new SlotPlace(0, 3), // Ring1
-            new SlotPlace(1, 3), // Ring2
-            new SlotPlace(1, 0), // Amulet
-            new SlotPlace(1, 1)  // Belt
+            new SlotPlace(0, 0), // MainHand
+            new SlotPlace(1, 0), // OffHand
+            new SlotPlace(0, 1), // Helmet
+            new SlotPlace(0, 2), // Chest
+            new SlotPlace(0, 3), // Gloves
+            new SlotPlace(1, 3), // Boots
+            new SlotPlace(0, 4), // Ring1
+            new SlotPlace(1, 4), // Ring2
+            new SlotPlace(1, 1), // Amulet
+            new SlotPlace(1, 2)  // Belt
         };
 
         /// <summary>One square's place: which rail, and how far down it.</summary>
         private readonly struct SlotPlace
         {
-            /// <summary>Nought is the left rail, one the right, two the row on top.</summary>
+            /// <summary>Nought is the left rail, one the right.</summary>
             public readonly int Rail;
             public readonly int Index;
 
@@ -1740,58 +1725,52 @@ namespace TogetherWeFall.UI
             for (int i = 0; i < _slotTargets.Count; i++)
             {
                 SlotTarget target = _slotTargets[i];
-                Color colour = target.DefaultBorder;
-
-                if (Ugui.Contains(target.Element, pointer))
-                {
-                    colour = SlotAccepts(target)
-                        ? new Color(0.35f, 0.80f, 0.40f)
-                        : new Color(0.85f, 0.30f, 0.30f);
-                }
-
-                target.Border.color = colour;
+                target.Border.color = TargetColour(
+                    target.DefaultBorder, Ugui.Contains(target.Element, pointer), SlotAccepts(target));
             }
 
             for (int i = 0; i < _socketTargets.Count; i++)
             {
                 SocketTarget target = _socketTargets[i];
-                Color colour = target.DefaultBorder;
-
-                if (Ugui.Contains(target.Element, pointer))
-                {
-                    // A gem out of the bag, into a hole that is free. A gem
-                    // already in a socket moves by coming out first, which is
-                    // what the host would say too.
-                    bool accepts = _drag.Source2 == DragSource.Bag &&
-                                   _drag.IsGem && target.IsEmpty;
-
-                    colour = accepts
-                        ? new Color(0.35f, 0.80f, 0.40f)
-                        : new Color(0.85f, 0.30f, 0.30f);
-                }
-
-                target.Border.color = colour;
+                target.Border.color = TargetColour(
+                    target.DefaultBorder, Ugui.Contains(target.Element, pointer), SocketAccepts(target));
             }
 
             for (int i = 0; i < _barTargets.Count; i++)
             {
                 BarTarget target = _barTargets[i];
-                Color colour = target.DefaultBorder;
-
-                if (Ugui.Contains(target.Element, pointer))
-                {
-                    // Only an active gem, and only one already in a socket: a
-                    // hotkey points at a hole, so there has to be a hole.
-                    bool accepts = _drag.Source2 == DragSource.Socket && _drag.IsActiveGem;
-
-                    colour = accepts
-                        ? new Color(0.35f, 0.80f, 0.40f)
-                        : new Color(0.85f, 0.30f, 0.30f);
-                }
-
-                target.Border.color = colour;
+                target.Border.color = TargetColour(
+                    target.DefaultBorder, Ugui.Contains(target.Element, pointer), BarAccepts());
             }
         }
+
+        /// <summary>
+        /// A target's frame during a drag. Under the pointer it answers green or
+        /// red; everywhere else, every place the thing could go is lit from the
+        /// moment it is picked up, so the player sees where to take it before
+        /// aiming at anything.
+        /// </summary>
+        private static Color TargetColour(Color idle, bool hovered, bool accepts)
+        {
+            if (hovered)
+                return accepts ? new Color(0.35f, 0.80f, 0.40f) : new Color(0.85f, 0.30f, 0.30f);
+
+            return accepts ? new Color(0.95f, 0.78f, 0.30f) : idle;
+        }
+
+        /// <summary>
+        /// A gem out of the bag, into a hole that is free. A gem already in a
+        /// socket moves by coming out first, which is what the host would say too.
+        /// </summary>
+        private bool SocketAccepts(in SocketTarget target) =>
+            _drag.Source2 == DragSource.Bag && _drag.IsGem && target.IsEmpty;
+
+        /// <summary>
+        /// Only an active gem, and only one already in a socket: a hotkey points
+        /// at a hole, so there has to be a hole.
+        /// </summary>
+        private bool BarAccepts() =>
+            _drag.Source2 == DragSource.Socket && _drag.IsActiveGem;
 
         /// <summary>
         /// Whether dropping what is being dragged onto this slot could work.
@@ -1804,6 +1783,12 @@ namespace TogetherWeFall.UI
         private bool SlotAccepts(in SlotTarget target)
         {
             if (target.Blocked)
+                return false;
+
+            // Out of a socket goes to the bag or a key, never a slot — the drop
+            // ignores slots for it. Its mask would lie, too: a welded attack's
+            // drag carries the weapon's id, and the weapon fits the main hand.
+            if (_drag.Source2 == DragSource.Socket)
                 return false;
 
             if (_drag.Source2 == DragSource.EquipmentSlot && target.Slot == _drag.SourceSlot)

@@ -325,8 +325,15 @@ namespace TogetherWeFall.Config
         /// the only item that fits in more than one place is a ring, and that
         /// rule belongs in one method instead of in every ring asset.
         /// </summary>
+        /// <remarks>
+        /// Empty for a gem, like a coin: a gem is never worn, but its asset says
+        /// MainHand, and without this the equip system — which checks only the
+        /// mask — would put a gem dropped on the main hand there.
+        /// </remarks>
         public ushort AllowedSlots =>
-            CurrencyValue > 0 ? (ushort)0 : EquipmentSlots.AllowedMask(_slot);
+            CurrencyValue > 0 || _gemKind != GemKind.None
+                ? (ushort)0
+                : EquipmentSlots.AllowedMask(_slot);
 
         /// <summary>
         /// What this item is worth as money, or zero.
