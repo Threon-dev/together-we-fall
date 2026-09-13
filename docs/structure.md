@@ -14,7 +14,8 @@ Assets/_Project/
 │   │                                     StatusEffect, ElementReactionRule/Table
 │   ├── Shared/                           PlayerPositions*, SimulationSettings*
 │   ├── Player/                           InputReader, Motor, MoveIntent,
-│   │   │                                 PositionPublisher, ActionPublisher
+│   │   │                                 PositionPublisher, ActionPublisher,
+│   │   │                                 AnimationPresenter (MoveX/MoveZ)
 │   │   ├── CharacterPortrait.cs          камера-дитина гравця → RenderTexture
 │   │   ├── Components/PlayerCharacter.cs сутність гравця в ECS
 │   │   ├── Components/PlayerResources.cs Mana — Current і нічого більше

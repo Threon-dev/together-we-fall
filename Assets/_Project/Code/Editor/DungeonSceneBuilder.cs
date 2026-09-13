@@ -57,8 +57,6 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateOrLoadConfig<CharacterConfig>("CharacterConfig");
             var vfxConfig = SceneBuildUtility.CreateOrLoadConfig<VfxConfig>("VfxConfig");
 
-            Material playerMaterial =
-                SceneBuildUtility.CreateMaterial("PlayerBody", new Color(0.25f, 0.65f, 0.95f));
             Material enemyMaterial =
                 SceneBuildUtility.CreateMaterial("EnemyBody", new Color(0.85f, 0.25f, 0.22f));
             Material chestMaterial =
@@ -141,7 +139,7 @@ namespace TogetherWeFall.EditorTools
 
             // The director moves the player onto the entrance during Awake, so
             // the authored position only has to be somewhere harmless.
-            PlayerMotor player = SceneBuildUtility.CreatePlayer(playerMaterial, new Vector3(0f, 1f, 0f));
+            PlayerMotor player = SceneBuildUtility.CreatePlayer(new Vector3(0f, 1f, 0f));
             TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
             GameObject debugTools = SceneBuildUtility.CreateDebugTools();
 

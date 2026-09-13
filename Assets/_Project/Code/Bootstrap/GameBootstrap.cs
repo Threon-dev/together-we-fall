@@ -59,6 +59,10 @@ namespace TogetherWeFall.Bootstrap
                  "simply cannot be seen.")]
         [SerializeField] private PlayerHud _playerHud;
 
+        [Tooltip("Optional. Without it the model still walks and runs, but " +
+                 "never casts, flinches or falls.")]
+        [SerializeField] private PlayerAnimationPresenter _playerAnimation;
+
         [Tooltip("Optional. Without it the game plays identically and looks flat.")]
         [SerializeField] private VfxPresenter _vfxPresenter;
 
@@ -101,6 +105,9 @@ namespace TogetherWeFall.Bootstrap
             // several and only one of them is this screen's.
             if (_playerHud != null)
                 _playerHud.Initialize(_positionPublisher.PlayerId);
+
+            if (_playerAnimation != null)
+                _playerAnimation.Initialize(_positionPublisher.PlayerId);
 
             if (_lobbyUI != null)
                 _lobbyUI.Initialize(_input, _player.transform, _positionPublisher.PlayerId);

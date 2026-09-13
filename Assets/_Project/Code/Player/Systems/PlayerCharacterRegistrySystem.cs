@@ -137,6 +137,9 @@ namespace TogetherWeFall.Player.Systems
                 // Current alone. Its ceiling and its refill rate are stats.
                 typeof(Mana),
 
+                // What the model's arms read. Zero at birth: nothing cast yet.
+                typeof(CastCue),
+
                 // Money, which used to be a pile of items in the bag. Zero at
                 // birth and filled by picking coins up off the floor.
                 typeof(Wallet),

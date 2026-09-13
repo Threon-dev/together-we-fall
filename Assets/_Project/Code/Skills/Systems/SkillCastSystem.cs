@@ -357,6 +357,14 @@ namespace TogetherWeFall.Skills.Systems
             slots[request.SlotIndex] = slot;
 
             SpendMana(ref state, character, resolved.ManaCost);
+
+            if (state.EntityManager.HasComponent<CastCue>(character))
+            {
+                CastCue cue = state.EntityManager.GetComponentData<CastCue>(character);
+                cue.Count++;
+                cue.Effect = resolved.Effect;
+                state.EntityManager.SetComponentData(character, cue);
+            }
         }
 
         // The crit roll used to live here, once per press, and it was in the

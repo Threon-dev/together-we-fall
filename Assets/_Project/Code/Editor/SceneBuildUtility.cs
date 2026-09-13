@@ -57,27 +57,52 @@ namespace TogetherWeFall.EditorTools
             RenderSettings.ambientLight = new Color(0.32f, 0.34f, 0.40f);
         }
 
-        public static PlayerMotor CreatePlayer(Material material, Vector3 position)
+        public static PlayerMotor CreatePlayer(Vector3 position)
         {
-            GameObject player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            player.name = "Player";
+            var player = new GameObject("Player");
             player.transform.position = position;
-            player.GetComponent<MeshRenderer>().sharedMaterial = material;
-
-            // CharacterController carries its own capsule collision — the
-            // primitive's collider would only duplicate it and cause odd
-            // contacts.
-            Object.DestroyImmediate(player.GetComponent<CapsuleCollider>());
 
             CharacterController controller = player.AddComponent<CharacterController>();
             controller.height = 2f;
             controller.radius = 0.5f;
             controller.center = Vector3.zero;
 
+            PlayerAnimationPresenter animation = player.AddComponent<PlayerAnimationPresenter>();
+
+            // The model is a child, so the motor turns the root and the model
+            // only animates. Its origin is at the feet; the controller's is in
+            // the middle of the capsule.
+            var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CharacterContentFactory.ModelPrefabPath);
+
+            if (modelPrefab == null)
+            {
+                Debug.LogError(
+                    $"[SceneBuildUtility] No player model at '{CharacterContentFactory.ModelPrefabPath}'. " +
+                    "The player will be invisible.");
+            }
+            else
+            {
+                var model = (GameObject)PrefabUtility.InstantiatePrefab(modelPrefab, player.transform);
+                model.transform.localPosition = new Vector3(0f, -controller.height * 0.5f, 0f);
+                model.transform.localRotation = Quaternion.identity;
+
+                CharacterContentFactory.ConvertMaterials(model);
+
+                // Not ??: a missing component is Unity's fake null, not a real one.
+                if (!model.TryGetComponent(out Animator animator))
+                    animator = model.AddComponent<Animator>();
+                animator.runtimeAnimatorController = CharacterContentFactory.CreateLocomotionController();
+
+                // The motor owns position and facing; clips only pose the body.
+                animator.applyRootMotion = false;
+
+                SetReference(animation, "_animator", animator);
+            }
+
             // Its own layer, so the portrait camera can be pointed at the
-            // character and see nothing else. Recursive because the capsule will
-            // one day be a model with limbs, and a portrait that quietly renders
-            // only the root is the sort of empty box nobody debugs.
+            // character and see nothing else. Recursive because the model has
+            // limbs, and a portrait that quietly renders only the root is the
+            // sort of empty box nobody debugs.
             SetLayerRecursively(player, EnsureLayer(CharacterLayer));
 
             player.AddComponent<PlayerInputReader>();
@@ -254,6 +279,8 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_curtainPresenter").objectReferenceValue = curtainPresenter;
             serialized.FindProperty("_audioPresenter").objectReferenceValue = audioPresenter;
             serialized.FindProperty("_playerHud").objectReferenceValue = playerHud;
+            serialized.FindProperty("_playerAnimation").objectReferenceValue =
+                player.GetComponent<PlayerAnimationPresenter>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

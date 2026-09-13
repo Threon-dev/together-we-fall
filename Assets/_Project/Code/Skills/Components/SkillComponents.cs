@@ -259,6 +259,24 @@ namespace TogetherWeFall.Skills
         public bool HasBinding => Gear != Entity.Null;
     }
 
+    /// <summary>
+    /// PRESENTATION — how many times this character's own buttons have produced
+    /// a cast, and what kind the last one was.
+    ///
+    /// A counter rather than an event, for the animation that swings the arm:
+    /// the VfxEvent queue is drained by the one presenter that draws it, and a
+    /// second reader would be racing it. A number that only goes up can be read
+    /// by anyone, late, and still show that something happened.
+    ///
+    /// Written where the cooldown is charged, so a press that did nothing plays
+    /// nothing. Triggered casts do not count — nobody raised a hand for them.
+    /// </summary>
+    public struct CastCue : IComponentData
+    {
+        public uint Count;
+        public SkillEffectKind Effect;
+    }
+
     // The starting loadout used to be a DefaultSkillSlot buffer here. Skills
     // live in gems now, so what a character can cast is decided by what is
     // socketed — and a second list saying otherwise would be a second answer to

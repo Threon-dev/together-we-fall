@@ -74,8 +74,6 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateMaterial("ArenaGround", new Color(0.22f, 0.24f, 0.28f));
             Material obstacleMaterial =
                 SceneBuildUtility.CreateMaterial("ArenaObstacle", new Color(0.40f, 0.34f, 0.30f));
-            Material playerMaterial =
-                SceneBuildUtility.CreateMaterial("PlayerBody", new Color(0.25f, 0.65f, 0.95f));
             Material enemyMaterial =
                 SceneBuildUtility.CreateMaterial("EnemyBody", new Color(0.85f, 0.25f, 0.22f));
             Material dummyMaterial =
@@ -171,7 +169,7 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateElementReactionDatabase(reactionTable);
 
             PlayerMotor player =
-                SceneBuildUtility.CreatePlayer(playerMaterial, new Vector3(0f, 1f, 0f));
+                SceneBuildUtility.CreatePlayer(new Vector3(0f, 1f, 0f));
             TopDownCameraRig cameraRig = SceneBuildUtility.CreateCameraRig();
             GameObject debugTools = SceneBuildUtility.CreateDebugTools();
 

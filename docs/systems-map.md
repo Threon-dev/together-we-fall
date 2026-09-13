@@ -23,6 +23,20 @@
   (делегат приходить з `GameBootstrap`).
 - Позиції для ECS: `Code/Shared/PlayerPositions.cs` +
   `Code/Shared/PlayerPositionRegistrySystem.cs` (`PlayerPositionsSingleton`).
+- Модель і анімації: `Code/Player/PlayerAnimationPresenter.cs` — лише читає:
+  швидкість `CharacterController` у локальному просторі → `MoveX`/`MoveZ`;
+  з сутності персонажа (за `PlayerId` з `GameBootstrap`) — `CastCue.Count` виріс →
+  `Cast` + `CastKind` (= `SkillEffectKind`), `Health.Current` впав при тому ж
+  `Max` → `Hit`, `Dead` увімкнений → `Dead`. `CastCue` пише `SkillCastSystem.Cast`
+  там, де списує кулдаун (тригерні касти не рахуються).
+  Модель — Fina (`Assets/smoky_fox/FinaAnimeGirl`), кліпи — Unarmed з
+  `Assets/ExplosiveLLC/RPG Character Mecanim Animation Pack`. Збирає
+  `Code/Editor/CharacterContentFactory.cs`: `Art/Characters/PlayerLocomotion.controller`
+  (**перезбирається на місці при кожному білді сцени**, GUID той самий) —
+  Base: 2D freeform (idle, кільце strafe на 0.5, run на 1) + Death з Any State;
+  Upper Body (маска з паку): каст start→end по `CastKind`, MeleeArc, Hit.
+  URP-копії матеріалів — `Art/Characters/Fina/` (оригінали — built-in шейдери
+  Unity-chan, в URP розові); ці не перезбираються — видалити, щоб згенерувати.
 
 ## Вороги та рух
 - ECS: `Code/Enemies/Components/EnemyAuthoritativeComponents.cs` — `EnemyTag`,
