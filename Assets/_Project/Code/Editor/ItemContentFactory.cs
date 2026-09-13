@@ -96,23 +96,28 @@ namespace TogetherWeFall.EditorTools
             LootTable table = SceneBuildUtility.CreateOrLoadConfig<LootTable>(
                 "TreasureLootTable", out bool created);
 
-            if (!created)
-                return table;
-
-            ItemDefinition[] items = CreateSampleItems();
-
-            var serialized = new SerializedObject(table);
-            SerializedProperty entries = serialized.FindProperty("_entries");
-            entries.arraySize = items.Length;
-
-            for (int i = 0; i < items.Length; i++)
+            if (created)
             {
-                SerializedProperty entry = entries.GetArrayElementAtIndex(i);
-                entry.FindPropertyRelative("_item").objectReferenceValue = items[i];
-                entry.FindPropertyRelative("_weight").floatValue = 1f;
+                ItemDefinition[] items = CreateSampleItems();
+
+                var serialized = new SerializedObject(table);
+                SerializedProperty entries = serialized.FindProperty("_entries");
+                entries.arraySize = items.Length;
+
+                for (int i = 0; i < items.Length; i++)
+                {
+                    SerializedProperty entry = entries.GetArrayElementAtIndex(i);
+                    entry.FindPropertyRelative("_item").objectReferenceValue = items[i];
+                    entry.FindPropertyRelative("_weight").floatValue = 1f;
+                }
+
+                serialized.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            // On every build, not only the first: additive, like the gems, so a
+            // table somebody tuned only ever gains the swords it is missing.
+            // After the sample items, which two of the swords give a body to.
+            WeaponContentFactory.CreateSwords(table);
             return table;
         }
 
@@ -370,7 +375,7 @@ namespace TogetherWeFall.EditorTools
             return items;
         }
 
-        private static void WriteStats(SerializedProperty array, ItemStatValue[] values)
+        internal static void WriteStats(SerializedProperty array, ItemStatValue[] values)
         {
             array.arraySize = values.Length;
 
@@ -382,7 +387,7 @@ namespace TogetherWeFall.EditorTools
             }
         }
 
-        private static void WriteAffixes(SerializedProperty array, ItemAffix[] affixes)
+        internal static void WriteAffixes(SerializedProperty array, ItemAffix[] affixes)
         {
             array.arraySize = affixes.Length;
 

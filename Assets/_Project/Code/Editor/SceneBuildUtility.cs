@@ -97,6 +97,7 @@ namespace TogetherWeFall.EditorTools
                 animator.applyRootMotion = false;
 
                 SetReference(animation, "_animator", animator);
+                WriteWeaponModels(animation);
             }
 
             // Its own layer, so the portrait camera can be pointed at the
@@ -109,6 +110,33 @@ namespace TogetherWeFall.EditorTools
             player.AddComponent<PlayerPositionPublisher>();
             player.AddComponent<PlayerActionPublisher>();
             return player.AddComponent<PlayerMotor>();
+        }
+
+        /// <summary>
+        /// Every item with a body, found rather than named — the same rule as
+        /// the inventory's icons: a model is set on the asset, and should not
+        /// also need a line here.
+        /// </summary>
+        private static void WriteWeaponModels(PlayerAnimationPresenter animation)
+        {
+            var serialized = new SerializedObject(animation);
+            SerializedProperty models = serialized.FindProperty("_weaponModels");
+            models.arraySize = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets($"t:{nameof(ItemDefinition)}", new[] { DataFolder }))
+            {
+                var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(AssetDatabase.GUIDToAssetPath(guid));
+                if (item == null || item.Model == null)
+                    continue;
+
+                models.arraySize++;
+                SerializedProperty entry = models.GetArrayElementAtIndex(models.arraySize - 1);
+                entry.FindPropertyRelative("ItemId").intValue = item.ItemId;
+                entry.FindPropertyRelative("Prefab").objectReferenceValue = item.Model;
+                entry.FindPropertyRelative("TwoHanded").boolValue = item.IsTwoHanded;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>

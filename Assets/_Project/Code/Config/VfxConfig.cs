@@ -53,33 +53,6 @@ namespace TogetherWeFall.Config
                  "back, because a crowd dying is exactly when allocating hurts.")]
         [SerializeField, Range(8, 256)] private int _damageNumberPoolSize = 64;
 
-        [Header("Hit stop")]
-        [Tooltip("How long the world nearly stops when a blast lands. Thirty to " +
-                 "sixty milliseconds is the window where it reads as weight " +
-                 "rather than as a stutter.")]
-        [SerializeField, Range(0f, 0.15f)] private float _hitStopSeconds = 0.045f;
-
-        [Tooltip("Time scale during the freeze. Not zero: at zero every system " +
-                 "that divides by delta time has to grow a special case.")]
-        [SerializeField, Range(0.01f, 0.5f)] private float _hitStopScale = 0.05f;
-
-        [Tooltip("How long the world takes to climb back to full speed after the " +
-                 "freeze. Snapping back reads as a dropped frame; easing back " +
-                 "reads as the world recovering from the hit.")]
-        [SerializeField, Range(0f, 0.6f)] private float _hitStopRecoverySeconds = 0.18f;
-
-        [Tooltip("The shape of that climb, from the frozen scale to normal. " +
-                 "Deliberately a curve and not a number: a straight line is just " +
-                 "a slower snap, and which curve feels right is decided by " +
-                 "playing rather than by reasoning.")]
-        [SerializeField]
-        private AnimationCurve _hitStopRecoveryCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-
-        [Tooltip("Quiet period after a freeze ends before another may start. " +
-                 "A fight produces impacts every frame; without this the world " +
-                 "simply stays slow.")]
-        [SerializeField, Range(0f, 2f)] private float _hitStopCooldownSeconds = 0.8f;
-
         [Header("Camera")]
         [SerializeField, Range(0f, 1f)] private float _explosionShake = 0.35f;
 
@@ -158,12 +131,6 @@ namespace TogetherWeFall.Config
 
         public float ExplosionSeconds => _explosionSeconds;
         public float ExplosionWidth => _explosionWidth;
-
-        public float HitStopSeconds => _hitStopSeconds;
-        public float HitStopScale => _hitStopScale;
-        public float HitStopRecoverySeconds => _hitStopRecoverySeconds;
-        public AnimationCurve HitStopRecoveryCurve => _hitStopRecoveryCurve;
-        public float HitStopCooldownSeconds => _hitStopCooldownSeconds;
 
         public float ExplosionShake => _explosionShake;
         public float ShakeIntervalSeconds => _shakeIntervalSeconds;

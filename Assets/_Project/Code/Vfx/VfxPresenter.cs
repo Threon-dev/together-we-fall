@@ -70,7 +70,6 @@ namespace TogetherWeFall.Vfx
         private readonly List<Entity> _goneTrails = new List<Entity>();
         private readonly DamageNumberPool _numbers = new DamageNumberPool();
         private readonly StatusIconPool _icons = new StatusIconPool();
-        private readonly HitStopController _hitStop = new HitStopController();
 
         private TopDownCameraRig _camera;
         private EntityManager _entityManager;
@@ -152,10 +151,6 @@ namespace TogetherWeFall.Vfx
                 _config.ParticlesPerEffect,
                 _config.ParticleFadeSeconds,
                 _config.ParticleMaxSeconds);
-            _hitStop.Configure(
-                _config.HitStopRecoverySeconds,
-                _config.HitStopRecoveryCurve,
-                _config.HitStopCooldownSeconds);
 
             if (_canvas == null)
             {
@@ -194,7 +189,6 @@ namespace TogetherWeFall.Vfx
             _pool.Tick(unscaled);
             _particles.Tick(unscaled);
             _numbers.Tick(unscaled);
-            _hitStop.Tick(unscaled);
         }
 
         private void DrainEvents()
@@ -315,13 +309,10 @@ namespace TogetherWeFall.Vfx
                 _config.ExplosionSeconds,
                 _config.ExplosionWidth);
 
+            // A shake and no freeze. There was a hit-stop here, and in a crowd
+            // with exploding deaths it went off often enough to read as the
+            // whole fight running in slow motion.
             TryShake(_config.ExplosionShake);
-
-            // The freeze goes with the blast rather than with the kills it
-            // causes: the kills land a frame later, and by then the moment worth
-            // punctuating has gone. Whether it is allowed at all — and how it
-            // comes back out — the controller decides.
-            _hitStop.Request(_config.HitStopSeconds, _config.HitStopScale);
         }
 
         /// <summary>
@@ -507,7 +498,9 @@ namespace TogetherWeFall.Vfx
                 return;
 
             _particles.Play(
-                set.Cast, ToPoint(effect.Position, set.Lift), Facing(effect), set.Scale);
+                set.Cast, ToPoint(effect.Position, set.Lift),
+                Facing(effect) * Quaternion.Euler(0f, set.Yaw, 0f), set.Scale,
+                mirrored: effect.SweepRight != set.SweepsRight);
         }
 
         /// <summary>
@@ -652,11 +645,6 @@ namespace TogetherWeFall.Vfx
 
         private void OnDisable()
         {
-            // Time scale is a global. Leaving play mode mid-freeze would
-            // otherwise leave the editor running at five percent speed with
-            // nothing on screen to explain why.
-            _hitStop.Release();
-
             // Trails are transforms in the scene, not events: left alone they
             // would hang in the air where the last projectile died.
             _trails.Clear();
@@ -671,8 +659,6 @@ namespace TogetherWeFall.Vfx
 
         private void OnDestroy()
         {
-            _hitStop.Release();
-
             if (_hasWorld)
             {
                 _eventsQuery.Dispose();

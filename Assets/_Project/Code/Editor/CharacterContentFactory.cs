@@ -8,7 +8,7 @@ namespace TogetherWeFall.EditorTools
 {
     /// <summary>
     /// The player's body: the Fina model from its store pack, and an animator
-    /// controller built from the RPG Character pack's unarmed clips.
+    /// controller built from the RPG Character pack's clips.
     ///
     /// Both packs are humanoid, which is the whole reason the clips fit a model
     /// they were not made for — the retargeting happens in the avatars.
@@ -23,21 +23,50 @@ namespace TogetherWeFall.EditorTools
         public const string ModelPrefabPath = "Assets/smoky_fox/FinaAnimeGirl/Prefabs/Fina.prefab";
 
         private const string Pack = "Assets/ExplosiveLLC/RPG Character Mecanim Animation Pack";
-        private const string ClipFolder = Pack + "/Animations/Unarmed";
         private const string UpperBodyMaskPath = Pack + "/Avatars/RPG-Character-Upperbody-AvatarMask.mask";
 
         private const string CharacterFolder = SceneBuildUtility.ArtFolder + "/Characters";
         private const string ControllerPath = CharacterFolder + "/PlayerLocomotion.controller";
 
+        // What is in the hand. The same numbers PlayerAnimationPresenter writes
+        // into Weapon, WeaponBlend and Grip.
+        private const int Unarmed = 0;
+        private const int OneHanded = 1;
+        private const int TwoHanded = 2;
+
+        /// <summary>
+        /// The pack's draw and sheath take a full second, which is a second of
+        /// standing in a crowd with nothing in the hand. PlayerAnimationPresenter's
+        /// swap delays are timed against this speed.
+        /// </summary>
+        private const float DrawSpeed = 2.5f;
+
+        /// <summary>
+        /// How far into a swing it starts. The pack's swings open on a slow
+        /// wind-up, and the blow has already landed by the time the key is
+        /// read — skipping into the swing puts the blade where the hit is.
+        /// </summary>
+        private const float SwingOffset = 0.15f;
+
+        /// <summary>A stance: which folder of the pack, and what its files start with.</summary>
+        private static readonly (int held, string folder, string prefix)[] Stances =
+        {
+            (Unarmed, "Unarmed", "Unarmed-"),
+            (OneHanded, "Armed", "Armed-"),
+            (TwoHanded, "2Hand-Sword", "2Hand-Sword-")
+        };
+
         /// <summary>
         /// Two layers.
         ///
-        /// Base: locomotion, and death over it. Idle in the middle of the blend
-        /// tree, a ring of strafing walks at half a stick, a ring of runs at the
-        /// edge — keys always give a full stick, so the walks are for a gamepad.
+        /// Base: locomotion, and death over it. One blend per stance — idle in
+        /// the middle, a ring of strafing walks at half a stick, a ring of runs
+        /// at the edge — and the three blended by WeaponBlend, so drawing a sword
+        /// eases the arms into holding it rather than snapping.
         ///
-        /// Upper body: casts and flinches, masked to the waist up, so a
-        /// character can shoot while backing away and the legs keep running.
+        /// Upper body, masked to the waist up so the legs keep running: casts
+        /// and swings picked by what is held and what was cast, flinches, and
+        /// the draw and sheath.
         /// </summary>
         public static RuntimeAnimatorController CreateLocomotionController()
         {
@@ -47,12 +76,27 @@ namespace TogetherWeFall.EditorTools
 
             controller.AddParameter("MoveX", AnimatorControllerParameterType.Float);
             controller.AddParameter("MoveZ", AnimatorControllerParameterType.Float);
+            controller.AddParameter("WeaponBlend", AnimatorControllerParameterType.Float);
+            controller.AddParameter("Weapon", AnimatorControllerParameterType.Int);
+            controller.AddParameter("Grip", AnimatorControllerParameterType.Int);
+            controller.AddParameter("Draw", AnimatorControllerParameterType.Trigger);
+            controller.AddParameter("Sheath", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Cast", AnimatorControllerParameterType.Trigger);
 
             // SkillEffectKind as a number: which kind of skill decides the pose.
             controller.AddParameter("CastKind", AnimatorControllerParameterType.Int);
+            controller.AddParameter("AttackIndex", AnimatorControllerParameterType.Int);
+
+            // Swings per second of clip. One unless told: a zero would freeze
+            // every swing on its first frame.
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = "SwingRate",
+                type = AnimatorControllerParameterType.Float,
+                defaultFloat = 1f
+            });
 
             AddBaseLayer(controller);
             AddUpperBodyLayer(controller);
@@ -89,17 +133,26 @@ namespace TogetherWeFall.EditorTools
             controller.AddLayer("Base Layer");
             AnimatorStateMachine machine = controller.layers[0].stateMachine;
 
-            AnimatorState locomotion = controller.CreateBlendTreeInController("Locomotion", out BlendTree tree, 0);
-            tree.blendType = BlendTreeType.FreeformDirectional2D;
-            tree.blendParameter = "MoveX";
-            tree.blendParameterY = "MoveZ";
+            AnimatorState locomotion = controller.CreateBlendTreeInController("Locomotion", out BlendTree stances, 0);
+            stances.blendType = BlendTreeType.Simple1D;
+            stances.blendParameter = "WeaponBlend";
+            stances.useAutomaticThresholds = false;
 
-            tree.AddChild(LoadClip("Idle"), Vector2.zero);
-            AddRing(tree, "Strafe", 0.5f);
-            AddRing(tree, "Run", 1f);
+            foreach ((int held, string folder, string prefix) in Stances)
+            {
+                BlendTree tree = stances.CreateBlendTreeChild(held);
+                tree.name = folder;
+                tree.blendType = BlendTreeType.FreeformDirectional2D;
+                tree.blendParameter = "MoveX";
+                tree.blendParameterY = "MoveZ";
+
+                tree.AddChild(LoadClip(folder, prefix + "Idle"), Vector2.zero);
+                AddRing(tree, folder, prefix + "Strafe", 0.5f);
+                AddRing(tree, folder, prefix + "Run", 1f);
+            }
 
             AnimatorState death = machine.AddState("Death");
-            death.motion = LoadClip("Death1");
+            death.motion = LoadClip("Unarmed", "Unarmed-Death1");
 
             AnimatorStateTransition die = machine.AddAnyStateTransition(death);
             die.AddCondition(AnimatorConditionMode.If, 0f, "Dead");
@@ -130,37 +183,65 @@ namespace TogetherWeFall.EditorTools
             AnimatorState empty = machine.AddState("Empty");
             machine.defaultState = empty;
 
-            // The pack cuts each cast into start, loop and end. A skill here is
-            // instant, so the loop is skipped: wind up, release, back.
-            AddCast(machine, empty, SkillEffectKind.Projectile, "Cast-R-Attack1");
-            AddCast(machine, empty, SkillEffectKind.ChainBolt, "Cast-L-Attack1");
-            AddCast(machine, empty, SkillEffectKind.AreaBurst, "Cast-Dual-AOE1");
-            AddCast(machine, empty, SkillEffectKind.PersistentZone, "Cast-Dual-Summon1");
+            // Bare hands: the pack's casts as they are. The pack cuts each into
+            // start, loop and end; a skill here is instant, so the loop is
+            // skipped — wind up, release, back.
+            AddCast(machine, empty, Unarmed, SkillEffectKind.Projectile, "Unarmed", "Unarmed-Cast-R-Attack1");
+            AddCast(machine, empty, Unarmed, SkillEffectKind.ChainBolt, "Unarmed", "Unarmed-Cast-L-Attack1");
+            AddCast(machine, empty, Unarmed, SkillEffectKind.AreaBurst, "Unarmed", "Unarmed-Cast-Dual-AOE1");
+            AddCast(machine, empty, Unarmed, SkillEffectKind.PersistentZone, "Unarmed", "Unarmed-Cast-Dual-Summon1");
+            AddSwings(machine, empty, Unarmed, "Unarmed",
+                "Unarmed-Attack-R1", "Unarmed-Attack-R2", "Unarmed-Attack-R3",
+                "Unarmed-Attack-L1", "Unarmed-Attack-L2", "Unarmed-Attack-L3");
 
-            AnimatorState melee = machine.AddState("MeleeArc");
-            melee.motion = LoadClip("Attack-R1");
-            EnterCast(machine, melee, SkillEffectKind.MeleeArc);
-            ReturnTo(melee, empty);
+            // A sword in the right hand: spells come out of the left one.
+            foreach (int held in new[] { OneHanded, TwoHanded })
+            {
+                AddCast(machine, empty, held, SkillEffectKind.Projectile, "Armed", "Armed-Cast-L-Attack1");
+                AddCast(machine, empty, held, SkillEffectKind.ChainBolt, "Armed", "Armed-Cast-L-Attack2");
+                AddCast(machine, empty, held, SkillEffectKind.AreaBurst, "Armed", "Armed-Cast-L-AOE1");
+                AddCast(machine, empty, held, SkillEffectKind.PersistentZone, "Armed", "Armed-Cast-L-Summon1");
+            }
 
-            AnimatorState hit = machine.AddState("Hit");
-            hit.motion = LoadClip("GetHit-F1");
+            // The right hand's swings only: the sword is in that one.
+            AddSwings(machine, empty, OneHanded, "1Hand-Sword",
+                "Sword-Attack-R1", "Sword-Attack-R2", "Sword-Attack-R3", "Sword-Attack-R4",
+                "Sword-Attack-R5", "Sword-Attack-R6", "Sword-Attack-R7");
+            AddSwings(machine, empty, TwoHanded, "2Hand-Sword",
+                "2Hand-Sword-Attack1", "2Hand-Sword-Attack2", "2Hand-Sword-Attack3", "2Hand-Sword-Attack4",
+                "2Hand-Sword-Attack5", "2Hand-Sword-Attack6", "2Hand-Sword-Attack7", "2Hand-Sword-Attack8");
 
-            AnimatorStateTransition flinch = machine.AddAnyStateTransition(hit);
-            flinch.AddCondition(AnimatorConditionMode.If, 0f, "Hit");
-            flinch.duration = 0.05f;
-            ReturnTo(hit, empty);
+            foreach ((int held, string folder, string prefix) in Stances)
+            {
+                AddOneShot(machine, empty, $"{StanceName(held)} Hit", LoadClip(folder, prefix + "GetHit-F1"),
+                    Is("Hit"), EqualTo("Weapon", held));
+            }
+
+            // From the back, over the right shoulder, into the right hand — and
+            // the same way back. "Unarmed" in the names is where the pack's
+            // character ends up, which is where ours does too.
+            AddOneShot(machine, empty, "Draw One-Handed", LoadClip("Unarmed", "Unarmed-Unsheath-R-Back"),
+                Is("Draw"), EqualTo("Grip", OneHanded)).speed = DrawSpeed;
+            AddOneShot(machine, empty, "Sheath One-Handed", LoadClip("Armed", "Armed-Sheath-R-Back-Unarmed"),
+                Is("Sheath"), EqualTo("Grip", OneHanded)).speed = DrawSpeed;
+            AddOneShot(machine, empty, "Draw Two-Handed", LoadClip("2Hand-Sword", "2Hand-Sword-Unsheath-Back-Unarmed"),
+                Is("Draw"), EqualTo("Grip", TwoHanded)).speed = DrawSpeed;
+            AddOneShot(machine, empty, "Sheath Two-Handed", LoadClip("2Hand-Sword", "2Hand-Sword-Sheath-Back-Unarmed"),
+                Is("Sheath"), EqualTo("Grip", TwoHanded)).speed = DrawSpeed;
         }
 
         private static void AddCast(
-            AnimatorStateMachine machine, AnimatorState empty, SkillEffectKind kind, string file)
+            AnimatorStateMachine machine, AnimatorState empty, int held, SkillEffectKind kind, string folder, string file)
         {
-            AnimatorState start = machine.AddState($"{kind} Start");
-            start.motion = LoadClip(file, $"Unarmed-{file}_start");
+            string name = $"{StanceName(held)} {kind}";
 
-            AnimatorState end = machine.AddState($"{kind} End");
-            end.motion = LoadClip(file, $"Unarmed-{file}_end");
+            AnimatorState start = machine.AddState(name + " Start");
+            start.motion = LoadClip(folder, file, file + "_start");
 
-            EnterCast(machine, start, kind);
+            AnimatorState end = machine.AddState(name + " End");
+            end.motion = LoadClip(folder, file, file + "_end");
+
+            Enter(machine, start, Is("Cast"), EqualTo("CastKind", (int)kind), EqualTo("Weapon", held));
 
             AnimatorStateTransition release = start.AddTransition(end);
             release.hasExitTime = true;
@@ -171,16 +252,127 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
-        /// From any state, so a held button with a short cooldown starts the
-        /// cast over rather than queueing behind the one still playing.
+        /// A melee arc, one clip per AttackIndex. The presenter counts it round,
+        /// so a held button reads as a combo instead of the same swing forever.
+        ///
+        /// Timed by the cooldown, not by the clip. The state's own speed is the
+        /// clip's length, so SwingRate — one over the seconds the swing may take
+        /// — plays the whole clip in exactly that long, whatever clip it is. A
+        /// held button then lands every swing before the next one starts.
+        ///
+        /// Four swings, alternating the way they sweep: even AttackIndex to the
+        /// caster's right, odd back to the left — the parity CastCue.SweepsRight
+        /// gives the slash effect, so the two cannot disagree. Which way a clip
+        /// sweeps is read off the clip itself and logged, because the pack's
+        /// names do not say.
         /// </summary>
-        private static void EnterCast(AnimatorStateMachine machine, AnimatorState state, SkillEffectKind kind)
+        private static void AddSwings(
+            AnimatorStateMachine machine, AnimatorState empty, int held, string folder, params string[] files)
+        {
+            AnimationClip[] clips = files.Select(f => LoadClip(folder, f)).Where(c => c != null).ToArray();
+            AnimationClip[] right = clips.Where(c => SweepOf(c) > 0f).ToArray();
+            AnimationClip[] left = clips.Where(c => SweepOf(c) <= 0f).ToArray();
+
+            // A stance whose swings all go one way still swings; the slash just
+            // mirrors against the arm every other time, and the log says why.
+            if (right.Length == 0)
+                right = left;
+            if (left.Length == 0)
+                left = right;
+            if (clips.Length == 0)
+                return;
+
+            Debug.Log(
+                $"[CharacterContentFactory] {StanceName(held)} swings sweeping right: " +
+                $"{string.Join(", ", right.Select(c => c.name))}; left: {string.Join(", ", left.Select(c => c.name))}");
+
+            for (int i = 0; i < SwingSlots; i++)
+            {
+                AnimationClip[] side = i % 2 == 0 ? right : left;
+                AnimationClip clip = side[(i / 2) % side.Length];
+
+                AnimatorState state = machine.AddState(
+                    $"{StanceName(held)} Swing {i + 1} {(i % 2 == 0 ? "Right" : "Left")}");
+                state.motion = clip;
+                state.speed = clip != null ? clip.length : 1f;
+                state.speedParameter = "SwingRate";
+                state.speedParameterActive = true;
+
+                AnimatorStateTransition enter = Enter(machine, state,
+                    Is("Cast"), EqualTo("CastKind", (int)SkillEffectKind.MeleeArc),
+                    EqualTo("Weapon", held), EqualTo("AttackIndex", i));
+                enter.offset = SwingOffset;
+
+                ReturnTo(state, empty);
+            }
+        }
+
+        /// <summary>Swings per stance. PlayerAnimationPresenter.SwingCount is the same number.</summary>
+        private const int SwingSlots = 4;
+
+        /// <summary>
+        /// Which way a swing sweeps: the sign of the right hand's fastest
+        /// sideways movement, positive to the caster's right. Humanoid clips
+        /// carry the hand's goal position as curves, so no model has to be
+        /// posed to find out. Zero when the curve is missing.
+        /// </summary>
+        private static float SweepOf(AnimationClip clip)
+        {
+            EditorCurveBinding binding = AnimationUtility.GetCurveBindings(clip)
+                .FirstOrDefault(b => b.propertyName == "RightHandT.x");
+
+            AnimationCurve curve = binding.propertyName == null
+                ? null
+                : AnimationUtility.GetEditorCurve(clip, binding);
+
+            if (curve == null)
+                return 0f;
+
+            const int Samples = 60;
+            float previous = curve.Evaluate(0f);
+            float fastest = 0f;
+
+            for (int i = 1; i <= Samples; i++)
+            {
+                float x = curve.Evaluate(clip.length * i / Samples);
+
+                if (Mathf.Abs(x - previous) > Mathf.Abs(fastest))
+                    fastest = x - previous;
+
+                previous = x;
+            }
+
+            return fastest;
+        }
+
+        private static AnimatorState AddOneShot(
+            AnimatorStateMachine machine, AnimatorState empty, string name, AnimationClip clip,
+            params (AnimatorConditionMode mode, float threshold, string parameter)[] conditions)
+        {
+            AnimatorState state = machine.AddState(name);
+            state.motion = clip;
+
+            Enter(machine, state, conditions);
+            ReturnTo(state, empty);
+            return state;
+        }
+
+        /// <summary>
+        /// From any state, so a new swing or cast interrupts whatever is still
+        /// playing rather than queueing behind it.
+        /// </summary>
+        private static AnimatorStateTransition Enter(
+            AnimatorStateMachine machine, AnimatorState state,
+            params (AnimatorConditionMode mode, float threshold, string parameter)[] conditions)
         {
             AnimatorStateTransition enter = machine.AddAnyStateTransition(state);
-            enter.AddCondition(AnimatorConditionMode.If, 0f, "Cast");
-            enter.AddCondition(AnimatorConditionMode.Equals, (int)kind, "CastKind");
+
+            foreach ((AnimatorConditionMode mode, float threshold, string parameter) in conditions)
+                enter.AddCondition(mode, threshold, parameter);
+
             enter.canTransitionToSelf = true;
             enter.duration = 0.05f;
+            return enter;
         }
 
         private static void ReturnTo(AnimatorState from, AnimatorState empty)
@@ -191,14 +383,28 @@ namespace TogetherWeFall.EditorTools
             back.duration = 0.15f;
         }
 
-        /// <summary>
-        /// The pack's materials are Unity-chan shaders written for the built-in
-        /// pipeline, which URP draws pink. Each one gets a URP Lit twin with the
-        /// same texture, kept in our art folder so the pack stays untouched.
-        /// </summary>
-        public static void ConvertMaterials(GameObject model)
+        private static (AnimatorConditionMode, float, string) Is(string trigger)
+            => (AnimatorConditionMode.If, 0f, trigger);
+
+        private static (AnimatorConditionMode, float, string) EqualTo(string parameter, int value)
+            => (AnimatorConditionMode.Equals, value, parameter);
+
+        private static string StanceName(int held) => held switch
         {
-            string folder = CharacterFolder + "/" + model.name;
+            OneHanded => "One-Handed",
+            TwoHanded => "Two-Handed",
+            _ => "Unarmed"
+        };
+
+        /// <summary>
+        /// Packs made for the built-in pipeline — Unity-chan shaders on Fina,
+        /// Standard on the swords — which URP draws pink. Each material gets a
+        /// URP Lit twin with the same texture and colour, kept in our art folder
+        /// so the packs stay untouched.
+        /// </summary>
+        public static void ConvertMaterials(GameObject model, string folder = null)
+        {
+            folder ??= CharacterFolder + "/" + model.name;
             SceneBuildUtility.EnsureAssetFolder(folder);
 
             Shader lit = Shader.Find("Universal Render Pipeline/Lit");
@@ -257,27 +463,27 @@ namespace TogetherWeFall.EditorTools
             return material;
         }
 
-        private static void AddRing(BlendTree tree, string gait, float radius)
+        private static void AddRing(BlendTree tree, string folder, string gait, float radius)
         {
             float d = radius * Mathf.Sqrt(0.5f);
 
-            tree.AddChild(LoadClip($"{gait}-Forward"), new Vector2(0f, radius));
-            tree.AddChild(LoadClip($"{gait}-Forward-Right"), new Vector2(d, d));
-            tree.AddChild(LoadClip($"{gait}-Right"), new Vector2(radius, 0f));
-            tree.AddChild(LoadClip($"{gait}-Backward-Right"), new Vector2(d, -d));
-            tree.AddChild(LoadClip($"{gait}-Backward"), new Vector2(0f, -radius));
-            tree.AddChild(LoadClip($"{gait}-Backward-Left"), new Vector2(-d, -d));
-            tree.AddChild(LoadClip($"{gait}-Left"), new Vector2(-radius, 0f));
-            tree.AddChild(LoadClip($"{gait}-Forward-Left"), new Vector2(-d, d));
+            tree.AddChild(LoadClip(folder, $"{gait}-Forward"), new Vector2(0f, radius));
+            tree.AddChild(LoadClip(folder, $"{gait}-Forward-Right"), new Vector2(d, d));
+            tree.AddChild(LoadClip(folder, $"{gait}-Right"), new Vector2(radius, 0f));
+            tree.AddChild(LoadClip(folder, $"{gait}-Backward-Right"), new Vector2(d, -d));
+            tree.AddChild(LoadClip(folder, $"{gait}-Backward"), new Vector2(0f, -radius));
+            tree.AddChild(LoadClip(folder, $"{gait}-Backward-Left"), new Vector2(-d, -d));
+            tree.AddChild(LoadClip(folder, $"{gait}-Left"), new Vector2(-radius, 0f));
+            tree.AddChild(LoadClip(folder, $"{gait}-Forward-Left"), new Vector2(-d, d));
         }
 
         /// <summary>
         /// A clip out of one of the pack's FBX files. Most hold one; the casts
         /// hold three, and then the take has to be named.
         /// </summary>
-        private static AnimationClip LoadClip(string file, string take = null)
+        private static AnimationClip LoadClip(string folder, string file, string take = null)
         {
-            string path = $"{ClipFolder}/RPG-Character@Unarmed-{file}.FBX";
+            string path = $"{Pack}/Animations/{folder}/RPG-Character@{file}.FBX";
 
             AnimationClip clip = AssetDatabase.LoadAllAssetsAtPath(path)
                 .OfType<AnimationClip>()

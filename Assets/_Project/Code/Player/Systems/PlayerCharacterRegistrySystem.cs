@@ -140,6 +140,9 @@ namespace TogetherWeFall.Player.Systems
                 // What the model's arms read. Zero at birth: nothing cast yet.
                 typeof(CastCue),
 
+                // Swings pressed but not yet landed. See SkillCastSystem.
+                typeof(DelayedStrike),
+
                 // Money, which used to be a pile of items in the bag. Zero at
                 // birth and filled by picking coins up off the floor.
                 typeof(Wallet),

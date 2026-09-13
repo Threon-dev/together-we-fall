@@ -122,5 +122,13 @@ namespace TogetherWeFall.Vfx
         /// imports, which is precisely what this seam exists to avoid.
         /// </summary>
         public int VfxId;
+
+        /// <summary>
+        /// Whether a swing sweeps to the caster's right. Read by SkillCast
+        /// alone, which mirrors the slash when its set was authored sweeping
+        /// the other way — the host alternates swings, and the arm plays the
+        /// same answer (CastCue.SweepsRight).
+        /// </summary>
+        public bool SweepRight;
     }
 }

@@ -6,6 +6,7 @@ using TogetherWeFall.Combat;
 using TogetherWeFall.Enemies;
 using TogetherWeFall.Equipment;
 using TogetherWeFall.Player;
+using TogetherWeFall.Shared;
 using TogetherWeFall.Vfx;
 
 namespace TogetherWeFall.Skills.Systems
@@ -57,6 +58,18 @@ namespace TogetherWeFall.Skills.Systems
         private const float MuzzleOffset = 0.9f;
 
         /// <summary>
+        /// How far into its cooldown a melee arc lands. A share rather than
+        /// seconds, so attack speed shortens the wind-up with the swing.
+        /// </summary>
+        private const float SwingStrikeShare = 0.3f;
+
+        /// <summary>
+        /// The longest wind-up, however slow the swing. Past this the blow
+        /// stops reading as a response to the key.
+        /// </summary>
+        private const float MaxStrikeDelay = 0.3f;
+
+        /// <summary>
         /// The fewest jumps a burst turned into a chain is worth.
         ///
         /// An area skill authored with no chains would otherwise become a
@@ -104,13 +117,19 @@ namespace TogetherWeFall.Skills.Systems
 
         public void OnUpdate(ref SystemState state)
         {
-            TickCooldowns(ref state, SystemAPI.Time.DeltaTime);
+            float deltaTime = SystemAPI.Time.DeltaTime;
+            TickCooldowns(ref state, deltaTime);
+
+            // Before the early-out: a swing lands on its own frame, whether or
+            // not anybody pressed anything on it.
+            using var landing = new NativeList<DelayedStrike>(0, Allocator.Temp);
+            TickStrikes(ref state, deltaTime, landing);
 
             DynamicBuffer<SkillCastRequest> requests =
                 SystemAPI.GetSingletonBuffer<SkillCastRequest>();
             DynamicBuffer<PendingCast> triggered = SystemAPI.GetSingletonBuffer<PendingCast>();
 
-            if (requests.Length == 0 && triggered.Length == 0)
+            if (requests.Length == 0 && triggered.Length == 0 && landing.Length == 0)
                 return;
 
             // Taken and cleared up front: a request that produced nothing must
@@ -136,6 +155,11 @@ namespace TogetherWeFall.Skills.Systems
             using var spawns = new NativeList<ProjectileSpawn>(8, Allocator.Temp);
             using var zones = new NativeList<ZoneSpawn>(2, Allocator.Temp);
             using var effects = new NativeList<VfxEvent>(4, Allocator.Temp);
+
+            // Swings pressed earlier first, so a press this frame that queues a
+            // new one never overtakes the one already on its way.
+            for (int i = 0; i < landing.Length; i++)
+                Land(ref state, landing[i], targets, hits, areas, spawns, zones, effects);
 
             for (int i = 0; i < pending.Length; i++)
                 Cast(ref state, pending[i], skills, targets, hits, areas, spawns, zones, effects);
@@ -328,22 +352,48 @@ namespace TogetherWeFall.Skills.Systems
                 Keystone = keystone
             };
 
-            float3 direction = Flatten(request.Direction);
+            // Which way this swing sweeps — every other one comes back. Decided
+            // here, with the blow, so the arm and the slash read it from the
+            // same place instead of each keeping a count that could drift.
+            // Written back only if the cast goes off, at the bottom.
+            bool hasCue = state.EntityManager.HasComponent<CastCue>(character);
+            CastCue cue = hasCue ? state.EntityManager.GetComponentData<CastCue>(character) : default;
 
-            // Multicast is one cooldown and several effects, not several casts.
-            bool produced = false;
-            for (int c = 0; c < resolved.Casts; c++)
+            if (resolved.Effect == SkillEffectKind.MeleeArc)
             {
-                // Both the facing and the aim swing, so a fan of bursts lands as
-                // a fan rather than as one burst three times over.
-                float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
+                cue.Swings++;
+                context.SweepRight = CastCue.SweepsRight(cue.Swings);
+            }
 
-                CastContext copy = context;
-                copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
+            float3 direction = Flatten(request.Direction);
+            float strikeDelay = StrikeDelayOf(resolved);
 
-                produced |= Emit(
-                    resolved, copy, Turn(direction, angle),
-                    targets, hits, areas, spawns, zones, effects);
+            bool produced;
+
+            if (strikeDelay > 0f && state.EntityManager.HasBuffer<DelayedStrike>(character))
+            {
+                // The swing has started; the blow lands when the blade comes
+                // round. Paid for now: a melee arc goes off wherever it is
+                // pointed, so there is no "found nothing" to wait for — and a
+                // cooldown that began at the landing would let a held button
+                // queue a second swing inside the first.
+                state.EntityManager.GetBuffer<DelayedStrike>(character).Add(new DelayedStrike
+                {
+                    Skill = resolved,
+                    PlayerId = context.PlayerId,
+                    Origin = context.Origin,
+                    AimPoint = context.AimPoint,
+                    Direction = direction,
+                    Keystone = keystone,
+                    SweepRight = context.SweepRight,
+                    Remaining = strikeDelay
+                });
+
+                produced = true;
+            }
+            else
+            {
+                produced = EmitCasts(resolved, context, direction, targets, hits, areas, spawns, zones, effects);
             }
 
             // A cast that found nothing to do costs nothing. Only a bolt can
@@ -358,13 +408,145 @@ namespace TogetherWeFall.Skills.Systems
 
             SpendMana(ref state, character, resolved.ManaCost);
 
-            if (state.EntityManager.HasComponent<CastCue>(character))
+            if (hasCue)
             {
-                CastCue cue = state.EntityManager.GetComponentData<CastCue>(character);
                 cue.Count++;
                 cue.Effect = resolved.Effect;
+                cue.Interval = resolved.Cooldown;
+                cue.StrikeDelay = strikeDelay;
                 state.EntityManager.SetComponentData(character, cue);
             }
+        }
+
+        /// <summary>
+        /// Multicast is one cooldown and several effects, not several casts.
+        /// Returns whether any of them came to something.
+        /// </summary>
+        private static bool EmitCasts(
+            in ResolvedSkill resolved,
+            in CastContext context,
+            float3 direction,
+            EnemyTargets targets,
+            NativeList<PendingHit> hits,
+            NativeList<PendingArea> areas,
+            NativeList<ProjectileSpawn> spawns,
+            NativeList<ZoneSpawn> zones,
+            NativeList<VfxEvent> effects)
+        {
+            bool produced = false;
+
+            for (int c = 0; c < resolved.Casts; c++)
+            {
+                // Both the facing and the aim swing, so a fan of bursts lands as
+                // a fan rather than as one burst three times over.
+                float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
+
+                CastContext copy = context;
+                copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
+
+                produced |= Emit(
+                    resolved, copy, Turn(direction, angle),
+                    targets, hits, areas, spawns, zones, effects);
+            }
+
+            return produced;
+        }
+
+        /// <summary>
+        /// The wind-up a skill waits before it lands. Only a melee arc has one:
+        /// a bolt leaves the hand at the press, and a spell's own cast clip is
+        /// short enough that the flash covers it.
+        /// </summary>
+        private static float StrikeDelayOf(in ResolvedSkill skill)
+            => skill.Effect == SkillEffectKind.MeleeArc
+                ? math.min(skill.Cooldown * SwingStrikeShare, MaxStrikeDelay)
+                : 0f;
+
+        /// <summary>
+        /// Where a projectile appears: a little in front of the caster, or just
+        /// short of a wall in between. Fired with its nose already through the
+        /// wall, a bolt would start past the one thing meant to stop it — a
+        /// ray from inside a collider finds nothing.
+        /// </summary>
+        private static float3 Muzzle(float3 origin, float3 direction)
+        {
+            float3 muzzle = origin + direction * MuzzleOffset;
+
+            return WallQuery.Cast(origin, muzzle, WallQuery.Mask(), out float3 stop) ? stop : muzzle;
+        }
+
+        /// <summary>Counts every waiting swing down and hands over the ones that are due.</summary>
+        private void TickStrikes(ref SystemState state, float deltaTime, NativeList<DelayedStrike> landing)
+        {
+            foreach (DynamicBuffer<DelayedStrike> iterated in
+                     SystemAPI.Query<DynamicBuffer<DelayedStrike>>().WithAll<PlayerCharacter>())
+            {
+                // Copied into a local because a foreach variable is readonly,
+                // and writing through its indexer counts as modifying it.
+                DynamicBuffer<DelayedStrike> strikes = iterated;
+
+                for (int i = strikes.Length - 1; i >= 0; i--)
+                {
+                    DelayedStrike strike = strikes[i];
+                    strike.Remaining -= deltaTime;
+
+                    if (strike.Remaining > 0f)
+                    {
+                        strikes[i] = strike;
+                        continue;
+                    }
+
+                    landing.Add(strike);
+                    strikes.RemoveAt(i);
+                }
+            }
+        }
+
+        /// <summary>
+        /// A swing coming round. From where the swinger stands now rather than
+        /// where they pressed: walking through a swing carries the blade along,
+        /// and a blow left behind at the old spot would hit what they walked
+        /// away from.
+        /// </summary>
+        private void Land(
+            ref SystemState state,
+            in DelayedStrike strike,
+            EnemyTargets targets,
+            NativeList<PendingHit> hits,
+            NativeList<PendingArea> areas,
+            NativeList<ProjectileSpawn> spawns,
+            NativeList<ZoneSpawn> zones,
+            NativeList<VfxEvent> effects)
+        {
+            float3 moved = CurrentPosition(ref state, strike.PlayerId, strike.Origin) - strike.Origin;
+
+            var context = new CastContext
+            {
+                PlayerId = strike.PlayerId,
+                Origin = strike.Origin + moved,
+                AimPoint = strike.AimPoint + moved,
+                PreferredTarget = Entity.Null,
+                Depth = 0,
+                Keystone = strike.Keystone,
+                SweepRight = strike.SweepRight
+            };
+
+            EmitCasts(strike.Skill, context, strike.Direction, targets, hits, areas, spawns, zones, effects);
+        }
+
+        private float3 CurrentPosition(ref SystemState state, int playerId, float3 fallback)
+        {
+            if (!SystemAPI.TryGetSingletonBuffer<PlayerPositionElement>(
+                    out DynamicBuffer<PlayerPositionElement> players, isReadOnly: true))
+                return fallback;
+
+            for (int i = 0; i < players.Length; i++)
+            {
+                if (players[i].PlayerId == playerId)
+                    return players[i].Position;
+            }
+
+            return fallback;
         }
 
         // The crit roll used to live here, once per press, and it was in the
@@ -584,6 +766,14 @@ namespace TogetherWeFall.Skills.Systems
                         ClampToRange(context.Origin, context.AimPoint, skill.Range),
                         context.AimPoint);
 
+                // A swing is drawn at a body, like its hits are, and a body's
+                // origin is on the floor — the set's lift puts both at the chest.
+                // The caster's origin is the middle of their capsule, a metre
+                // up, and lifting that by the same amount put the slash over
+                // their head.
+                case SkillEffectKind.MeleeArc:
+                    return OnGround(context.Origin, context.AimPoint);
+
                 default:
                     return context.Origin;
             }
@@ -626,6 +816,7 @@ namespace TogetherWeFall.Skills.Systems
                     // the chain link's field rather than adding a rotation to
                     // every event in the queue for the sake of two kinds.
                     EndPosition = point + direction,
+                    SweepRight = context.SweepRight,
                     Color = DamageTypePalette.For(skill.Type),
                     Magnitude = skill.Radius,
                     VfxId = skill.VfxId
@@ -637,7 +828,7 @@ namespace TogetherWeFall.Skills.Systems
                 case SkillEffectKind.Projectile:
                     spawns.Add(new ProjectileSpawn
                     {
-                        Position = context.Origin + direction * MuzzleOffset,
+                        Position = Muzzle(context.Origin, direction),
                         Projectile = new SkillProjectile
                         {
                             Velocity = direction * skill.ProjectileSpeed,
@@ -1167,6 +1358,12 @@ namespace TogetherWeFall.Skills.Systems
 
             /// <summary>The rule the caster is breaking, or None.</summary>
             public KeystoneEffect Keystone;
+
+            /// <summary>
+            /// Which way a swing sweeps, for the slash to follow. False for
+            /// everything that is not a player's melee press.
+            /// </summary>
+            public bool SweepRight;
         }
 
         /// <summary>Flattens onto the ground plane, with a fallback for a zero aim.</summary>

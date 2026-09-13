@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ffb4fefb0131f7842b57ce61080aa413, type: 3}
+  m_Name: Gravewhisper
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
+  _displayName: Gravewhisper
+  _icon: {fileID: 0}
+  _model: {fileID: 8407739687840559674, guid: 098e72bd876484d4fb6007ef91206d1d, type: 3}
+  _rarity: 3
+  _slot: 0
+  _isTwoHanded: 0
+  _baseStats:
+  - _stat: 0
+    _value: 31
+  _affixes:
+  - _stat: 0
+    _kind: 1
+    _value: 34
+  - _stat: 1
+    _kind: 1
+    _value: 15
+  _keystone: 0
+  _gemKind: 0
+  _gemSkill: {fileID: 0}
+  _gemSupport: {fileID: 0}
+  _gemSupportSecond: {fileID: 0}
+  _innateSkills:
+  - {fileID: 11400000, guid: 0a4ec077e7257c640a51add312d39b9b, type: 2}
+  _socketCount: 0
+  _linkGroups: 
+  _gridWidth: 1
+  _gridHeight: 3
+  _currencyValue: 0
+  _canRotate: 1

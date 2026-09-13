@@ -275,6 +275,64 @@ namespace TogetherWeFall.Skills
     {
         public uint Count;
         public SkillEffectKind Effect;
+
+        /// <summary>
+        /// Seconds until the same key can cast again — the cooldown that was
+        /// just charged. What a swing has to fit inside, or a held button
+        /// restarts it before the blade ever comes round.
+        /// </summary>
+        public float Interval;
+
+        /// <summary>
+        /// Seconds from the press to the blow landing, or zero for a skill that
+        /// lands at once. The swing is paced so the blade connects then.
+        /// </summary>
+        public float StrikeDelay;
+
+        /// <summary>
+        /// Melee swings so far, the latest one included. Swings alternate the
+        /// way they sweep, and this is the count they alternate on — so the
+        /// host, the arm and the slash all read the same answer.
+        /// </summary>
+        public uint Swings;
+
+        /// <summary>
+        /// Whether a swing sweeps to the caster's right. Even swings do, odd
+        /// swings come back. The controller files its swing clips by the same
+        /// parity.
+        /// </summary>
+        public static bool SweepsRight(uint swing) => (swing & 1u) == 0u;
+    }
+
+    /// <summary>
+    /// A swing that has been pressed and paid for but has not landed yet.
+    ///
+    /// A sword does not hit the instant the key goes down — the arm has to
+    /// come round — and a blow that lands before the blade does reads as the
+    /// animation lagging the game. So the host charges the cooldown and the
+    /// mana at the press, as always, and holds the effect here for the wind-up.
+    ///
+    /// On the character rather than in a global queue, because it belongs to
+    /// the one who swung: it lands where they stand when it lands, and it goes
+    /// with them if they are ever removed.
+    /// </summary>
+    [InternalBufferCapacity(2)]
+    public struct DelayedStrike : IBufferElementData
+    {
+        /// <summary>The skill as folded at the press. The build it was swung with is the build it lands with.</summary>
+        public ResolvedSkill Skill;
+
+        public int PlayerId;
+        public float3 Origin;
+        public float3 AimPoint;
+        public float3 Direction;
+        public KeystoneEffect Keystone;
+
+        /// <summary>Which way the blade sweeps. See CastCue.SweepsRight.</summary>
+        public bool SweepRight;
+
+        /// <summary>Seconds until it lands.</summary>
+        public float Remaining;
     }
 
     // The starting loadout used to be a DefaultSkillSlot buffer here. Skills

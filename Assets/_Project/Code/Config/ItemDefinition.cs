@@ -83,6 +83,12 @@ namespace TogetherWeFall.Config
                  "through a scene rebuild, which lists every item that has one.")]
         [SerializeField] private Sprite _icon;
 
+        [Tooltip("Worn on the character: on the back, and in the right hand once " +
+                 "drawn. A grip prefab — origin where the hand closes, blade along " +
+                 "+Z, width along +Y. Empty for anything not seen on the body. " +
+                 "Reaches the character only through a scene rebuild.")]
+        [SerializeField] private GameObject _model;
+
         [SerializeField] private ItemRarity _rarity = ItemRarity.Common;
         [SerializeField] private EquipmentSlot _slot = EquipmentSlot.MainHand;
 
@@ -166,6 +172,8 @@ namespace TogetherWeFall.Config
         public string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? name : _displayName;
 
         public Sprite Icon => _icon;
+
+        public GameObject Model => _model;
 
         public ItemRarity Rarity => _rarity;
         public EquipmentSlot Slot => _slot;

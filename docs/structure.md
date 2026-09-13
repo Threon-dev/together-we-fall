@@ -71,8 +71,7 @@ Assets/_Project/
 │   │   ├── StatusIconPool.cs             пул гліфів статусів над тілами
 │   │   ├── VfxPresenter.cs               міст-презентер, лише читає ECS
 │   │   ├── VfxLinePool.cs                пул LineRenderer: лінії й кільця
-│   │   ├── DamageNumberPool.cs           пул TMP-лейблів на канвасі
-│   │   └── HitStopController.cs          єдине місце, що чіпає Time.timeScale
+│   │   └── DamageNumberPool.cs           пул TMP-лейблів на канвасі
 │   ├── Skills/
 │   │   ├── Components/                   Skill*, ProjectileSpawn, SkillDatabaseBlob,
 │   │   │                                 ElementZone (+ ZoneSpawn, пул зон),

@@ -4,6 +4,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using TogetherWeFall.Enemies;
+using TogetherWeFall.Vfx;
 
 namespace TogetherWeFall.Skills.Systems
 {
@@ -18,6 +19,12 @@ namespace TogetherWeFall.Skills.Systems
     /// A projectile carries everything it needs to resolve its own impact, so
     /// this system never looks up the skill that fired it. It also means a fork
     /// is nothing special: two more projectiles with one fewer fork left.
+    ///
+    /// Walls stop them. Each frame's step is ray-cast against the level's
+    /// colliders on the main thread first (WallQuery), and the job is handed
+    /// where each one would meet a wall. A projectile that does stops there and
+    /// lands: a burst goes off against the wall, an on-impact trigger fires —
+    /// but it does not fork, because forking is for bodies.
     /// </summary>
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillCastSystem))]
@@ -78,6 +85,7 @@ namespace TogetherWeFall.Skills.Systems
             using var hits = new NativeList<PendingHit>(8, Allocator.TempJob);
             using var areas = new NativeList<PendingArea>(4, Allocator.TempJob);
             using var casts = new NativeList<PendingCast>(4, Allocator.TempJob);
+            using var effects = new NativeList<VfxEvent>(4, Allocator.TempJob);
 
             // Run rather than Schedule: the results are needed in this same
             // update, before the structural changes below. Burst still compiles
@@ -91,26 +99,69 @@ namespace TogetherWeFall.Skills.Systems
             // from the main thread.
             state.CompleteDependency();
 
+            float deltaTime = SystemAPI.Time.DeltaTime;
+
+            // PhysX answers on this thread only, so the walls are found before
+            // the job and handed to it rather than asked from inside it.
+            using var walls = new NativeHashMap<Entity, float3>(0, Allocator.TempJob);
+            FindWalls(walls, deltaTime);
+
             new MoveProjectilesJob
             {
-                DeltaTime = SystemAPI.Time.DeltaTime,
+                DeltaTime = deltaTime,
                 Enemies = enemies,
                 EnemyTransforms = enemyTransforms,
+                Walls = walls,
                 Hits = hits,
                 Areas = areas,
-                Casts = casts
+                Casts = casts,
+                Effects = effects
             }.Run();
 
-            AppendEvents(ref state, hits, areas, casts);
+            AppendEvents(ref state, hits, areas, casts, effects);
             RetireSpentProjectiles(ref state);
+        }
+
+        /// <summary>
+        /// Where each projectile in the air would meet a wall during this
+        /// frame's step, for the ones that would.
+        /// </summary>
+        private void FindWalls(NativeHashMap<Entity, float3> walls, float deltaTime)
+        {
+            using NativeArray<Entity> flying = _projectileQuery.ToEntityArray(Allocator.Temp);
+            using NativeArray<LocalTransform> transforms =
+                _projectileQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+            using NativeArray<SkillProjectile> projectiles =
+                _projectileQuery.ToComponentDataArray<SkillProjectile>(Allocator.Temp);
+
+            int mask = WallQuery.Mask();
+
+            for (int i = 0; i < flying.Length; i++)
+            {
+                float3 from = transforms[i].Position;
+                float3 to = from + projectiles[i].Velocity * deltaTime;
+
+                if (WallQuery.Cast(from, to, mask, out float3 stop))
+                    walls.Add(flying[i], stop);
+            }
         }
 
         private void AppendEvents(
             ref SystemState state,
             NativeList<PendingHit> hits,
             NativeList<PendingArea> areas,
-            NativeList<PendingCast> casts)
+            NativeList<PendingCast> casts,
+            NativeList<VfxEvent> effects)
         {
+            // Optional, like every presentation queue: a build with no
+            // presenter stops projectiles on walls all the same.
+            if (effects.Length > 0 &&
+                SystemAPI.TryGetSingletonBuffer<VfxEvent>(out DynamicBuffer<VfxEvent> vfx))
+            {
+                for (int i = 0; i < effects.Length; i++)
+                    vfx.Add(effects[i]);
+            }
+
             if (hits.Length > 0)
             {
                 DynamicBuffer<PendingHit> buffer = SystemAPI.GetSingletonBuffer<PendingHit>();
@@ -231,11 +282,16 @@ namespace TogetherWeFall.Skills.Systems
             [ReadOnly] public NativeArray<Entity> Enemies;
             [ReadOnly] public NativeArray<LocalTransform> EnemyTransforms;
 
+            /// <summary>Where a projectile meets a wall this frame, keyed by projectile.</summary>
+            [ReadOnly] public NativeHashMap<Entity, float3> Walls;
+
             public NativeList<PendingHit> Hits;
             public NativeList<PendingArea> Areas;
             public NativeList<PendingCast> Casts;
+            public NativeList<VfxEvent> Effects;
 
             private void Execute(
+                Entity entity,
                 ref LocalTransform transform,
                 ref SkillProjectile projectile,
                 EnabledRefRW<ProjectileSpent> isSpent)
@@ -245,7 +301,16 @@ namespace TogetherWeFall.Skills.Systems
                 if (isSpent.ValueRO)
                     return;
 
-                transform.Position += projectile.Velocity * DeltaTime;
+                // A wall in this step ends the flight at the wall. Moved there
+                // before bodies are looked for, so one standing on this side of
+                // it is still hit, and one on the far side is out of reach of a
+                // projectile that never got there.
+                bool walled = Walls.TryGetValue(entity, out float3 wall);
+
+                transform.Position = walled
+                    ? wall
+                    : transform.Position + projectile.Velocity * DeltaTime;
+
                 projectile.Lifetime -= DeltaTime;
 
                 var targets = new EnemyTargets
@@ -282,6 +347,16 @@ namespace TogetherWeFall.Skills.Systems
                     }
 
                     Retire(ref projectile, isSpent, hitSomething: true);
+                    return;
+                }
+
+                // Nothing to hit this side of the wall: it lands on the wall.
+                // Not as having hit something, so it does not fork off the
+                // stone — a split is what happens in a body.
+                if (walled)
+                {
+                    Impact(Entity.Null, transform.Position, projectile);
+                    Retire(ref projectile, isSpent, hitSomething: false);
                     return;
                 }
 
@@ -324,9 +399,24 @@ namespace TogetherWeFall.Skills.Systems
             /// A projectile with an impact radius bursts; one without hits the
             /// single target it touched. Both go through the same queues as
             /// everything else, so neither needs its own path into damage.
+            ///
+            /// A null target is a wall. The trigger and the burst go off as they
+            /// would anywhere; a single-target projectile has nobody to hurt, so
+            /// all that is left of it is the impact effect — which SkillHitSystem
+            /// draws only for blows on bodies, and so is announced here.
             /// </summary>
             private void Impact(Entity target, float3 position, in SkillProjectile projectile)
             {
+                if (target == Entity.Null && projectile.VfxId != 0)
+                {
+                    Effects.Add(new VfxEvent
+                    {
+                        Kind = VfxEventKind.SkillHit,
+                        Position = position,
+                        VfxId = projectile.VfxId
+                    });
+                }
+
                 // Once per impact, whatever else this projectile does. A trigger
                 // fires per effect instance, never per body — the same rule that
                 // keeps a burst catching forty enemies from triggering forty
@@ -400,6 +490,9 @@ namespace TogetherWeFall.Skills.Systems
 
                     return;
                 }
+
+                if (target == Entity.Null)
+                    return;
 
                 var hit = new PendingHit
                 {

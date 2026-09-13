@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Dawnbringer
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
   _displayName: Dawnbringer
+  _icon: {fileID: 0}
+  _model: {fileID: 5363421445694888534, guid: 55ced63d316230948b7784d603cf0374, type: 3}
   _rarity: 4
   _slot: 0
   _isTwoHanded: 1
@@ -27,10 +29,12 @@ MonoBehaviour:
   _gemKind: 0
   _gemSkill: {fileID: 0}
   _gemSupport: {fileID: 0}
+  _gemSupportSecond: {fileID: 0}
   _innateSkills:
   - {fileID: 11400000, guid: 0a4ec077e7257c640a51add312d39b9b, type: 2}
   _socketCount: 0
   _linkGroups: 
   _gridWidth: 1
   _gridHeight: 4
+  _currencyValue: 0
   _canRotate: 1

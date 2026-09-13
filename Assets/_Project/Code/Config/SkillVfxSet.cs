@@ -51,11 +51,25 @@ namespace TogetherWeFall.Config
                  "effect is, which is most of what differs between packs.")]
         [SerializeField, Range(-1f, 3f)] private float _lift;
 
+        [Tooltip("Degrees the cast effect turns about the vertical, on top of the " +
+                 "way the cast was pointing. Zero for an effect authored along +Z; " +
+                 "180 for one authored the other way, which otherwise plays " +
+                 "behind the caster.")]
+        [SerializeField, Range(-180f, 180f)] private float _yaw;
+
+        [Tooltip("Which way the cast effect sweeps as authored, seen from behind " +
+                 "the caster: on for left to right. Swings alternate, and one " +
+                 "going the other way plays the effect mirrored — so this is the " +
+                 "box to flip if every slash runs against the blade.")]
+        [SerializeField] private bool _sweepsRight;
+
         public GameObject Cast => _cast;
         public GameObject Projectile => _projectile;
         public GameObject Hit => _hit;
         public float Scale => Mathf.Max(0.01f, _scale);
         public float Lift => _lift;
+        public float Yaw => _yaw;
+        public bool SweepsRight => _sweepsRight;
 
         /// <summary>
         /// The id the simulation refers to this set by.

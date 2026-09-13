@@ -17,3 +17,4 @@ MonoBehaviour:
   _hit: {fileID: 3775273307930507393, guid: b8cbf0802f081c245853f60240f107cc, type: 3}
   _scale: 1
   _lift: 0.9
+  _yaw: 180

@@ -33,8 +33,25 @@
   `Assets/ExplosiveLLC/RPG Character Mecanim Animation Pack`. Збирає
   `Code/Editor/CharacterContentFactory.cs`: `Art/Characters/PlayerLocomotion.controller`
   (**перезбирається на місці при кожному білді сцени**, GUID той самий) —
-  Base: 2D freeform (idle, кільце strafe на 0.5, run на 1) + Death з Any State;
-  Upper Body (маска з паку): каст start→end по `CastKind`, MeleeArc, Hit.
+  Base: 1D по `WeaponBlend` між трьома стійками (Unarmed / Armed / 2Hand-Sword),
+  у кожній 2D freeform (idle, strafe на 0.5, run на 1) + Death з Any State;
+  Upper Body (маска з паку): каст start→end по `CastKind`+`Weapon`, свінги по
+  `AttackIndex` (4 на стійку: парні б'ють праворуч, непарні ліворуч — напрям
+  кліпу фабрика міряє з кривої `RightHandT.x` і пише в лог), Hit, Draw/Sheath по `Grip`.
+  **Сторону свінгу вирішує хост**: `CastCue.Swings` → `CastCue.SweepsRight` →
+  `CastContext`/`DelayedStrike` → `VfxEvent.SweepRight`; `VfxPresenter`
+  віддзеркалює cast-ефект (−X scale), коли це не збігається з `SkillVfxSet._sweepsRight`.
+- Зброя на тілі: той самий `PlayerAnimationPresenter` читає `EquippedItem[MainHand]`
+  → модель зі списку `_weaponModels` (пише `SceneBuildUtility.WriteWeaponModels` з
+  кожного `ItemDefinition._model`). Надягнута — на спині (`Chest`); каст із піхов
+  грає Draw замість свінгу й за `_drawSwapDelay` переносить у `RightHand`;
+  `_sheathDelay` без кастів — назад. Хват рахується з кісток пальців, не з офсетів.
+  Drawn/sheathed — **лише презентація**, у симуляцію не йде.
+- Мечі: `Code/Editor/WeaponContentFactory.cs` (викликає
+  `ItemContentFactory.CreateOrLoadTreasureTable` на кожному білді, адитивно) —
+  предмети в `Data/Items/Weapons/Swords/`, grip-префаби в `Art/Weapons/`
+  (руків'я в нулі, лезо +Z, ширина +Y; міряється з меша, пишеться один раз),
+  URP-матеріали в `Art/Weapons/Materials/`.
   URP-копії матеріалів — `Art/Characters/Fina/` (оригінали — built-in шейдери
   Unity-chan, в URP розові); ці не перезбираються — видалити, щоб згенерувати.
 
@@ -212,6 +229,19 @@
   `TriggerEvent`, `TriggerCooldown`; логіка —
   `Code/Skills/Systems/TriggerEvaluationSystem.cs`. Події шлють
   `DamageResolutionSystem` і `DeathReactionSystem`.
+- **Відкладений удар (MeleeArc)**: `SkillCastSystem` списує кулдаун і ману на
+  натисканні, а сам ефект (урон **і** cast-VFX) кладе в буфер `DelayedStrike` на
+  персонажі — `min(Cooldown × SwingStrikeShare, MaxStrikeDelay)`. `TickStrikes`
+  відлічує, `Land` випускає з поточної позиції гравця. Затримку бачить презентер
+  через `CastCue.StrikeDelay` і темпує свінг (`_swingImpact`).
+- **Снаряди й стіни**: `Code/Skills/WallQuery.cs` — PhysX-рейкаст по колайдерах
+  рівня (стіни данжу, перешкоди арени; маска без шару `Character`, тригери й
+  нормалі вгору — підлога — ігноруються). `SkillProjectileSystem.FindWalls` на
+  головному потоці перед джобою → `NativeHashMap<Entity, float3>`; джоба ставить
+  снаряд на стіну, спершу шукає тіло цього боку, інакше `Impact(Entity.Null)`:
+  burst і on-impact тригер спрацьовують, розвилки нема, `SkillHit`-VFX у точці.
+  Дуло підрізає `SkillCastSystem.Muzzle`. Unity Physics (ECS) у проєкті досі нема —
+  це вбудований PhysX.
 - Пошук цілей: `Code/Skills/EnemyTargets.cs`.
 - Зони: `Code/Skills/Components/ElementZone.cs` (+ `ZoneSpawn`),
   `Systems/ElementZoneSystem.cs`, `ZonePoolSystem.cs`, `ProjectileZoneOverlapSystem.cs`.
@@ -328,10 +358,11 @@
   (+ `VfxId` для авторованих сетів).
 - Презентер: `Code/Vfx/VfxPresenter.cs` (лише читає ECS) + пули
   `Code/Vfx/VfxLinePool.cs`, `VfxParticlePool.cs`, `DamageNumberPool.cs`,
-  `StatusIconPool.cs`, `HitStopController.cs`
-  (**єдине місце з `Time.timeScale`**).
+  `StatusIconPool.cs`. Hit-stop прибрано — `Time.timeScale` у проєкті
+  не чіпає ніхто.
 - **Авторовані ефекти на скіл**: `Code/Config/SkillVfxSet.cs` (cast /
-  projectile / hit + scale) ← ассети `Data/Vfx/*.asset`; `SkillDefinition._vfx`
+  projectile / hit + scale, lift, **yaw** — поворот cast-ефекту поверх напряму
+  касту; `Slash/*` з Casual RPG VFX авторовані назад → 180) ← ассети `Data/Vfx/*.asset`; `SkillDefinition._vfx`
   → `SkillBlob.VfxId` → `ResolvedSkill.VfxId` →
   `SkillProjectile.VfxId` / `PendingHit.VfxId` → `VfxEvent.VfxId`.
   Каст оголошує `SkillCastSystem` (`CastVfxPoint`), удар — `SkillHitSystem.Apply`,

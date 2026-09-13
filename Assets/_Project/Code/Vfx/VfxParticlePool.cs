@@ -103,9 +103,10 @@ namespace TogetherWeFall.Vfx
         /// failure: a null prefab is a set that does not name this effect, which
         /// is most sets.
         /// </summary>
-        public void Play(GameObject prefab, Vector3 position, Quaternion rotation, float scale)
+        public void Play(
+            GameObject prefab, Vector3 position, Quaternion rotation, float scale, bool mirrored = false)
         {
-            Instance instance = Rent(prefab, position, rotation, scale);
+            Instance instance = Rent(prefab, position, rotation, scale, mirrored);
 
             if (instance == null)
                 return;
@@ -121,8 +122,15 @@ namespace TogetherWeFall.Vfx
         /// prefab is missing or the ceiling is reached and everything live is
         /// owned by a follower.
         /// </summary>
+        /// <remarks>
+        /// Mirrored is a negative X scale — left and right swapped, forward and
+        /// up kept — which is how a slash sweeps the other way. It holds for
+        /// particle systems scaling by Hierarchy, as every slash in the pack does.
+        /// Set on every rent, so a mirrored instance returns to the pool
+        /// unmirrored the next time.
+        /// </remarks>
         public Instance Rent(
-            GameObject prefab, Vector3 position, Quaternion rotation, float scale)
+            GameObject prefab, Vector3 position, Quaternion rotation, float scale, bool mirrored = false)
         {
             if (prefab == null || _parent == null)
                 return null;
@@ -135,7 +143,7 @@ namespace TogetherWeFall.Vfx
             float size = Mathf.Max(0.01f, scale);
 
             instance.Transform.SetPositionAndRotation(position, rotation);
-            instance.Transform.localScale = Vector3.one * size;
+            instance.Transform.localScale = new Vector3(mirrored ? -size : size, size, size);
             instance.Root.SetActive(true);
 
             for (int i = 0; i < instance.Systems.Length; i++)

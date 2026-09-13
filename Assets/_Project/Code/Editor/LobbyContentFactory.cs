@@ -117,6 +117,11 @@ namespace TogetherWeFall.EditorTools
                 "HuntersBow",
                 "FrostbiteBlade",
 
+                // One sword of each grip from the packs, so drawing one from
+                // the back can be tried without a chest.
+                "IronSword",
+                "Dawnbringer",
+
                 // Armour and jewellery, so there is something to fill the other
                 // slots with.
                 "DentedBuckler",
