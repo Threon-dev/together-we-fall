@@ -52,7 +52,45 @@ namespace TogetherWeFall.Skills
         AllyTarget = 6,
 
         /// <summary>A team spell on every ally within its radius, the caster included.</summary>
-        AllyAura = 7
+        AllyAura = 7,
+
+        // ─────────────────────────────────────────────────────────────────
+        // Patterns. Each one is an effect above laid out in space or time —
+        // Count copies, Interval apart — and resolves through the same queues,
+        // so every support that reaches a projectile or a blast reaches these.
+        // Appended, because the value is what an authored asset stores.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Count projectiles fanned evenly across ArcDegrees. Three hundred and
+        /// sixty is a ring around the caster.
+        /// </summary>
+        Volley = 8,
+
+        /// <summary>
+        /// Count blasts marching out along the aim to Range, Interval apart,
+        /// stopping at the first wall.
+        /// </summary>
+        Fissure = 9,
+
+        /// <summary>
+        /// Count blasts falling inside Scatter of the aim point, Interval apart.
+        /// One with a long interval is a meteor.
+        /// </summary>
+        Rain = 10,
+
+        /// <summary>
+        /// The caster lands at the aim point, and a blast goes off where they
+        /// land. Only a press moves the body; a triggered or echoed leap is the
+        /// blast alone.
+        /// </summary>
+        LeapSlam = 11,
+
+        /// <summary>
+        /// Count full-circle blows around wherever the caster stands, Interval
+        /// apart — they follow a moving caster.
+        /// </summary>
+        Cyclone = 12
     }
 
     /// <summary>
@@ -233,7 +271,43 @@ namespace TogetherWeFall.Skills
         /// means "until the next press comes back", and a key with charges in
         /// hand simply does not have to wait for it.
         /// </summary>
-        AddedCharges = 19
+        AddedCharges = 19,
+
+        // ─────────────────────────────────────────────────────────────────
+        // The third batch: the levers the pattern effects opened, and three
+        // numbers the hit stage already carried and nothing could raise.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>This many more projectiles, blasts or pulses in a pattern.</summary>
+        AddedCount = 20,
+
+        /// <summary>
+        /// The whole cast goes off again this many more times, a beat apart, from
+        /// wherever the caster stands by then. Multicast in time rather than in
+        /// space — one cooldown and one bill.
+        /// </summary>
+        Echo = 21,
+
+        /// <summary>
+        /// A projectile bursts on impact, at least this many metres across.
+        /// Turns a single-target shot into one that area supports can grow.
+        /// </summary>
+        ImpactBurst = 22,
+
+        /// <summary>Adds to what a critical blow multiplies by, as a percentage.</summary>
+        IncreasedCritMultiplier = 23,
+
+        /// <summary>Chains, and a blink's steps, reach further, as a percentage.</summary>
+        IncreasedChainRange = 24,
+
+        /// <summary>
+        /// Every blow also carries ConvertTo, as if the effect had flown through
+        /// it — the element half of a reaction arrives with the skill.
+        /// </summary>
+        InfuseElement = 25,
+
+        /// <summary>A pattern's elements come this many percent faster. Negative slows them.</summary>
+        PatternTempo = 26
     }
 
     /// <summary>Marks the entity holding the skill queues.</summary>
@@ -383,6 +457,19 @@ namespace TogetherWeFall.Skills
 
         /// <summary>Which way the blade sweeps. See CastCue.SweepsRight.</summary>
         public bool SweepRight;
+
+        /// <summary>
+        /// How many triggers deep the cast behind this was. Zero for a press, and
+        /// for every swing, pulse and echo a press queued. Carried so an echo of a
+        /// triggered cast stays under the same depth rail.
+        /// </summary>
+        public int Depth;
+
+        /// <summary>
+        /// Lands where it was queued rather than following the caster. A press
+        /// follows the one who pressed; a trigger stays where it was caused.
+        /// </summary>
+        public bool Anchored;
 
         /// <summary>Seconds until it lands.</summary>
         public float Remaining;
@@ -925,5 +1012,15 @@ namespace TogetherWeFall.Skills
         /// zones did should keep announcing without being told to.
         /// </summary>
         public bool Silent;
+
+        /// <summary>
+        /// Whether this blast plays its skill's cast effect where and when it
+        /// goes off.
+        ///
+        /// For the elements of a pattern and the landing of a leap: the cast
+        /// announcement happens once, at the press, and a meteor that lands half
+        /// a second later somewhere else has to be seen landing there.
+        /// </summary>
+        public bool CastVfx;
     }
 }

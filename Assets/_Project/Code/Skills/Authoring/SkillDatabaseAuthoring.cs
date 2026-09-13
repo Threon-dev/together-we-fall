@@ -301,6 +301,9 @@ namespace TogetherWeFall.Skills.Authoring
                 blob.BaseChains = skill.BaseChains;
                 blob.ChainRange = skill.ChainRange;
                 blob.ChainDelay = skill.ChainDelay;
+                blob.Count = skill.Count;
+                blob.Interval = skill.Interval;
+                blob.Scatter = skill.Scatter;
                 blob.AppliedStatus = skill.AppliedStatusType;
 
                 // The look, as an id. Zero when the skill names no set, which is

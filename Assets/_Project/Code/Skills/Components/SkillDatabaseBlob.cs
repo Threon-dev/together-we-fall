@@ -151,6 +151,15 @@ namespace TogetherWeFall.Skills
         public float ChainRange;
         public float ChainDelay;
 
+        /// <summary>Elements in a pattern. See SkillDefinition.</summary>
+        public int Count;
+
+        /// <summary>Seconds between a pattern's elements.</summary>
+        public float Interval;
+
+        /// <summary>How far from the aim a rain's drops fall.</summary>
+        public float Scatter;
+
         /// <summary>
         /// Which visual set draws this skill, or zero for none.
         ///
@@ -285,6 +294,21 @@ namespace TogetherWeFall.Skills
         public float ChainRange;
         public float ChainDelay;
 
+        /// <summary>Elements in a pattern, after AddedCount. At least one.</summary>
+        public int Count;
+
+        /// <summary>Seconds between a pattern's elements, after PatternTempo.</summary>
+        public float Interval;
+
+        /// <summary>How far a rain spreads, grown by increased area like the blasts in it.</summary>
+        public float Scatter;
+
+        /// <summary>How many more times the whole cast goes off, a beat apart.</summary>
+        public int Echoes;
+
+        /// <summary>Elements every blow of this cast carries from the start. See InfuseElement.</summary>
+        public byte CarriedElements;
+
         public float ExplosionRadius;
         public float ExplosionDamage;
 
@@ -415,12 +439,22 @@ namespace TogetherWeFall.Skills
             public float IncreasedDuration;
             public float IncreasedSpread;
             public float IncreasedCrit;
+            public float IncreasedCritMultiplier;
+            public float IncreasedChainRange;
+            public float PatternTempo;
 
             public int Chains;
             public int Forks;
             public int Casts;
             public int Pierces;
             public int Charges;
+            public int Count;
+            public int Echoes;
+
+            /// <summary>The widest impact burst any support asked for, in metres.</summary>
+            public float ImpactBurst;
+
+            public byte CarriedElements;
 
             public DamageType Type;
 
@@ -635,6 +669,38 @@ namespace TogetherWeFall.Skills
                 case SkillModifierKind.AddedCharges:
                     fold.Charges += (int)math.max(1f, modifier.Value);
                     break;
+
+                case SkillModifierKind.AddedCount:
+                    fold.Count += (int)modifier.Value;
+                    break;
+
+                case SkillModifierKind.Echo:
+                    fold.Echoes += (int)math.max(1f, modifier.Value);
+                    break;
+
+                // The widest wins, like the explosion radius: two burst gems are
+                // the bigger of the two, and increased area then scales it.
+                case SkillModifierKind.ImpactBurst:
+                    fold.ImpactBurst = math.max(fold.ImpactBurst, modifier.Value);
+                    break;
+
+                case SkillModifierKind.IncreasedCritMultiplier:
+                    fold.IncreasedCritMultiplier += modifier.Value;
+                    break;
+
+                case SkillModifierKind.IncreasedChainRange:
+                    fold.IncreasedChainRange += modifier.Value;
+                    break;
+
+                // A set rather than a sum, so two infusions of one element are
+                // one, and two of different elements carry both.
+                case SkillModifierKind.InfuseElement:
+                    fold.CarriedElements = ElementMask.With(fold.CarriedElements, modifier.ConvertTo);
+                    break;
+
+                case SkillModifierKind.PatternTempo:
+                    fold.PatternTempo += modifier.Value;
+                    break;
             }
         }
 
@@ -780,7 +846,18 @@ namespace TogetherWeFall.Skills
 
             // A sheet that has never heard of crit multipliers would otherwise
             // make every critical blow do less damage than an ordinary one.
-            float critMultiplier = math.max(1f, stats.Get(StatKind.CritMultiplier));
+            float critMultiplier = math.max(
+                1f, stats.Get(StatKind.CritMultiplier) + fold.IncreasedCritMultiplier * 0.01f);
+
+            // A burst gem is a floor under the authored radius rather than an
+            // addition to it, so a lance that already bursts is not doubled.
+            // Only something that flies can burst on impact.
+            float radius = skill.Radius;
+
+            if (skill.Effect == SkillEffectKind.Projectile || skill.Effect == SkillEffectKind.Volley)
+                radius = math.max(radius, fold.ImpactBurst);
+
+            float areaScale = 1f + increasedArea * 0.01f;
 
             return new ResolvedSkill
             {
@@ -799,7 +876,7 @@ namespace TogetherWeFall.Skills
                 // question off the asset, is gone for exactly this reason.
                 ManaCost = skill.ManaCost * costScale,
                 Range = skill.Range,
-                Radius = skill.Radius * (1f + increasedArea * 0.01f),
+                Radius = radius * areaScale,
                 ArcCosine = math.cos(math.radians(math.clamp(skill.ArcDegrees, 0f, 360f) * 0.5f)),
                 ProjectileSpeed = skill.ProjectileSpeed * (1f + increasedSpeed * 0.01f),
 
@@ -831,8 +908,18 @@ namespace TogetherWeFall.Skills
                 CritMultiplier = critMultiplier,
                 Forks = math.max(0, forks),
                 Chains = math.max(0, chains),
-                ChainRange = skill.ChainRange,
+                ChainRange = skill.ChainRange * math.max(0.1f, 1f + fold.IncreasedChainRange * 0.01f),
                 ChainDelay = skill.ChainDelay,
+
+                Count = math.max(1, skill.Count + fold.Count),
+
+                // Floored well above zero for the reason the cooldown is: a
+                // pattern whose elements all land on one frame is one blast
+                // wearing a pattern as a costume.
+                Interval = skill.Interval / math.max(0.1f, 1f + fold.PatternTempo * 0.01f),
+                Scatter = skill.Scatter * areaScale,
+                Echoes = math.max(0, fold.Echoes),
+                CarriedElements = fold.CarriedElements,
                 ExplosionRadius = explosionRadius,
                 ExplosionDamage = damage * explosionShare * 0.01f,
                 TriggerSkillIndex = triggerIndex,

@@ -659,6 +659,9 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_baseChains").intValue = fields.BaseChains;
             serialized.FindProperty("_chainRange").floatValue = fields.ChainRange;
             serialized.FindProperty("_chainDelay").floatValue = fields.ChainDelay;
+            serialized.FindProperty("_count").intValue = fields.Count;
+            serialized.FindProperty("_interval").floatValue = fields.Interval;
+            serialized.FindProperty("_scatter").floatValue = fields.Scatter;
 
             SerializedProperty modifiers = serialized.FindProperty("_modifiers");
             modifiers.arraySize = fields.Modifiers.Length;
@@ -713,6 +716,12 @@ namespace TogetherWeFall.EditorTools
             public int BaseChains;
             public float ChainRange = 8f;
             public float ChainDelay = 0.07f;
+
+            /// <summary>Elements in a pattern: projectiles, blasts or pulses.</summary>
+            public int Count = 1;
+            public float Interval = 0.1f;
+            public float Scatter = 4f;
+
             public SkillModifier[] Modifiers = System.Array.Empty<SkillModifier>();
 
             /// <summary>A status the skill marks everything it hits with, or null.</summary>

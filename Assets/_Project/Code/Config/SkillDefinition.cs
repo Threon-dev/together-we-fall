@@ -71,6 +71,19 @@ namespace TogetherWeFall.Config
                  "frame and the chain reads as one flash.")]
         [SerializeField, Range(0f, 0.5f)] private float _chainDelay = 0.07f;
 
+        [Header("Pattern (Volley, Fissure, Rain, Cyclone)")]
+        [Tooltip("Projectiles in a volley, blasts in a fissure or a rain, pulses " +
+                 "in a cyclone. Ignored by every other effect.")]
+        [SerializeField, Range(1, 48)] private int _count = 1;
+
+        [Tooltip("Seconds between one element of a pattern and the next. A rain " +
+                 "waits one interval before its first drop, so a single drop with " +
+                 "a long interval is a meteor.")]
+        [SerializeField, Range(0f, 2f)] private float _interval = 0.1f;
+
+        [Tooltip("How far from the aim point a rain's drops may fall.")]
+        [SerializeField, Min(0f)] private float _scatter = 4f;
+
         [Header("Status")]
         [Tooltip("A status everything this skill hits is marked with, on top of " +
                  "whatever its element leaves behind. This is the only way a " +
@@ -117,6 +130,10 @@ namespace TogetherWeFall.Config
         public int BaseChains => _baseChains;
         public float ChainRange => _chainRange;
         public float ChainDelay => _chainDelay;
+
+        public int Count => _count;
+        public float Interval => _interval;
+        public float Scatter => _scatter;
 
         public SkillModifier[] Modifiers => _modifiers;
 

@@ -80,6 +80,21 @@ namespace TogetherWeFall.Skills.Systems
         /// </summary>
         private const int KeystoneChainCount = 4;
 
+        /// <summary>Seconds between the echoes of one cast.</summary>
+        private const float EchoInterval = 0.3f;    // TUNE
+
+        /// <summary>How long a leap is in the air before its blast lands.</summary>
+        private const float LeapLandDelay = 0.1f;   // TUNE
+
+        /// <summary>How far short of a wall a leap lands, so the capsule is not put inside it.</summary>
+        private const float LeapWallMargin = 0.5f;
+
+        /// <summary>How far short of a wall a fissure's last blast goes off.</summary>
+        private const float FissureWallMargin = 0.5f;
+
+        /// <summary>The golden angle, in radians: drops of a rain turned by it never line up.</summary>
+        private const float GoldenAngle = 2.39996323f;
+
         private EntityQuery _enemyQuery;
         private EntityQuery _characterQuery;
         private EntityQuery _freeProjectileQuery;
@@ -399,6 +414,10 @@ namespace TogetherWeFall.Skills.Systems
             float3 direction = Flatten(request.Direction);
             float strikeDelay = StrikeDelayOf(resolved);
 
+            // Where the echoes of this cast go off from. The press, except for a
+            // leap, whose echoes are aftershocks where it landed.
+            CastContext echoContext = context;
+
             bool produced;
 
             if (resolved.Effect == SkillEffectKind.BlinkStrike)
@@ -411,6 +430,22 @@ namespace TogetherWeFall.Skills.Systems
             else if (SkillModifiers.IsSupportive(resolved.Effect))
             {
                 produced = EmitSupport(ref state, resolved, context, direction, hits, effects);
+            }
+            else if (resolved.Effect == SkillEffectKind.LeapSlam &&
+                     state.EntityManager.HasComponent<PlayerWarp>(character))
+            {
+                float3 landing = Leap(ref state, character, resolved, context, direction, areas);
+
+                echoContext.Origin = landing;
+                echoContext.AimPoint = landing;
+                strikeDelay = LeapLandDelay;
+                produced = true;
+            }
+            else if (resolved.Effect == SkillEffectKind.Cyclone &&
+                     state.EntityManager.HasBuffer<DelayedStrike>(character))
+            {
+                QueueCyclone(ref state, character, resolved, context, direction, 0f, anchored: false);
+                produced = true;
             }
             else if (strikeDelay > 0f && state.EntityManager.HasBuffer<DelayedStrike>(character))
             {
@@ -444,6 +479,10 @@ namespace TogetherWeFall.Skills.Systems
             // skill being broken rather than as having missed.
             if (!produced)
                 return;
+
+            // After the first blow — the swing's wind-up, the leap's landing —
+            // so an echo never overtakes what it echoes.
+            QueueEchoes(ref state, character, resolved, echoContext, direction, strikeDelay, anchored: false);
 
             // A charge, not the whole key. The timer starts only if nothing was
             // already refilling; otherwise the one running keeps its place.
@@ -569,7 +608,9 @@ namespace TogetherWeFall.Skills.Systems
             NativeList<ZoneSpawn> zones,
             NativeList<VfxEvent> effects)
         {
-            float3 moved = CurrentPosition(ref state, strike.PlayerId, strike.Origin) - strike.Origin;
+            float3 moved = strike.Anchored
+                ? float3.zero
+                : CurrentPosition(ref state, strike.PlayerId, strike.Origin) - strike.Origin;
 
             var context = new CastContext
             {
@@ -577,7 +618,7 @@ namespace TogetherWeFall.Skills.Systems
                 Origin = strike.Origin + moved,
                 AimPoint = strike.AimPoint + moved,
                 PreferredTarget = Entity.Null,
-                Depth = 0,
+                Depth = strike.Depth,
                 Keystone = strike.Keystone,
                 SweepRight = strike.SweepRight
             };
@@ -787,17 +828,33 @@ namespace TogetherWeFall.Skills.Systems
                 return;
             }
 
-            for (int c = 0; c < resolved.Casts; c++)
+            // A cyclone needs somewhere to keep its pulses, and a trigger that
+            // fires one leaves it where it was caused. Without a character it is
+            // one pulse, which is what Emit does with it.
+            bool spins = resolved.Effect == SkillEffectKind.Cyclone &&
+                         character != Entity.Null &&
+                         state.EntityManager.HasBuffer<DelayedStrike>(character);
+
+            if (spins)
             {
-                float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
-
-                CastContext copy = context;
-                copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
-
-                Emit(
-                    resolved, copy, Turn(direction, angle),
-                    targets, hits, areas, spawns, zones, effects);
+                QueueCyclone(ref state, character, resolved, context, direction, 0f, anchored: true);
             }
+            else
+            {
+                for (int c = 0; c < resolved.Casts; c++)
+                {
+                    float angle = SpreadAngle(c, resolved.Casts, resolved.SpreadDegrees);
+
+                    CastContext copy = context;
+                    copy.AimPoint = SpreadAim(context.Origin, context.AimPoint, angle);
+
+                    Emit(
+                        resolved, copy, Turn(direction, angle),
+                        targets, hits, areas, spawns, zones, effects);
+                }
+            }
+
+            QueueEchoes(ref state, character, resolved, context, direction, 0f, anchored: true);
         }
 
         /// <summary>
@@ -816,9 +873,11 @@ namespace TogetherWeFall.Skills.Systems
             switch (skill.Effect)
             {
                 case SkillEffectKind.Projectile:
+                case SkillEffectKind.Volley:
                     return context.Origin + direction * MuzzleOffset;
 
                 case SkillEffectKind.AreaBurst:
+                case SkillEffectKind.LeapSlam:
                     return ClampToRange(context.Origin, context.AimPoint, skill.Range);
 
                 case SkillEffectKind.PersistentZone:
@@ -832,12 +891,23 @@ namespace TogetherWeFall.Skills.Systems
                 // up, and lifting that by the same amount put the slash over
                 // their head.
                 case SkillEffectKind.MeleeArc:
+                case SkillEffectKind.Cyclone:
                     return OnGround(context.Origin, context.AimPoint);
 
                 default:
                     return context.Origin;
             }
         }
+
+        /// <summary>
+        /// Whether a skill's cast effect is played by each blast it lays down
+        /// rather than once at the press. A rain announced at the caster's feet
+        /// would be a meteor in the wrong place.
+        /// </summary>
+        private static bool AnnouncesPerBlast(SkillEffectKind effect)
+            => effect == SkillEffectKind.Fissure ||
+               effect == SkillEffectKind.Rain ||
+               effect == SkillEffectKind.LeapSlam;
 
         /// <summary>
         /// Produces one instance of the skill. Returns whether anything actually
@@ -861,8 +931,9 @@ namespace TogetherWeFall.Skills.Systems
             // feedback that the key was heard.
             //
             // Skipped entirely by a skill with no visual set, which is every
-            // skill until somebody authors one.
-            if (skill.VfxId != 0)
+            // skill until somebody authors one — and by a pattern whose blasts
+            // each play it where they land.
+            if (skill.VfxId != 0 && !AnnouncesPerBlast(skill.Effect))
             {
                 float3 point = CastVfxPoint(skill, context, direction);
 
@@ -886,54 +957,39 @@ namespace TogetherWeFall.Skills.Systems
             switch (skill.Effect)
             {
                 case SkillEffectKind.Projectile:
-                    spawns.Add(new ProjectileSpawn
-                    {
-                        Position = Muzzle(context.Origin, direction),
-                        Projectile = new SkillProjectile
-                        {
-                            Velocity = direction * skill.ProjectileSpeed,
-                            Damage = skill.Damage,
-                            Type = skill.Type,
-                            SourcePlayerId = context.PlayerId,
-                            Lifetime = skill.Range / math.max(1f, skill.ProjectileSpeed),
-                            HitRadius = ProjectileHitRadius,
-                            ImpactRadius = skill.Radius,
-                            ForksRemaining = skill.Forks,
-                            PiercesRemaining = skill.Pierces,
-                            ChainsRemaining = skill.Chains,
-                            ChainRange = skill.ChainRange,
-                            ChainDelay = skill.ChainDelay,
-                            ExplosionRadius = skill.ExplosionRadius,
-                            ExplosionDamage = skill.ExplosionDamage,
-                            CullThreshold = skill.CullThreshold,
-                            ManaOnKill = skill.ManaOnKill,
-
-                            // Not spent here. Every body this ends up striking
-                            // rolls its own, which is what makes a fork that
-                            // crits on one side and not the other possible.
-                            CritChance = skill.CritChance,
-                            CritMultiplier = skill.CritMultiplier,
-
-                            // Carried on the projectile, like everything else it
-                            // needs to resolve its own impact.
-                            TriggerSkillIndex = skill.TriggerSkillIndex,
-                            TriggerDamageScale = skill.TriggerDamageScale,
-                            TriggerDepth = context.Depth,
-
-                            // And the status it marks whatever it hits with, if
-                            // the skill names one. A fork inherits it for free,
-                            // because a fork copies this struct.
-                            AppliedStatus = skill.AppliedStatus,
-
-                            // The look it flies with, and the look of the blow it
-                            // becomes. Inherited by a fork like everything else
-                            // in this struct.
-                            VfxId = skill.VfxId
-                        }
-                    });
+                    spawns.Add(MakeProjectile(skill, context, direction));
                     return true;
 
+                case SkillEffectKind.Volley:
+                    EmitVolley(skill, context, direction, spawns);
+                    return true;
+
+                case SkillEffectKind.Fissure:
+                    EmitFissure(skill, context, direction, areas);
+                    return true;
+
+                case SkillEffectKind.Rain:
+                    EmitRain(skill, context, direction, areas);
+                    return true;
+
+                // Here only when nothing can be moved: a trigger, an echo, a
+                // character without a warp. What is left of a leap is its slam.
+                case SkillEffectKind.LeapSlam:
+                {
+                    PendingArea slam = MakeArea(
+                        skill, context,
+                        ClampToRange(context.Origin, context.AimPoint, skill.Range),
+                        direction);
+
+                    slam.CastVfx = true;
+                    areas.Add(slam);
+                    return true;
+                }
+
+                // One pulse around the caster. The spin itself needs a body to
+                // follow, and SkillCastSystem queues that before it gets here.
                 case SkillEffectKind.MeleeArc:
+                case SkillEffectKind.Cyclone:
                     areas.Add(MakeArea(skill, context, context.Origin, direction));
                     return true;
 
@@ -1120,6 +1176,7 @@ namespace TogetherWeFall.Skills.Systems
                 CritChance = skill.CritChance,
                 CritMultiplier = skill.CritMultiplier,
                 AppliedStatus = skill.AppliedStatus,
+                CarriedElements = skill.CarriedElements,
 
                 // Depth zero is a key press; anything deeper got here because
                 // something else fired.
@@ -1187,8 +1244,345 @@ namespace TogetherWeFall.Skills.Systems
             TriggerSkillIndex = skill.TriggerSkillIndex,
             TriggerDamageScale = skill.TriggerDamageScale,
             TriggerDepth = context.Depth,
-            AppliedStatus = skill.AppliedStatus
+            AppliedStatus = skill.AppliedStatus,
+            CarriedElements = skill.CarriedElements
         };
+
+        /// <summary>One projectile of this skill, flying in this direction.</summary>
+        private static ProjectileSpawn MakeProjectile(
+            in ResolvedSkill skill, in CastContext context, float3 direction) => new ProjectileSpawn
+        {
+            Position = Muzzle(context.Origin, direction),
+            Projectile = new SkillProjectile
+            {
+                Velocity = direction * skill.ProjectileSpeed,
+                Damage = skill.Damage,
+                Type = skill.Type,
+                SourcePlayerId = context.PlayerId,
+                Lifetime = skill.Range / math.max(1f, skill.ProjectileSpeed),
+                HitRadius = ProjectileHitRadius,
+                ImpactRadius = skill.Radius,
+                ForksRemaining = skill.Forks,
+                PiercesRemaining = skill.Pierces,
+                ChainsRemaining = skill.Chains,
+                ChainRange = skill.ChainRange,
+                ChainDelay = skill.ChainDelay,
+                ExplosionRadius = skill.ExplosionRadius,
+                ExplosionDamage = skill.ExplosionDamage,
+                CullThreshold = skill.CullThreshold,
+                ManaOnKill = skill.ManaOnKill,
+
+                // Not spent here. Every body this ends up striking rolls its
+                // own, which is what makes a fork that crits on one side and not
+                // the other possible.
+                CritChance = skill.CritChance,
+                CritMultiplier = skill.CritMultiplier,
+
+                // Carried on the projectile, like everything else it needs to
+                // resolve its own impact.
+                TriggerSkillIndex = skill.TriggerSkillIndex,
+                TriggerDamageScale = skill.TriggerDamageScale,
+                TriggerDepth = context.Depth,
+
+                // And the status it marks whatever it hits with, if the skill
+                // names one. A fork inherits it for free, because a fork copies
+                // this struct.
+                AppliedStatus = skill.AppliedStatus,
+
+                // What an infusion put on it before it left the hand. Whatever it
+                // flies through is added to this in flight.
+                CarriedElements = skill.CarriedElements,
+
+                // The look it flies with, and the look of the blow it becomes.
+                // Inherited by a fork like everything else in this struct.
+                VfxId = skill.VfxId
+            }
+        };
+
+        /// <summary>
+        /// Count projectiles across the skill's arc. A full circle spaces them
+        /// evenly all the way round; anything narrower puts one at each edge.
+        /// Each is a whole projectile — a trigger on it fires per projectile, the
+        /// same as the copies of a multicast.
+        /// </summary>
+        private static void EmitVolley(
+            in ResolvedSkill skill, in CastContext context, float3 direction,
+            NativeList<ProjectileSpawn> spawns)
+        {
+            int count = math.max(1, skill.Count);
+
+            // Read back out of the cosine the fold stored, so the volley is the
+            // arc the asset authored without a second field for it.
+            float arc = 2f * math.acos(math.clamp(skill.ArcCosine, -1f, 1f));
+            bool ring = skill.ArcCosine <= -0.999f;
+
+            float step = ring
+                ? 2f * math.PI / count
+                : count > 1 ? arc / (count - 1) : 0f;
+
+            float start = ring || count == 1 ? 0f : -arc * 0.5f;
+
+            for (int i = 0; i < count; i++)
+                spawns.Add(MakeProjectile(skill, context, Turn(direction, start + step * i)));
+        }
+
+        /// <summary>
+        /// Count blasts marching out along the aim, Interval apart, spaced over
+        /// the skill's range. A wall cuts the line short rather than squeezing
+        /// it: the ground does not tear through stone.
+        ///
+        /// The pattern is one effect instance, so its trigger rides the last
+        /// blast only — sixteen triggers off one fissure would be the count of
+        /// blasts deciding how many casts happen, not the gem.
+        /// </summary>
+        private static void EmitFissure(
+            in ResolvedSkill skill, in CastContext context, float3 direction,
+            NativeList<PendingArea> areas)
+        {
+            int count = math.max(1, skill.Count);
+            float step = skill.Range / count;
+            float reach = skill.Range;
+
+            float3 start = context.Origin;
+
+            if (WallQuery.Cast(start, start + direction * skill.Range, WallQuery.Mask(), out float3 stop))
+            {
+                float3 offset = stop - start;
+                offset.y = 0f;
+                reach = math.max(0f, math.length(offset) - FissureWallMargin);
+            }
+
+            int first = areas.Length;
+
+            for (int i = 0; i < count; i++)
+            {
+                float along = step * (i + 0.5f);
+
+                // The first blast always goes off, at the feet if a wall is right
+                // there; the rest stop at the wall.
+                if (i > 0 && along > reach)
+                    break;
+
+                areas.Add(PatternBlast(skill, context, start + direction * math.min(along, reach), direction, i * skill.Interval));
+            }
+
+            GiveTriggerToLast(skill, areas, first);
+        }
+
+        /// <summary>
+        /// Count blasts falling inside Scatter of the aim, the first after one
+        /// Interval. Where each lands is fixed by its index — the golden angle
+        /// turns every drop away from the last, and a fractional radius keeps
+        /// them from spiralling — so the host needs no dice and the same cast
+        /// on the same spot looks the same.
+        /// </summary>
+        private static void EmitRain(
+            in ResolvedSkill skill, in CastContext context, float3 direction,
+            NativeList<PendingArea> areas)
+        {
+            int count = math.max(1, skill.Count);
+            float3 centre = ClampToRange(context.Origin, context.AimPoint, skill.Range);
+
+            // Turned with the aim, so rain aimed another way falls another way.
+            float facing = math.atan2(direction.x, direction.z);
+
+            int first = areas.Length;
+
+            for (int i = 0; i < count; i++)
+            {
+                float radius = count == 1
+                    ? 0f
+                    : skill.Scatter * math.sqrt(math.frac((i + 0.5f) * 0.618034f));
+
+                float angle = facing + i * GoldenAngle;
+                float3 at = centre + new float3(math.sin(angle), 0f, math.cos(angle)) * radius;
+
+                areas.Add(PatternBlast(skill, context, at, direction, (i + 1) * skill.Interval));
+            }
+
+            GiveTriggerToLast(skill, areas, first);
+        }
+
+        /// <summary>One blast of a pattern: a full circle, delayed, playing the skill's cast effect where it lands.</summary>
+        private static PendingArea PatternBlast(
+            in ResolvedSkill skill, in CastContext context, float3 position, float3 direction, float delay)
+        {
+            PendingArea blast = MakeArea(skill, context, position, direction);
+
+            blast.ArcCosine = -1f;
+            blast.Delay = delay;
+            blast.CastVfx = true;
+
+            // Nothing until the last one says otherwise. Zero is a real skill index.
+            blast.TriggerSkillIndex = -1;
+
+            return blast;
+        }
+
+        private static void GiveTriggerToLast(in ResolvedSkill skill, NativeList<PendingArea> areas, int first)
+        {
+            if (areas.Length <= first)
+                return;
+
+            PendingArea last = areas[areas.Length - 1];
+            last.TriggerSkillIndex = skill.TriggerSkillIndex;
+            areas[areas.Length - 1] = last;
+        }
+
+        /// <summary>
+        /// Moves the caster to the aim point — short of a wall in between — and
+        /// queues the slam where they land, a beat later so the body arrives
+        /// first. Returns the landing.
+        ///
+        /// The host writes a warp and the bridge moves the body, the same split
+        /// a blink uses. Not untouchable: the leap is one frame in the air.
+        /// </summary>
+        private static float3 Leap(
+            ref SystemState state,
+            Entity character,
+            in ResolvedSkill skill,
+            in CastContext context,
+            float3 direction,
+            NativeList<PendingArea> areas)
+        {
+            float3 target = ClampToRange(context.Origin, context.AimPoint, skill.Range);
+            float3 toward = target - context.Origin;
+            toward.y = 0f;
+
+            float distance = math.length(toward);
+            float3 heading = distance > 1e-3f ? toward / distance : direction;
+
+            if (WallQuery.Cast(context.Origin, target, WallQuery.Mask(), out float3 stop))
+            {
+                float3 offset = stop - context.Origin;
+                offset.y = 0f;
+                distance = math.min(distance, math.max(0f, math.length(offset) - LeapWallMargin));
+            }
+
+            float3 landing = context.Origin + heading * distance;
+
+            PlayerWarp warp = state.EntityManager.GetComponentData<PlayerWarp>(character);
+            warp.Version++;
+            warp.Position = landing;
+            warp.Facing = heading;
+            warp.Holding = false;
+            state.EntityManager.SetComponentData(character, warp);
+
+            PendingArea slam = MakeArea(skill, context, landing, heading);
+            slam.Delay = LeapLandDelay;
+            slam.CastVfx = true;
+            areas.Add(slam);
+
+            return landing;
+        }
+
+        /// <summary>
+        /// A cyclone's pulses, Interval apart, as swings waiting to land — the
+        /// same buffer a sword's wind-up uses, which is what makes each pulse go
+        /// off around wherever the caster has walked to by then.
+        /// </summary>
+        private static void QueueCyclone(
+            ref SystemState state,
+            Entity character,
+            in ResolvedSkill skill,
+            in CastContext context,
+            float3 direction,
+            float start,
+            bool anchored)
+        {
+            DynamicBuffer<DelayedStrike> strikes = state.EntityManager.GetBuffer<DelayedStrike>(character);
+
+            ResolvedSkill pulse = skill;
+            pulse.Effect = SkillEffectKind.MeleeArc;
+            pulse.ArcCosine = -1f;
+            pulse.Echoes = 0;
+
+            int count = math.max(1, skill.Count);
+
+            for (int i = 0; i < count; i++)
+            {
+                // One trigger for the whole spin, on its last pulse.
+                pulse.TriggerSkillIndex = i == count - 1 ? skill.TriggerSkillIndex : -1;
+
+                strikes.Add(new DelayedStrike
+                {
+                    Skill = pulse,
+                    PlayerId = context.PlayerId,
+                    Origin = context.Origin,
+                    AimPoint = context.AimPoint,
+                    Direction = direction,
+                    Keystone = context.Keystone,
+                    SweepRight = (i & 1) == 0,
+                    Depth = context.Depth,
+                    Anchored = anchored,
+                    Remaining = start + i * skill.Interval
+                });
+            }
+        }
+
+        /// <summary>
+        /// Queues the echoes of a cast that has just gone off: the same folded
+        /// skill, EchoInterval apart, after the first blow. Nothing for a blink
+        /// or a team spell — a blink already repeats, and a heal that echoes is a
+        /// bigger heal wearing a support as a costume.
+        ///
+        /// An echo is the skill as it was folded at the press, like a swing, so
+        /// no support gathered later can change it — and it charges nothing.
+        /// </summary>
+        private static void QueueEchoes(
+            ref SystemState state,
+            Entity character,
+            in ResolvedSkill skill,
+            in CastContext context,
+            float3 direction,
+            float firstDelay,
+            bool anchored)
+        {
+            if (skill.Echoes <= 0 ||
+                character == Entity.Null ||
+                skill.Effect == SkillEffectKind.BlinkStrike ||
+                SkillModifiers.IsSupportive(skill.Effect) ||
+                !state.EntityManager.HasBuffer<DelayedStrike>(character))
+            {
+                return;
+            }
+
+            if (skill.Effect == SkillEffectKind.Cyclone)
+            {
+                float spin = math.max(1, skill.Count) * skill.Interval + EchoInterval;
+
+                for (int e = 1; e <= skill.Echoes; e++)
+                    QueueCyclone(ref state, character, skill, context, direction, e * spin, anchored);
+
+                return;
+            }
+
+            ResolvedSkill echo = skill;
+            echo.Echoes = 0;
+
+            // A body leaps once; what echoes is the slam where it landed.
+            if (echo.Effect == SkillEffectKind.LeapSlam)
+                echo.Effect = SkillEffectKind.AreaBurst;
+
+            DynamicBuffer<DelayedStrike> strikes = state.EntityManager.GetBuffer<DelayedStrike>(character);
+
+            for (int e = 1; e <= skill.Echoes; e++)
+            {
+                strikes.Add(new DelayedStrike
+                {
+                    Skill = echo,
+                    PlayerId = context.PlayerId,
+                    Origin = context.Origin,
+                    AimPoint = context.AimPoint,
+                    Direction = direction,
+                    Keystone = context.Keystone,
+                    SweepRight = (e & 1) == 0 ? context.SweepRight : !context.SweepRight,
+                    Depth = context.Depth,
+                    Anchored = anchored,
+                    Remaining = firstDelay + e * EchoInterval
+                });
+            }
+        }
 
         private void AppendEvents(
             ref SystemState state,

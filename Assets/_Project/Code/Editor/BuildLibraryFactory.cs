@@ -294,10 +294,12 @@ namespace TogetherWeFall.EditorTools
         public static SkillDefinition[] WithLibrary(SkillDefinition[] starter)
         {
             SkillDefinition[] library = CreateSkills();
-            var all = new SkillDefinition[starter.Length + library.Length];
+            SkillDefinition[] arsenal = ArsenalContentFactory.CreateSkills();
+            var all = new SkillDefinition[starter.Length + library.Length + arsenal.Length];
 
             starter.CopyTo(all, 0);
             library.CopyTo(all, starter.Length);
+            arsenal.CopyTo(all, starter.Length + library.Length);
 
             return all;
         }
@@ -322,6 +324,7 @@ namespace TogetherWeFall.EditorTools
             CritJewellery(table);
             CreateLinkedStaff(skills, table);
             CreateTestbedPair(table);
+            ArsenalContentFactory.CreateGems(table);
         }
 
         /// <summary>
@@ -989,7 +992,7 @@ namespace TogetherWeFall.EditorTools
                 new[] { 0, 0 }, table);
         }
 
-        private static void Testbed(
+        internal static void Testbed(
             string assetName, string displayName, EquipmentSlot slot, string weaponFolder,
             int[] groups, LootTable table)
         {

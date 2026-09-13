@@ -84,6 +84,16 @@ namespace TogetherWeFall.Skills
                 // Decides what a blow does to a body that was already nearly
                 // gone, which is a question only the resolver can answer.
                 case SkillModifierKind.CullingStrike:
+
+                // Folded at cast and answered where the projectile lands, like
+                // the pierce beside it.
+                case SkillModifierKind.ImpactBurst:
+
+                // How far the next jump may look, decided at each body struck.
+                case SkillModifierKind.IncreasedChainRange:
+
+                // Carried to the body and spent in a reaction there.
+                case SkillModifierKind.InfuseElement:
                     return SkillModifierPhase.Hit;
 
                 case SkillModifierKind.ExplodeOnKill:
@@ -152,6 +162,40 @@ namespace TogetherWeFall.Skills
         /// </summary>
         public static bool IsSupportive(SkillEffectKind effect)
             => effect == SkillEffectKind.AllyTarget || effect == SkillEffectKind.AllyAura;
+
+        /// <summary>Whether a skill is laid out as Count elements, which AddedCount can grow.</summary>
+        public static bool IsPattern(SkillEffectKind effect)
+            => effect == SkillEffectKind.Volley || effect == SkillEffectKind.Fissure ||
+               effect == SkillEffectKind.Rain || effect == SkillEffectKind.Cyclone;
+
+        /// <summary>Whether a projectile comes out of it, for the supports that act on one.</summary>
+        public static bool Flies(SkillEffectKind effect)
+            => effect == SkillEffectKind.Projectile || effect == SkillEffectKind.Volley;
+
+        /// <summary>
+        /// The effect the character's cast animation is filed under. The
+        /// controller knows the first five; a pattern plays whichever of those it
+        /// looks like, so a new effect never means a new animator state.
+        /// </summary>
+        public static SkillEffectKind AnimatesAs(SkillEffectKind effect)
+        {
+            switch (effect)
+            {
+                case SkillEffectKind.Volley:
+                    return SkillEffectKind.Projectile;
+
+                case SkillEffectKind.LeapSlam:
+                case SkillEffectKind.Cyclone:
+                case SkillEffectKind.Fissure:
+                    return SkillEffectKind.MeleeArc;
+
+                case SkillEffectKind.Rain:
+                    return SkillEffectKind.AreaBurst;
+
+                default:
+                    return effect;
+            }
+        }
 
         /// <summary>
         /// Whether anything in the game can currently make this condition true.
@@ -229,6 +273,7 @@ namespace TogetherWeFall.Skills
             if (skill.Effect == SkillEffectKind.BlinkStrike)
             {
                 return kind == SkillModifierKind.AddedChains ||
+                       kind == SkillModifierKind.IncreasedChainRange ||
                        kind == SkillModifierKind.ReducedCooldown ||
                        kind == SkillModifierKind.AddedCharges ||
                        (kind == SkillModifierKind.IncreasedManaCost && skill.ManaCost > 0f);
@@ -248,13 +293,13 @@ namespace TogetherWeFall.Skills
 
             switch (kind)
             {
-                // A projectile is the only effect that travels, so it is the
-                // only one that can be made faster, split or pushed through a
-                // body.
+                // Only what travels can be made faster, split, pushed through a
+                // body or made to burst where it lands.
                 case SkillModifierKind.Fork:
                 case SkillModifierKind.Pierce:
                 case SkillModifierKind.IncreasedProjectileSpeed:
-                    return skill.Effect == SkillEffectKind.Projectile;
+                case SkillModifierKind.ImpactBurst:
+                    return Flies(skill.Effect);
 
                 // Only one effect stays on the ground long enough to last
                 // longer.
@@ -264,16 +309,36 @@ namespace TogetherWeFall.Skills
                 // A bolt is a line between two bodies and has no area at all;
                 // a projectile has one only if it was authored to burst on
                 // impact, and a radius of zero scaled by anything is zero.
+                // (An impact burst gem beside it gives it one; see NeedsCompanion.)
                 case SkillModifierKind.IncreasedArea:
                     if (skill.Effect == SkillEffectKind.ChainBolt)
                         return false;
 
-                    return skill.Effect != SkillEffectKind.Projectile || skill.Radius > 0f;
+                    return !Flies(skill.Effect) || skill.Radius > 0f;
 
                 // A zone pulses for as long as it burns, so a chain from a zone
                 // would be a number of jumps decided by the duration rather
-                // than by what was socketed. The other four all chain.
+                // than by what was socketed. Everything else chains.
                 case SkillModifierKind.AddedChains:
+                case SkillModifierKind.IncreasedChainRange:
+                    return skill.Effect != SkillEffectKind.PersistentZone;
+
+                case SkillModifierKind.AddedCount:
+                    return IsPattern(skill.Effect);
+
+                // A volley is all at once, so there is no tempo to change.
+                case SkillModifierKind.PatternTempo:
+                    return IsPattern(skill.Effect) && skill.Effect != SkillEffectKind.Volley;
+
+                // A body lands in one place, so copies of a leap would be the
+                // same blast stacked on itself.
+                case SkillModifierKind.Multicast:
+                case SkillModifierKind.IncreasedSpread:
+                    return skill.Effect != SkillEffectKind.LeapSlam;
+
+                // A zone carries no element but its own and has no pulse to
+                // infuse; the rest all strike bodies.
+                case SkillModifierKind.InfuseElement:
                     return skill.Effect != SkillEffectKind.PersistentZone;
 
                 // A chain is one effect touching several bodies, and firing per
@@ -311,6 +376,7 @@ namespace TogetherWeFall.Skills
                 case SkillModifierKind.Fork:
                 case SkillModifierKind.Pierce:
                 case SkillModifierKind.IncreasedProjectileSpeed:
+                case SkillModifierKind.ImpactBurst:
                     return "it fires no projectile";
 
                 case SkillModifierKind.IncreasedDuration:
@@ -322,7 +388,23 @@ namespace TogetherWeFall.Skills
                         : "it strikes one body and nothing around it";
 
                 case SkillModifierKind.AddedChains:
+                case SkillModifierKind.IncreasedChainRange:
                     return "a zone pulses where it lies rather than jumping onward";
+
+                case SkillModifierKind.AddedCount:
+                    return "it is one effect, not a pattern of them";
+
+                case SkillModifierKind.PatternTempo:
+                    return IsPattern(skill.Effect)
+                        ? "a volley leaves all at once"
+                        : "it is one effect, not a pattern of them";
+
+                case SkillModifierKind.Multicast:
+                case SkillModifierKind.IncreasedSpread:
+                    return "a body lands in one place";
+
+                case SkillModifierKind.InfuseElement:
+                    return "a zone burns with its own element only";
 
                 case SkillModifierKind.TriggerOnHit:
                     return "a bolt is one effect touching many bodies";

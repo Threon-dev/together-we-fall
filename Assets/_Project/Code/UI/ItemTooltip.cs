@@ -539,6 +539,34 @@ namespace TogetherWeFall.UI
                 case SkillModifierKind.AddedCharges:
                     lines.Append($"+{(int)support.Value} charge: presses stored while the next refills");
                     break;
+
+                case SkillModifierKind.AddedCount:
+                    lines.Append($"{Signed((int)support.Value)} projectiles, blasts or pulses in a pattern");
+                    break;
+
+                case SkillModifierKind.Echo:
+                    lines.Append($"the whole skill echoes {(int)support.Value} more time(s), a beat apart");
+                    break;
+
+                case SkillModifierKind.ImpactBurst:
+                    lines.Append($"projectiles burst {support.Value:0.#} m across where they land");
+                    break;
+
+                case SkillModifierKind.IncreasedCritMultiplier:
+                    lines.Append($"{Signed(support.Value)}% critical damage multiplier");
+                    break;
+
+                case SkillModifierKind.IncreasedChainRange:
+                    lines.Append($"{Signed(support.Value)}% chain reach");
+                    break;
+
+                case SkillModifierKind.InfuseElement:
+                    lines.Append($"every blow also carries {support.ConvertTo}, ready to react");
+                    break;
+
+                case SkillModifierKind.PatternTempo:
+                    lines.Append($"{Signed(support.Value)}% faster pattern");
+                    break;
             }
 
             return lines.ToString();
@@ -691,6 +719,17 @@ namespace TogetherWeFall.UI
             if (skill.Effect == SkillEffectKind.MeleeArc && skill.ArcDegrees > 0f)
                 Line(lines, $"{skill.ArcDegrees:0} degree arc");
 
+            if (SkillModifiers.IsPattern(skill.Effect))
+            {
+                string noun = skill.Effect == SkillEffectKind.Volley ? "projectiles"
+                    : skill.Effect == SkillEffectKind.Cyclone ? "pulses"
+                    : "blasts";
+
+                Line(lines, skill.Effect == SkillEffectKind.Volley || skill.Interval <= 0f
+                    ? $"{skill.Count} {noun}"
+                    : $"{skill.Count} {noun}, {skill.Interval:0.##} s apart");
+            }
+
             if (skill.BaseChains > 0)
                 Line(lines, $"chains {skill.BaseChains} times");
 
@@ -748,6 +787,21 @@ namespace TogetherWeFall.UI
                 case SkillEffectKind.BlinkStrike:
                     return "Steps behind body after body, striking each with your primary skill. " +
                            "Untouchable until the last blow; the cooldown starts then.";
+
+                case SkillEffectKind.Volley:
+                    return "Looses a fan of projectiles — a full ring when its arc is a circle.";
+
+                case SkillEffectKind.Fissure:
+                    return "Tears the ground open along your aim, blast after blast, up to the first wall.";
+
+                case SkillEffectKind.Rain:
+                    return "Blasts fall around where you point, one after another.";
+
+                case SkillEffectKind.LeapSlam:
+                    return "Leaps to where you point and slams the ground where you land.";
+
+                case SkillEffectKind.Cyclone:
+                    return "Spins, striking all around you again and again — it moves with you.";
 
                 default:
                     return effect.ToString();

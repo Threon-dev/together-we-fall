@@ -274,6 +274,22 @@
   баф шкоди читає `SkillCastSystem.ScaleOutgoing`. Статус `Empower` —
   `StatusEffects` (маска тепер `uint`). Контент — `SkillContentFactory.CreateMendingWord`
   / `CreateBattleHymn`, геми — `BuildLibraryFactory.TeamGems`.
+- **Патерни (Volley / Fissure / Rain / LeapSlam / Cyclone)**: нові `SkillEffectKind` 8–12; поля
+  `Count`/`Interval`/`Scatter` — `SkillDefinition` → `SkillBlob` → `ResolvedSkill`. Розкладка —
+  `SkillCastSystem.EmitVolley`/`EmitFissure`/`EmitRain` (→ `PatternBlast`, тригер лише на
+  останньому вибуху), стрибок — `Leap` (пише `PlayerWarp`, удар — `PendingArea` із затримкою),
+  циклон — `QueueCyclone` (пульси в `DelayedStrike`). VFX на кожен вибух — `PendingArea.CastVfx`
+  → `SkillAreaSystem` шле `SkillCast`. Анімація — `SkillModifiers.AnimatesAs` (аніматор знає
+  лише `CastKind` 0–4).
+- **Ехо**: `SkillModifierKind.Echo` → `ResolvedSkill.Echoes` → `SkillCastSystem.QueueEchoes`
+  (копії в `DelayedStrike`; `Depth` і `Anchored` — щоб тригерне ехо не обходило рейку глибини
+  й не бігло за гравцем). Інші нові супорти (`AddedCount`, `ImpactBurst`,
+  `IncreasedCritMultiplier`, `IncreasedChainRange`, `InfuseElement` → `CarriedElements`,
+  `PatternTempo`) — лише фолд у `SkillDatabase.Accumulate`/`Resolve`.
+- **Арсенал (контент)**: `Code/Editor/ArsenalContentFactory.cs` — 25 скілів із гемами, 10
+  допоміжних (кастуються лише тригерами), 103 супорт-геми, `Arsenal Rod` (7 порожніх отворів),
+  меню `Grant Arsenal Showcase Kit`. У базу скілів іде через `BuildLibraryFactory.WithLibrary`,
+  геми — через `BuildLibraryFactory.CreateGems`.
 - Пошук цілей: `Code/Skills/EnemyTargets.cs`.
 - Зони: `Code/Skills/Components/ElementZone.cs` (+ `ZoneSpawn`),
   `Systems/ElementZoneSystem.cs`, `ZonePoolSystem.cs`, `ProjectileZoneOverlapSystem.cs`.

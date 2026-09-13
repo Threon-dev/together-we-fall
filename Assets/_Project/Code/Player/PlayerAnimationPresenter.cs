@@ -353,7 +353,7 @@ namespace TogetherWeFall.Player
         /// </summary>
         private void Swing(SkillEffectKind effect, uint swings)
         {
-            _animator.SetInteger(CastKindHash, (int)effect);
+            _animator.SetInteger(CastKindHash, (int)SkillModifiers.AnimatesAs(effect));
             _animator.SetInteger(AttackIndexHash, (int)(swings % SwingCount));
             _animator.SetTrigger(CastHash);
         }

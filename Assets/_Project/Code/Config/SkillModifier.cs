@@ -24,7 +24,8 @@ namespace TogetherWeFall.Config
                  "percentages; Added Chains, Fork, Multicast and Pierce are " +
                  "counts; Explode On Kill is the blast radius; Culling Strike " +
                  "is the life percentage below which the target simply dies; " +
-                 "Mana On Kill is flat mana per body.")]
+                 "Mana On Kill is flat mana per body. Added Count and Echo are " +
+                 "counts; Impact Burst is metres; Infuse Element reads Convert To.")]
         [SerializeField] private float _value = 25f;
 
         [Tooltip("Only Explode On Kill uses this: the blast damage as a " +

@@ -20,6 +20,7 @@ namespace TogetherWeFall.Skills.Systems
     /// route into damage — it produces the same events a single projectile does,
     /// which is why an explosion can be caused by anything and hurt anything.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillProjectileSystem))]
     public partial struct SkillAreaSystem : ISystem
@@ -106,6 +107,21 @@ namespace TogetherWeFall.Skills.Systems
                         // Scaled by the blast, so a big one is heard over a wave
                         // of small ones instead of being gated behind them.
                         Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
+                    });
+                }
+
+                // A meteor, a step of a fissure, the landing of a leap: the
+                // skill's own cast effect, here and now rather than at the press.
+                if (area.CastVfx && area.VfxId != 0)
+                {
+                    vfx.Add(new VfxEvent
+                    {
+                        Kind = VfxEventKind.SkillCast,
+                        Position = area.Position,
+                        EndPosition = area.Position + area.Direction,
+                        Color = DamageTypePalette.For(area.Type),
+                        Magnitude = area.Radius,
+                        VfxId = area.VfxId
                     });
                 }
 

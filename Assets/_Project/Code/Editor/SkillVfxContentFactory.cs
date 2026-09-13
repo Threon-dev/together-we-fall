@@ -25,7 +25,7 @@ namespace TogetherWeFall.EditorTools
         /// The pack this project happens to have. One constant, so a different
         /// pack is a different string rather than a different factory.
         /// </summary>
-        private const string Pack = "Assets/Lana Studio/Casual RPG VFX/Prefabs";
+        internal const string Pack = "Assets/Lana Studio/Casual RPG VFX/Prefabs";
 
         /// <summary>
         /// Creates the sets that do not exist yet and assigns them to the skills
@@ -96,8 +96,9 @@ namespace TogetherWeFall.EditorTools
             return sets;
         }
 
-        private static SkillVfxSet Set(
-            string assetName, string cast, string projectile, string hit)
+        internal static SkillVfxSet Set(
+            string assetName, string cast, string projectile, string hit,
+            float scale = 1f, float lift = 0f, float yaw = 0f)
         {
             SkillVfxSet set = SceneBuildUtility.CreateOrLoadConfig<SkillVfxSet>(
                 assetName, SetFolder, out bool created);
@@ -109,6 +110,9 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_cast").objectReferenceValue = Prefab(cast);
             serialized.FindProperty("_projectile").objectReferenceValue = Prefab(projectile);
             serialized.FindProperty("_hit").objectReferenceValue = Prefab(hit);
+            serialized.FindProperty("_scale").floatValue = scale;
+            serialized.FindProperty("_lift").floatValue = lift;
+            serialized.FindProperty("_yaw").floatValue = yaw;
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             return set;

@@ -380,6 +380,26 @@ Emberwright, і жоден із трьох гемів не чув про інш�
 касту. Контент: **Mending Word** (хіл 60) і **Battle Hymn** (аура, `Empower`
 +30% шкоди на 6 с), геми — у луті й у тестовому наборі.
 
+**Арсенал: патерн-скіли й сотня супортів.** П'ять нових ефектів: `Volley` (N
+снарядів віялом по `ArcDegrees`, 360 — кільце), `Fissure` (N вибухів маршем уздовж
+прицілу до першої стіни), `Rain` (N вибухів падають у `Scatter` навколо прицілу; один
+із довгим `Interval` — метеор), `LeapSlam` (стрибок у приціл + удар у точці
+приземлення) і `Cyclone` (N кругових ударів навколо гравця, що йдуть за ним). Кожен
+вибух патерна грає cast-VFX скіла там, де впав. Нові супорти: `AddedCount`
+(+елементи патерна), `Echo` (весь каст ще N разів через 0.3 с), `ImpactBurst`
+(снаряд вибухає при влучанні), `IncreasedCritMultiplier`, `IncreasedChainRange`,
+`InfuseElement` (удар несе стихію для реакцій) і `PatternTempo`. Контент —
+`ArsenalContentFactory`: 25 скілів із гемами (Meteor, Meteor Shower, Starfall,
+Blizzard, Thunderstorm, Hammer of Judgement, Earthshatter, Flame Wave, Glacial
+Cascade, Voltaic Rift, Blade Fan, Frost Shards, Spark Ring, Hellfire Barrage, Comet,
+Leap Slam, Storm Dive, Cataclysm Leap, Whirling Blades, Inferno Spin, Frost Vortex,
+Tectonic Slam, Death Blossom, Plague Burst, Soul Rend), 10 допоміжних скілів для
+тригерів (вогняна земля, кільце льоду, пелюстки, афтершок, падаюча зірка…) і 103
+супорт-геми: кількість і темп патерна, ехо, вибухові снаряди, крит і досяжність,
+інфузії, тригери на влучанні, форки/пірси/мультикаст із ціною, вибухи трупів за
+статусом, оверрайди статусів, конверсії й заряди. Для тесту — `Arsenal Rod` (7
+порожніх отворів однією групою) і меню `Grant Arsenal Showcase Kit`.
+
 **Манекен союзника** (Арена, зелена капсула) — фейковий гравець з id 1: публікує
 позицію, тож реєстр дає йому справжнього персонажа (стартового набору не
 отримує). Стоїть на 35% здоров'я й повільно стікає назад після хілу; зелені
