@@ -146,6 +146,22 @@ namespace TogetherWeFall.EditorTools
 
                 SceneBuildUtility.EnsureInLootTable(table, item);
             }
+
+            // The blink, on every sword in the folder rather than only the ones
+            // this pack made — the hand-authored ones are swords too. Filled only
+            // when empty, so a sword somebody gave another skill keeps it.
+            SkillDefinition blink = SkillContentFactory.CreateBlinkStrike();
+
+            foreach (string guid in AssetDatabase.FindAssets("t:ItemDefinition", new[] { ItemFolder + "/Swords" }))
+            {
+                var sword = AssetDatabase.LoadAssetAtPath<ItemDefinition>(AssetDatabase.GUIDToAssetPath(guid));
+                if (sword == null)
+                    continue;
+
+                var serialized = new SerializedObject(sword);
+                FillIfEmpty(serialized, "_signatureSkill", blink);
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         private static ItemDefinition CreateSwordItem(int index, bool twoHanded, SkillDefinition strike, GameObject model)

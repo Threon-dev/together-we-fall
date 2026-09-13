@@ -115,7 +115,7 @@ namespace TogetherWeFall.Skills
         public byte TargetElements;
 
         /// <summary>Everything on the aimed target, as a StatusMask.</summary>
-        public ushort TargetStatuses;
+        public uint TargetStatuses;
 
         /// <summary>The aimed target's health, from one down to zero.</summary>
         public float TargetHealthFraction;

@@ -32,7 +32,27 @@ namespace TogetherWeFall.Skills
         /// crosses it, which is the entire point of it — a zone is a place where
         /// an element can be picked up as well as a place where damage happens.
         /// </summary>
-        PersistentZone = 4
+        PersistentZone = 4,
+
+        /// <summary>
+        /// Steps behind a body, and behind the next one, and the next.
+        ///
+        /// Deals nothing of its own. Every blow it lands is whatever the primary
+        /// key casts, cast from where the step ended — so a sword swings and a
+        /// bow looses, each with its own supports, and this skill only decides
+        /// WHERE. Its jumps are its chains, which is why the chain gem reads the
+        /// same here as on a bolt: one more body, never one visited already.
+        /// </summary>
+        BlinkStrike = 5,
+
+        /// <summary>
+        /// A team spell on one ally: the one you face, else the nearest in
+        /// reach, else yourself. Heals by its damage and applies its status.
+        /// </summary>
+        AllyTarget = 6,
+
+        /// <summary>A team spell on every ally within its radius, the caster included.</summary>
+        AllyAura = 7
     }
 
     /// <summary>
@@ -203,7 +223,17 @@ namespace TogetherWeFall.Skills
         /// finding the first item that grants some is what makes them worth
         /// anything.
         /// </summary>
-        IncreasedCritChance = 18
+        IncreasedCritChance = 18,
+
+        /// <summary>
+        /// Presses the key can store, this many more. The cooldown refills them
+        /// one at a time.
+        ///
+        /// A count on the slot rather than a second cooldown: the timer still
+        /// means "until the next press comes back", and a key with charges in
+        /// hand simply does not have to wait for it.
+        /// </summary>
+        AddedCharges = 19
     }
 
     /// <summary>Marks the entity holding the skill queues.</summary>
@@ -254,7 +284,30 @@ namespace TogetherWeFall.Skills
 
         public int SocketIndex;
 
+        /// <summary>Seconds until the next spent charge comes back. Zero when none are spent.</summary>
         public float CooldownRemaining;
+
+        /// <summary>Presses used and not yet refilled. The key answers while this is under Charges.</summary>
+        public int ChargesSpent;
+
+        /// <summary>
+        /// How many presses the key stores, as the last cast folded it. Zero on
+        /// a key never pressed, which counts as one.
+        ///
+        /// A cache, and only a gate: the fold is the answer and overwrites this
+        /// on every cast. It exists so a held button on an empty key does not
+        /// fold its supports every frame just to be told no.
+        /// </summary>
+        public int Charges;
+
+        /// <summary>The cooldown each spent charge refills over, as the last cast folded it.</summary>
+        public float Recharge;
+
+        /// <summary>
+        /// The refill is frozen. Raised by a blink for as long as it is still
+        /// stepping, so its cooldown starts when the last blow has landed.
+        /// </summary>
+        public bool Held;
 
         public bool HasBinding => Gear != Entity.Null;
     }
@@ -333,6 +386,45 @@ namespace TogetherWeFall.Skills
 
         /// <summary>Seconds until it lands.</summary>
         public float Remaining;
+    }
+
+    /// <summary>
+    /// A blink strike still stepping from body to body.
+    ///
+    /// On the character and enableable, like the swing above it belongs to the
+    /// one who pressed — and one at a time, because a body is only ever in one
+    /// place. SkillCastSystem raises it and refuses every key while it is up;
+    /// BlinkStrikeSystem steps, strikes and lowers it.
+    /// </summary>
+    public struct BlinkSequence : IComponentData, IEnableableComponent
+    {
+        public int PlayerId;
+
+        /// <summary>The key that started it, whose refill is held until it ends.</summary>
+        public int SlotIndex;
+
+        /// <summary>The body to step behind next, when the cast already chose one. Null to search.</summary>
+        public Entity Next;
+
+        /// <summary>Where the character stands now: the press, then each landing.</summary>
+        public float3 Position;
+
+        public int JumpsRemaining;
+        public int JumpsMade;
+
+        /// <summary>How far from the last landing the next body may be.</summary>
+        public float Reach;
+
+        /// <summary>Seconds between steps.</summary>
+        public float Interval;
+
+        public float Timer;
+
+        /// <summary>
+        /// Bodies already struck. The same small list a chain carries, with the
+        /// same ceiling: past seven a long sequence may revisit.
+        /// </summary>
+        public FixedList64Bytes<Entity> Visited;
     }
 
     // The starting loadout used to be a DefaultSkillSlot buffer here. Skills
@@ -703,6 +795,9 @@ namespace TogetherWeFall.Skills
         /// reaction from feeding itself.
         /// </summary>
         public bool FromReaction;
+
+        /// <summary>A team spell landing on an ally. See DamageEvent.Supportive.</summary>
+        public bool Supportive;
 
         /// <summary>
         /// Whether the cast behind this hit was fired by a trigger. Read by

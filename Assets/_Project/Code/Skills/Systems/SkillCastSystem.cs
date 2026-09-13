@@ -191,10 +191,21 @@ namespace TogetherWeFall.Skills.Systems
                 for (int i = 0; i < slots.Length; i++)
                 {
                     SkillSlot slot = slots[i];
-                    if (slot.CooldownRemaining <= 0f)
+
+                    // Nothing to refill, or a blink still stepping: its cooldown
+                    // starts when the last blow lands, not when the key went down.
+                    if (slot.ChargesSpent <= 0 || slot.Held)
                         continue;
 
-                    slot.CooldownRemaining = math.max(0f, slot.CooldownRemaining - deltaTime);
+                    slot.CooldownRemaining -= deltaTime;
+
+                    // One charge back, and the next one starts refilling at once.
+                    if (slot.CooldownRemaining <= 0f)
+                    {
+                        slot.ChargesSpent--;
+                        slot.CooldownRemaining = slot.ChargesSpent > 0 ? slot.Recharge : 0f;
+                    }
+
                     slots[i] = slot;
                 }
             }
@@ -224,6 +235,12 @@ namespace TogetherWeFall.Skills.Systems
             if (IsSilenced(ref state, character))
                 return;
 
+            // Mid-blink, every key waits. The body is being moved by the host,
+            // and a press from where the client thought it stood would go off
+            // somewhere the character no longer is.
+            if (IsBlinking(ref state, character))
+                return;
+
             DynamicBuffer<SkillSlot> slots = state.EntityManager.GetBuffer<SkillSlot>(character);
             if (request.SlotIndex < 0 || request.SlotIndex >= slots.Length)
                 return;
@@ -232,7 +249,11 @@ namespace TogetherWeFall.Skills.Systems
 
             // The cooldown is the host's answer, not the client's. A client that
             // spams the button gets exactly as many casts as it is owed.
-            if (!slot.HasBinding || slot.CooldownRemaining > 0f)
+            //
+            // Against the charges the last cast folded. The fold below asks again
+            // and has the final word; this only spares a held button on an empty
+            // key from gathering supports every frame.
+            if (!slot.HasBinding || slot.ChargesSpent >= math.max(1, slot.Charges))
                 return;
 
             // What this key casts is whatever is in the socket right now. An
@@ -295,6 +316,7 @@ namespace TogetherWeFall.Skills.Systems
                     : CastConditions.Unknown(default);
 
             ResolvedSkill resolved = skills.Resolve(skillIndex, stats, supports, conditions);
+            ScaleOutgoing(ref state, character, ref resolved);
 
             KeystoneEffect keystone = KeystoneOf(ref state, character);
 
@@ -319,6 +341,15 @@ namespace TogetherWeFall.Skills.Systems
             // the empty bar the player is already looking at.
             if (!HasMana(ref state, character, resolved.ManaCost))
                 return;
+
+            // A charge gem pulled out since the last press: the cache said yes,
+            // the fold says no. Written back so the bar stops advertising it.
+            if (slot.ChargesSpent >= resolved.Charges)
+            {
+                slot.Charges = resolved.Charges;
+                slots[request.SlotIndex] = slot;
+                return;
+            }
 
             // TEMPORARY DIAGNOSTIC — delete once the gem chain is trusted.
             //
@@ -370,7 +401,18 @@ namespace TogetherWeFall.Skills.Systems
 
             bool produced;
 
-            if (strikeDelay > 0f && state.EntityManager.HasBuffer<DelayedStrike>(character))
+            if (resolved.Effect == SkillEffectKind.BlinkStrike)
+            {
+                // Paid for now, like a swing, and refilled only once the last
+                // step has landed — BlinkStrikeSystem lets go of the slot then.
+                produced = BeginBlink(ref state, character, request, resolved, targets);
+                slot.Held = produced;
+            }
+            else if (SkillModifiers.IsSupportive(resolved.Effect))
+            {
+                produced = EmitSupport(ref state, resolved, context, direction, hits, effects);
+            }
+            else if (strikeDelay > 0f && state.EntityManager.HasBuffer<DelayedStrike>(character))
             {
                 // The swing has started; the blow lands when the blade comes
                 // round. Paid for now: a melee arc goes off wherever it is
@@ -403,12 +445,21 @@ namespace TogetherWeFall.Skills.Systems
             if (!produced)
                 return;
 
-            slot.CooldownRemaining = resolved.Cooldown;
+            // A charge, not the whole key. The timer starts only if nothing was
+            // already refilling; otherwise the one running keeps its place.
+            if (slot.ChargesSpent == 0)
+                slot.CooldownRemaining = resolved.Cooldown;
+
+            slot.ChargesSpent++;
+            slot.Charges = resolved.Charges;
+            slot.Recharge = resolved.Cooldown;
             slots[request.SlotIndex] = slot;
 
             SpendMana(ref state, character, resolved.ManaCost);
 
-            if (hasCue)
+            // Not for a blink: the arm swings on each blow it lands, and
+            // BlinkStrikeSystem counts those.
+            if (hasCue && resolved.Effect != SkillEffectKind.BlinkStrike)
             {
                 cue.Count++;
                 cue.Effect = resolved.Effect;
@@ -712,6 +763,7 @@ namespace TogetherWeFall.Skills.Systems
 
             resolved.Damage *= cast.DamageScale;
             resolved.ExplosionDamage *= cast.DamageScale;
+            ScaleOutgoing(ref state, character, ref resolved);
 
             KeystoneEffect keystone = character != Entity.Null
                 ? KeystoneOf(ref state, character)
@@ -726,6 +778,14 @@ namespace TogetherWeFall.Skills.Systems
                 Depth = cast.Depth,
                 Keystone = keystone
             };
+
+            // A triggered team spell goes to allies, once, whatever the fold
+            // said about copies.
+            if (SkillModifiers.IsSupportive(resolved.Effect))
+            {
+                EmitSupport(ref state, resolved, context, Flatten(cast.Direction), hits, effects);
+                return;
+            }
 
             for (int c = 0; c < resolved.Casts; c++)
             {
@@ -1275,6 +1335,211 @@ namespace TogetherWeFall.Skills.Systems
         }
 
         /// <summary>
+        /// Starts a blink: finds the first body the way a bolt does — the aim
+        /// cone, then anything in reach — and hands the stepping to
+        /// BlinkStrikeSystem. False when nobody is in reach, so a blink at empty
+        /// floor costs nothing, for the reason a bolt with no target does not.
+        /// </summary>
+        private static bool BeginBlink(
+            ref SystemState state,
+            Entity character,
+            in SkillCastRequest request,
+            in ResolvedSkill skill,
+            in EnemyTargets targets)
+        {
+            if (!state.EntityManager.HasComponent<BlinkSequence>(character))
+                return false;
+
+            int index = targets.FindNearestInArc(
+                request.Origin, Flatten(request.Direction), BoltAcquireCosine, skill.Range);
+
+            if (index < 0)
+                index = targets.FindNearest(request.Origin, skill.Range);
+
+            if (index < 0)
+                return false;
+
+            state.EntityManager.SetComponentData(character, new BlinkSequence
+            {
+                PlayerId = request.PlayerId,
+                SlotIndex = request.SlotIndex,
+                Next = targets.Entities[index],
+                Position = request.Origin,
+
+                // The chains ARE the extra steps, so a chain gem beside the
+                // blink is one more body.
+                JumpsRemaining = 1 + skill.Chains,
+                Reach = skill.ChainRange,
+                Interval = skill.ChainDelay,
+                Timer = 0f
+            });
+
+            state.EntityManager.SetComponentEnabled<BlinkSequence>(character, true);
+
+            // Untouchable from the press to the end of the last blow.
+            if (state.EntityManager.HasComponent<Invulnerable>(character))
+                state.EntityManager.SetComponentEnabled<Invulnerable>(character, true);
+
+            return true;
+        }
+
+        /// <summary>
+        /// A team spell: health and a beneficial status for allies, never a blow.
+        ///
+        /// Allies are the position buffer — the list of who is playing — and each
+        /// one's character is where the heal lands, through the ordinary hit
+        /// queue, so the resolver stays the one place health changes. A single-
+        /// target spell takes the ally you face, then the nearest in reach, then
+        /// you: a heal key that does nothing when you stand alone reads as broken.
+        /// </summary>
+        private bool EmitSupport(
+            ref SystemState state,
+            in ResolvedSkill skill,
+            in CastContext context,
+            float3 direction,
+            NativeList<PendingHit> hits,
+            NativeList<VfxEvent> effects)
+        {
+            if (!SystemAPI.TryGetSingletonBuffer<PlayerPositionElement>(
+                    out DynamicBuffer<PlayerPositionElement> players, isReadOnly: true))
+                return false;
+
+            if (skill.Effect == SkillEffectKind.AllyAura)
+            {
+                float radius = math.max(1f, skill.Radius);
+                bool touched = false;
+
+                for (int i = 0; i < players.Length; i++)
+                {
+                    if (!players[i].IsTargetable)
+                        continue;
+
+                    float3 offset = players[i].Position - context.Origin;
+                    offset.y = 0f;
+
+                    if (math.lengthsq(offset) > radius * radius ||
+                        !TryGetCharacter(ref state, players[i].PlayerId, out Entity ally))
+                    {
+                        continue;
+                    }
+
+                    hits.Add(SupportHit(skill, context, ally, players[i].Position));
+                    touched = true;
+                }
+
+                return touched;
+            }
+
+            int best = FindAlly(players, context.PlayerId, context.Origin, direction, skill.Range, BoltAcquireCosine);
+
+            if (best < 0)
+                best = FindAlly(players, context.PlayerId, context.Origin, direction, skill.Range, -1f);
+
+            int targetId = best >= 0 ? players[best].PlayerId : context.PlayerId;
+            float3 at = best >= 0 ? players[best].Position : context.Origin;
+
+            if (!TryGetCharacter(ref state, targetId, out Entity target))
+                return false;
+
+            hits.Add(SupportHit(skill, context, target, at));
+
+            // A line to whoever it reached, so a heal on someone else is seen
+            // going somewhere. None on yourself: a line of no length is a smear.
+            if (best >= 0)
+            {
+                effects.Add(new VfxEvent
+                {
+                    Kind = VfxEventKind.BoltStrike,
+                    Position = context.Origin,
+                    EndPosition = at,
+                    Color = DamageTypePalette.For(skill.Type),
+                    Magnitude = 0.15f
+                });
+            }
+
+            return true;
+        }
+
+        /// <summary>The nearest other player in reach, inside the arc. -1 for none; an arc cosine of -1 is any direction.</summary>
+        private static int FindAlly(
+            DynamicBuffer<PlayerPositionElement> players,
+            int casterId,
+            float3 origin,
+            float3 direction,
+            float range,
+            float arcCosine)
+        {
+            int best = -1;
+            float bestSq = range * range;
+
+            for (int i = 0; i < players.Length; i++)
+            {
+                if (players[i].PlayerId == casterId || !players[i].IsTargetable)
+                    continue;
+
+                float3 offset = players[i].Position - origin;
+                offset.y = 0f;
+
+                float distanceSq = math.lengthsq(offset);
+
+                if (distanceSq >= bestSq ||
+                    !EnemyTargets.IsInsideArc(offset, distanceSq, direction, arcCosine))
+                {
+                    continue;
+                }
+
+                bestSq = distanceSq;
+                best = i;
+            }
+
+            return best;
+        }
+
+        private static PendingHit SupportHit(
+            in ResolvedSkill skill, in CastContext context, Entity ally, float3 at) => new PendingHit
+        {
+            Target = ally,
+            Origin = at,
+            Damage = skill.Damage,
+            Type = skill.Type,
+            SourcePlayerId = context.PlayerId,
+            VfxId = skill.VfxId,
+
+            // Only a status that helps. A team spell with a stun gem's status on
+            // it would be a stun cast on your partner.
+            AppliedStatus = StatusEffects.IsBeneficial(skill.AppliedStatus)
+                ? skill.AppliedStatus
+                : StatusEffectType.None,
+
+            Supportive = true,
+            FromTrigger = context.Depth > 0
+        };
+
+        /// <summary>
+        /// What a damage buff on the caster does: every blow this cast produces
+        /// is bigger. Read once, at the cast, like every other number the fold
+        /// hands down — a projectile in flight keeps the buff it left with.
+        /// </summary>
+        private static void ScaleOutgoing(ref SystemState state, Entity character, ref ResolvedSkill resolved)
+        {
+            if (character == Entity.Null ||
+                SkillModifiers.IsSupportive(resolved.Effect) ||
+                !state.EntityManager.HasComponent<StatusGate>(character))
+            {
+                return;
+            }
+
+            float dealt = state.EntityManager.GetComponentData<StatusGate>(character).DamageDealtMultiplier;
+
+            resolved.Damage *= dealt;
+            resolved.ExplosionDamage *= dealt;
+        }
+
+        private static bool IsBlinking(ref SystemState state, Entity character)
+            => state.EntityManager.HasComponent<BlinkSequence>(character) &&
+               state.EntityManager.IsComponentEnabled<BlinkSequence>(character);
+
+        /// <summary>
         /// Whether something is stopping this character casting.
         ///
         /// Asked of the gate, which is the one answer every status on a body
@@ -1386,7 +1651,7 @@ namespace TogetherWeFall.Skills.Systems
             => count <= 1 ? 0f : (index - (count - 1) * 0.5f) * math.radians(spreadDegrees);
 
         /// <summary>Turns a direction on the ground plane by an angle.</summary>
-        private static float3 Turn(float3 direction, float angle)
+        internal static float3 Turn(float3 direction, float angle)
         {
             if (angle == 0f)
                 return direction;

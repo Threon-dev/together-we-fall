@@ -57,24 +57,47 @@ namespace TogetherWeFall.Player
         }
 
         /// <summary>
+        /// Whether the host is holding the body where it put it — mid-blink.
+        /// Input neither moves nor turns it. Set by PlayerPositionPublisher,
+        /// which reads it off the character.
+        /// </summary>
+        public bool Held { get; set; }
+
+        /// <summary>
         /// Puts the player down on a floor position — the dungeon hands over the
         /// entrance at ground level, and the capsule has to stand on it rather
         /// than in it.
-        ///
-        /// The controller is switched off around the move on purpose: while it
-        /// is enabled it owns the transform and quietly undoes a direct write,
-        /// which looks exactly like a generator that produced the wrong
-        /// entrance.
         /// </summary>
         public void WarpToFloor(Vector3 floorPosition)
         {
             if (_controller == null)
                 _controller = GetComponent<CharacterController>();
 
+            Teleport(
+                floorPosition + Vector3.up * (_controller.height * 0.5f + _controller.skinWidth),
+                Vector3.zero);
+        }
+
+        /// <summary>
+        /// Puts the capsule exactly here, facing that way (zero keeps the facing).
+        ///
+        /// The controller is switched off around the move on purpose: while it
+        /// is enabled it owns the transform and quietly undoes a direct write,
+        /// which looks exactly like a generator that produced the wrong
+        /// entrance.
+        /// </summary>
+        public void Teleport(Vector3 position, Vector3 facing)
+        {
+            if (_controller == null)
+                _controller = GetComponent<CharacterController>();
+
             _controller.enabled = false;
 
-            transform.position = floorPosition +
-                                 Vector3.up * (_controller.height * 0.5f + _controller.skinWidth);
+            transform.position = position;
+
+            facing.y = 0f;
+            if (facing.sqrMagnitude > 0.0001f)
+                transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
 
             _controller.enabled = true;
             _verticalVelocity = 0f;
@@ -82,7 +105,7 @@ namespace TogetherWeFall.Player
 
         private void Update()
         {
-            if (!_initialized)
+            if (!_initialized || Held)
                 return;
 
             PlayerMoveIntent intent = _input.ReadIntent(transform.position);

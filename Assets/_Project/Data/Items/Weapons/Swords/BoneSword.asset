@@ -15,6 +15,8 @@ MonoBehaviour:
   _displayName: Bone Sword
   _icon: {fileID: 0}
   _model: {fileID: 3477393672082023071, guid: db5117a2e8e251f458eb1bbeccd8c6f2, type: 3}
+  _backModel: {fileID: 0}
+  _stance: 0
   _rarity: 1
   _slot: 0
   _isTwoHanded: 0
@@ -35,6 +37,7 @@ MonoBehaviour:
   _gemSupportSecond: {fileID: 0}
   _innateSkills:
   - {fileID: 11400000, guid: 0a4ec077e7257c640a51add312d39b9b, type: 2}
+  _signatureSkill: {fileID: 11400000, guid: abf1985ccccf7d14694d8cb86844cb76, type: 2}
   _socketCount: 0
   _linkGroups: 
   _gridWidth: 1

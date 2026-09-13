@@ -250,6 +250,9 @@ namespace TogetherWeFall.Skills
         /// <summary>How many times the whole skill goes off. Multicast raises it.</summary>
         public int Casts;
 
+        /// <summary>Presses the key stores at once. One without a charge support.</summary>
+        public int Charges;
+
         /// <summary>
         /// How far apart those casts fan out, in degrees. The default is what
         /// the cast system used to hold as a constant.
@@ -417,6 +420,7 @@ namespace TogetherWeFall.Skills
             public int Forks;
             public int Casts;
             public int Pierces;
+            public int Charges;
 
             public DamageType Type;
 
@@ -627,6 +631,10 @@ namespace TogetherWeFall.Skills
                 case SkillModifierKind.ManaOnKill:
                     fold.ManaOnKill += math.max(0f, modifier.Value);
                     break;
+
+                case SkillModifierKind.AddedCharges:
+                    fold.Charges += (int)math.max(1f, modifier.Value);
+                    break;
             }
         }
 
@@ -731,7 +739,15 @@ namespace TogetherWeFall.Skills
             // The character's damage stat adds flat to every skill, so a weapon
             // makes every skill hit harder without any skill knowing weapons
             // exist. Supports then scale the sum.
-            float damage = (skill.BaseDamage + stats.Get(StatKind.Damage))
+            //
+            // Not into a team spell: a heal that grew with the sword in the
+            // other hand would make the best healer whoever carries the biggest
+            // weapon. Supports still scale it.
+            float flatDamage = SkillModifiers.IsSupportive(skill.Effect)
+                ? 0f
+                : stats.Get(StatKind.Damage);
+
+            float damage = (skill.BaseDamage + flatDamage)
                            * (1f + increasedDamage * 0.01f);
 
             // Attack speed shortens cooldowns, which is the other half of making
@@ -799,6 +815,7 @@ namespace TogetherWeFall.Skills
                 ZoneDuration = skill.ZoneDuration * math.max(0.1f, 1f + duration * 0.01f),
                 ZoneTickInterval = skill.ZoneTickInterval,
                 Casts = math.max(1, casts),
+                Charges = 1 + math.max(0, fold.Charges),
 
                 // Clamped away from zero and from a full circle: at zero every
                 // copy of a multicast flies down the same line and the support

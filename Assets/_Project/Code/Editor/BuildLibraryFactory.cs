@@ -317,6 +317,7 @@ namespace TogetherWeFall.EditorTools
             SupportGems(table);
             ConditionalGems(skills, table);
             LeverGems(table);
+            TeamGems(table);
             TwoSidedGems(table);
             CritJewellery(table);
             CreateLinkedStaff(skills, table);
@@ -662,6 +663,19 @@ namespace TogetherWeFall.EditorTools
         /// system: they are numbers the fold was already producing and nothing
         /// could reach.
         /// </summary>
+        private static void TeamGems(LootTable table)
+        {
+            // The two team spells: one aimed heal, one aura buff. Named rather
+            // than put in CreateSkills, whose gem table is paired by position.
+            SkillContentFactory.ActiveGem(
+                "GemMendingWord", "Mending Word Gem",
+                SkillContentFactory.CreateMendingWord(), ItemRarity.Uncommon, table);
+
+            SkillContentFactory.ActiveGem(
+                "GemBattleHymn", "Battle Hymn Gem",
+                SkillContentFactory.CreateBattleHymn(), ItemRarity.Rare, table);
+        }
+
         private static void LeverGems(LootTable table)
         {
             SkillContentFactory.SupportGem(
@@ -739,6 +753,14 @@ namespace TogetherWeFall.EditorTools
                 "GemSoulHarvest", "Soul Harvest Support",
                 SkillContentFactory.Modifier(
                     "SupportSoulHarvest", SkillModifierKind.ManaOnKill, 4f),       // TUNE
+                ItemRarity.Rare, table);
+
+            // A second press stored while the first refills. On a blink it is
+            // a second sequence in hand the moment the first one ends.
+            SkillContentFactory.SupportGem(
+                "GemStockpile", "Stockpile Support",
+                SkillContentFactory.Modifier(
+                    "SupportStockpile", SkillModifierKind.AddedCharges, 1f),       // TUNE
                 ItemRarity.Rare, table);
 
             // Worth nothing at all until something on the character sheet
@@ -1079,6 +1101,9 @@ namespace TogetherWeFall.EditorTools
                 // three worth socketing behind a welded attack as passives.
                 "GemSpark", "GemCinderWall", "GemFirebolt", "GemFrostNova",
 
+                // Team spells, for the ally dummy in the arena.
+                "GemMendingWord", "GemBattleHymn",
+
                 // Shape: how much exists and how big it is.
                 "GemChain", "GemFork", "GemMulticast", "GemGreaterArea", "GemBrutality",
                 "GemWindrunner", "GemPiercingShot", "GemVolley", "GemFocusedLine",
@@ -1096,7 +1121,7 @@ namespace TogetherWeFall.EditorTools
                 // status, the kill.
                 "GemSwiftcast", "GemFrugality", "GemEverburning",
                 "GemRootingGrasp", "GemConcussive",
-                "GemExecutionersEdge", "GemSoulHarvest", "GemDeadlyAim",
+                "GemExecutionersEdge", "GemSoulHarvest", "GemDeadlyAim", "GemStockpile",
 
                 // Two-sided: the gems that cost something.
                 "GemOvercharge", "GemRecklessBarrage", "GemHemorrhage",

@@ -107,6 +107,12 @@ namespace TogetherWeFall.Equipment
         /// </summary>
         public int ActiveSkillCount;
 
+        /// <summary>
+        /// A skill welded after the rolled ones into a group of its own, never
+        /// rolled and never rerolled — or zero. See ItemDefinition.SignatureSkill.
+        /// </summary>
+        public int SignatureSkillId;
+
         /// <summary>How many holes this gear has.</summary>
         public int SocketCount;
 

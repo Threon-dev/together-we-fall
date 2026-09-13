@@ -146,6 +146,14 @@ namespace TogetherWeFall.Skills
             => PhaseOf(kind) == SkillModifierPhase.Trigger;
 
         /// <summary>
+        /// Whether a skill lands on allies rather than enemies. Asked by the
+        /// fold (no weapon damage in a heal), the cast (which queue it goes to)
+        /// and the panel — one answer for three readers.
+        /// </summary>
+        public static bool IsSupportive(SkillEffectKind effect)
+            => effect == SkillEffectKind.AllyTarget || effect == SkillEffectKind.AllyAura;
+
+        /// <summary>
         /// Whether anything in the game can currently make this condition true.
         ///
         /// Four of the six trigger conditions are about the player being hurt,
@@ -215,6 +223,29 @@ namespace TogetherWeFall.Skills
             if (!skill.Exists)
                 return true;
 
+            // A blink deals nothing of its own — its blows are the primary key's
+            // skill — so the only supports it can spend are the ones about the
+            // blink: how many steps, how often, how many stored, what it costs.
+            if (skill.Effect == SkillEffectKind.BlinkStrike)
+            {
+                return kind == SkillModifierKind.AddedChains ||
+                       kind == SkillModifierKind.ReducedCooldown ||
+                       kind == SkillModifierKind.AddedCharges ||
+                       (kind == SkillModifierKind.IncreasedManaCost && skill.ManaCost > 0f);
+            }
+
+            // A team spell has a heal to grow, a radius if it is an aura, and a
+            // press to pay for. A status override is deliberately not on the
+            // list: it would be a stun gem cast on your partner.
+            if (IsSupportive(skill.Effect))
+            {
+                return kind == SkillModifierKind.IncreasedDamage ||
+                       kind == SkillModifierKind.ReducedCooldown ||
+                       kind == SkillModifierKind.AddedCharges ||
+                       (kind == SkillModifierKind.IncreasedArea && skill.Effect == SkillEffectKind.AllyAura) ||
+                       (kind == SkillModifierKind.IncreasedManaCost && skill.ManaCost > 0f);
+            }
+
             switch (kind)
             {
                 // A projectile is the only effect that travels, so it is the
@@ -268,6 +299,12 @@ namespace TogetherWeFall.Skills
         {
             if (AppliesTo(kind, skill))
                 return string.Empty;
+
+            if (skill.Effect == SkillEffectKind.BlinkStrike && kind != SkillModifierKind.IncreasedManaCost)
+                return "its blows are the primary key's skill — link this there";
+
+            if (IsSupportive(skill.Effect) && kind != SkillModifierKind.IncreasedManaCost)
+                return "it only heals and strengthens allies";
 
             switch (kind)
             {

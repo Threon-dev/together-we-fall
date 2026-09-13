@@ -157,6 +157,9 @@ namespace TogetherWeFall.Loot.Authoring
                             if (innate[skill] != null)
                                 DependsOn(innate[skill]);
                         }
+
+                        if (item.SignatureSkill != null)
+                            DependsOn(item.SignatureSkill);
                     }
                 }
             }
@@ -383,6 +386,8 @@ namespace TogetherWeFall.Loot.Authoring
                 // skill rolls one, rather than welding the same attack twice.
                 blob.ActiveSkillCount =
                     Mathf.Min(item.ActiveSkillCount, blob.InnateSkillIds.Length);
+
+                blob.SignatureSkillId = item.SignatureSkillId;
 
                 blob.SocketCount = item.SocketCount;
                 blob.LinkGroups = new FixedList32Bytes<byte>();

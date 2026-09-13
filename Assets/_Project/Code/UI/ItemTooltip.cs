@@ -535,6 +535,10 @@ namespace TogetherWeFall.UI
                 case SkillModifierKind.ManaOnKill:
                     lines.Append($"+{support.Value:0.#} mana for every kill");
                     break;
+
+                case SkillModifierKind.AddedCharges:
+                    lines.Append($"+{(int)support.Value} charge: presses stored while the next refills");
+                    break;
             }
 
             return lines.ToString();
@@ -566,6 +570,13 @@ namespace TogetherWeFall.UI
                 Line(detail,
                     $"Comes with {SkillName(skills, item.InnateSkillIds[i])}, " +
                     "welded into a socket.");
+            }
+
+            if (item.SignatureSkillId != 0)
+            {
+                Line(detail,
+                    $"Always comes with {SkillName(skills, item.SignatureSkillId)} on the next key, " +
+                    "welded into a socket of its own.");
             }
 
             if (item.Keystone != KeystoneEffect.None)
@@ -662,7 +673,10 @@ namespace TogetherWeFall.UI
         {
             var lines = new StringBuilder();
 
-            Line(lines, $"{skill.BaseDamage:0.#} {skill.Type} damage");
+            if (!SkillModifiers.IsSupportive(skill.Effect))
+                Line(lines, $"{skill.BaseDamage:0.#} {skill.Type} damage");
+            else if (skill.BaseDamage > 0f)
+                Line(lines, $"Heals {skill.BaseDamage:0.#}");
             Line(lines, $"{skill.Cooldown:0.##} s cooldown");
 
             if (skill.ManaCost > 0f)
@@ -723,6 +737,17 @@ namespace TogetherWeFall.UI
 
                 case SkillEffectKind.PersistentZone:
                     return "Leaves ground that keeps hurting whatever stands in it.";
+
+                case SkillEffectKind.AllyTarget:
+                    return "Heals or strengthens the ally you face — the nearest one, or yourself " +
+                           "when nobody is in reach.";
+
+                case SkillEffectKind.AllyAura:
+                    return "Heals or strengthens every ally around you, yourself included.";
+
+                case SkillEffectKind.BlinkStrike:
+                    return "Steps behind body after body, striking each with your primary skill. " +
+                           "Untouchable until the last blow; the cooldown starts then.";
 
                 default:
                     return effect.ToString();

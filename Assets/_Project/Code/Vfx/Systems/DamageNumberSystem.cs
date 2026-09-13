@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Mathematics;
 using Unity.Transforms;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Combat.Systems;
@@ -48,6 +49,22 @@ namespace TogetherWeFall.Vfx.Systems
                          EnabledRefRW<DamageFeedback>>())
             {
                 raised.ValueRW = false;
+
+                // Health given back is its own green number. A frame that only
+                // healed draws nothing else — a "0" under it would read as a miss.
+                if (feedback.ValueRO.Healed > 0f)
+                {
+                    events.Add(new VfxEvent
+                    {
+                        Kind = VfxEventKind.DamageNumber,
+                        Position = transform.ValueRO.Position,
+                        Color = new float4(0.45f, 1f, 0.5f, 1f),
+                        Magnitude = feedback.ValueRO.Healed
+                    });
+
+                    if (feedback.ValueRO.Amount <= 0f)
+                        continue;
+                }
 
                 events.Add(new VfxEvent
                 {

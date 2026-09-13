@@ -174,7 +174,8 @@ namespace TogetherWeFall.EditorTools
                 StatusEffectType.Weaken,
                 StatusEffectType.Vulnerable,
                 StatusEffectType.Haste,
-                StatusEffectType.Fortify
+                StatusEffectType.Fortify,
+                StatusEffectType.Empower
             };
 
             var assets = new Object[types.Length];
@@ -270,6 +271,11 @@ namespace TogetherWeFall.EditorTools
                 case StatusEffectType.Haste:
                     return Status("StatusHaste", "Hastened", type,
                         duration: 4f, magnitude: 0.3f);
+
+                // The team buff. Long enough to plan a burst around.
+                case StatusEffectType.Empower:
+                    return Status("StatusEmpower", "Empowered", type,
+                        duration: 6f, magnitude: 0.3f);
 
                 default:
                     return Status("StatusFortify", "Fortified", StatusEffectType.Fortify,

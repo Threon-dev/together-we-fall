@@ -184,7 +184,21 @@ namespace TogetherWeFall.Player.Systems
                 // Empty for a character with no trigger gems, which is every
                 // character until one is socketed: entries appear when a trigger
                 // fires and are dropped when they run out.
-                typeof(TriggerCooldown));
+                typeof(TriggerCooldown),
+
+                // A blink in progress, the untouchability it grants, and the
+                // warp that moves the body. All three lowered or zero at birth.
+                typeof(BlinkSequence),
+                typeof(Invulnerable),
+                typeof(PlayerWarp),
+
+                // The same status set an enemy carries, so a buff an ally casts
+                // runs through the one buffer, tick and gate every status does.
+                typeof(ActiveStatusEffect),
+                typeof(CrowdControlImmunity),
+                typeof(CrowdControlResistance),
+                typeof(StatusGate),
+                typeof(StatusVisual));
 
             Entity entity = state.EntityManager.CreateEntity(archetype);
             state.EntityManager.SetName(entity, "PlayerCharacter");
@@ -215,6 +229,13 @@ namespace TogetherWeFall.Player.Systems
             // something does.
             state.EntityManager.SetComponentEnabled<Dead>(entity, false);
             state.EntityManager.SetComponentEnabled<DamageFeedback>(entity, false);
+            state.EntityManager.SetComponentEnabled<BlinkSequence>(entity, false);
+            state.EntityManager.SetComponentEnabled<Invulnerable>(entity, false);
+
+            // Neutral, not zero: the cast reads the damage multiplier, and a
+            // scene with no reaction database never ticks the gate back to one.
+            state.EntityManager.SetComponentData(entity, StatusGate.Neutral);
+            state.EntityManager.SetComponentData(entity, CrowdControlResistance.None);
 
             // Dirty from birth, so the first recompute happens without anyone
             // having to equip something to trigger it.

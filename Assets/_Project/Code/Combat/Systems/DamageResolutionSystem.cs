@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace TogetherWeFall.Combat.Systems
 {
@@ -22,10 +23,12 @@ namespace TogetherWeFall.Combat.Systems
     public partial struct DamageResolutionSystem : ISystem
     {
         private ComponentLookup<StatusGate> _gates;
+        private ComponentLookup<Invulnerable> _invulnerable;
 
         public void OnCreate(ref SystemState state)
         {
             _gates = state.GetComponentLookup<StatusGate>(isReadOnly: true);
+            _invulnerable = state.GetComponentLookup<Invulnerable>(isReadOnly: true);
 
             state.RequireForUpdate<Health>();
         }
@@ -34,9 +37,13 @@ namespace TogetherWeFall.Combat.Systems
         public void OnUpdate(ref SystemState state)
         {
             _gates.Update(ref state);
+            _invulnerable.Update(ref state);
 
             new ResolveDamageJob
             {
+                // A lookup for the gate's reason: only characters carry it.
+                InvulnerableFlags = _invulnerable,
+
                 // A lookup rather than a component on the query, deliberately.
                 // Requiring StatusGate here would silently exclude anything with
                 // health that has not been given one — and "this entity takes no
@@ -57,6 +64,7 @@ namespace TogetherWeFall.Combat.Systems
         private partial struct ResolveDamageJob : IJobEntity
         {
             [ReadOnly] public ComponentLookup<StatusGate> Gates;
+            [ReadOnly] public ComponentLookup<Invulnerable> InvulnerableFlags;
 
             private void Execute(
                 Entity entity,
@@ -69,6 +77,11 @@ namespace TogetherWeFall.Combat.Systems
             {
                 if (events.Length == 0)
                     return;
+
+                // Blows are discarded, not deferred: one that waited out the
+                // blink would land the frame it ended. Heals still land.
+                bool untouchable = InvulnerableFlags.HasComponent(entity) &&
+                                   InvulnerableFlags.IsComponentEnabled(entity);
 
                 // Cleared whatever happens. An event that stayed in the buffer
                 // would be applied again next frame, and a corpse would keep
@@ -89,11 +102,24 @@ namespace TogetherWeFall.Combat.Systems
                 DamageEvent killingBlow = default;
 
                 float total = 0f;
+                float healed = 0f;
                 bool anyCrit = false;
                 DamageType lastType = DamageType.Physical;
 
                 for (int i = 0; i < events.Length; i++)
                 {
+                    // A team spell: health back, never past the ceiling, never
+                    // scaled by what makes blows hurt more, and never a kill.
+                    if (events[i].Supportive)
+                    {
+                        healed += events[i].Amount;
+                        remaining = math.min(health.Max, remaining + events[i].Amount);
+                        continue;
+                    }
+
+                    if (untouchable)
+                        continue;
+
                     float amount = events[i].Amount * taken;
 
                     total += amount;
@@ -139,6 +165,7 @@ namespace TogetherWeFall.Combat.Systems
                 feedback.Type = lastType;
                 feedback.Killing = killed;
                 feedback.Crit = anyCrit;
+                feedback.Healed = healed;
                 hasFeedback.ValueRW = true;
 
                 health.Current = remaining;

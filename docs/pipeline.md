@@ -71,6 +71,7 @@ DungeonPortalSystem       main thread   готовність → завіса �
 Бій — найдовший конвеєр у проєкті, і кожна стадія робить рівно одне:
 
 ```
+BlinkStrikeSystem          main thread   крокує блінком: PlayerWarp + PendingCast скіла ЛКМ
 SkillCastSystem            main thread   ЗГОРТАЄ модифікатори, створює снаряди/площі/зони
 ProjectileZoneOverlapSystem Burst, 1 job ВІДДАЄ елемент зони снарядам усередині неї
 SkillProjectileSystem      Burst, 1 job  веде снаряди, ловить влучання, ділить (Fork)

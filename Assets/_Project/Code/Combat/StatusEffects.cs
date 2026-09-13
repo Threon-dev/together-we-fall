@@ -33,8 +33,8 @@ namespace TogetherWeFall.Combat
     /// argument that made item and skill ids an FNV hash; here the set is
     /// closed, so the enum IS the stable id and no hashing is needed.
     ///
-    /// Sixteen values exactly, so the whole set fits a ushort mask with one bit
-    /// each. None takes bit zero and is never set in a mask.
+    /// One bit each in a uint mask — it outgrew a ushort with Empower, the
+    /// seventeenth. None takes bit zero and is never set in a mask.
     /// </summary>
     public enum StatusEffectType : byte
     {
@@ -62,7 +62,10 @@ namespace TogetherWeFall.Combat
         Weaken = 12,
         Vulnerable = 13,
         Haste = 14,
-        Fortify = 15
+        Fortify = 15,
+
+        // Team buffs — cast on allies.
+        Empower = 16
     }
 
     /// <summary>
@@ -116,15 +119,15 @@ namespace TogetherWeFall.Combat
     public struct StatusMask
     {
         /// <summary>How many statuses exist. Derived, so adding one cannot desync it.</summary>
-        public const int Count = (int)StatusEffectType.Fortify + 1;
+        public const int Count = (int)StatusEffectType.Empower + 1;
 
-        public static ushort Of(StatusEffectType type) => (ushort)(1 << (int)type);
+        public static uint Of(StatusEffectType type) => 1u << (int)type;
 
-        public static bool Has(ushort mask, StatusEffectType type)
+        public static bool Has(uint mask, StatusEffectType type)
             => type != StatusEffectType.None && (mask & Of(type)) != 0;
 
-        public static ushort With(ushort mask, StatusEffectType type)
-            => type == StatusEffectType.None ? mask : (ushort)(mask | Of(type));
+        public static uint With(uint mask, StatusEffectType type)
+            => type == StatusEffectType.None ? mask : mask | Of(type);
     }
 
     /// <summary>
@@ -167,6 +170,7 @@ namespace TogetherWeFall.Combat
                 case StatusEffectType.Vulnerable:
                 case StatusEffectType.Haste:
                 case StatusEffectType.Fortify:
+                case StatusEffectType.Empower:
                     return StatusCategory.StatModifier;
 
                 default:
@@ -213,6 +217,15 @@ namespace TogetherWeFall.Combat
                     return false;
             }
         }
+
+        /// <summary>
+        /// Whether a status is something you would cast on a friend. A team
+        /// spell hands on only these, so no gem can turn a heal into a stun.
+        /// </summary>
+        public static bool IsBeneficial(StatusEffectType type)
+            => type == StatusEffectType.Haste ||
+               type == StatusEffectType.Fortify ||
+               type == StatusEffectType.Empower;
 
         /// <summary>Whether this status stops its target moving at all.</summary>
         public static bool BlocksMovement(StatusEffectType type)
@@ -270,6 +283,10 @@ namespace TogetherWeFall.Combat
 
                 case StatusEffectType.Weaken:
                     sign = -1f;
+                    return StatusModifierTarget.DamageDealt;
+
+                case StatusEffectType.Empower:
+                    sign = 1f;
                     return StatusModifierTarget.DamageDealt;
 
                 default:
@@ -333,6 +350,9 @@ namespace TogetherWeFall.Combat
                 case StatusEffectType.Fortify:
                     return new float4(0.7f, 0.8f, 0.9f, 1f);
 
+                case StatusEffectType.Empower:
+                    return new float4(1f, 0.78f, 0.3f, 1f);
+
                 default:
                     return DamageTypePalette.For(element);
             }
@@ -362,6 +382,7 @@ namespace TogetherWeFall.Combat
                 case StatusEffectType.Vulnerable: return "VUL";
                 case StatusEffectType.Haste: return "HST";
                 case StatusEffectType.Fortify: return "FRT";
+                case StatusEffectType.Empower: return "EMP";
                 default: return string.Empty;
             }
         }

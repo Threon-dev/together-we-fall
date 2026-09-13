@@ -207,10 +207,12 @@ namespace TogetherWeFall.Skills.Systems
                     // jump copies the whole hit, so a build that casts on kill
                     // stays labelled all the way down a chain — and the damage
                     // meter is the only thing that ever asks.
-                    FromTrigger = hit.FromTrigger
+                    FromTrigger = hit.FromTrigger,
+                    Supportive = hit.Supportive
                 });
 
-                dealt = amount;
+                // A heal is not damage dealt, whatever the number says.
+                dealt = hit.Supportive ? 0f : amount;
             }
 
             // The impact effect, once per blow and only for a skill that names

@@ -76,7 +76,7 @@ namespace TogetherWeFall.Vfx
         /// owns it, and the alternative is a second table of names beside the
         /// drawing code.
         /// </summary>
-        public void Add(Vector3 worldPosition, ushort icons, Color tint)
+        public void Add(Vector3 worldPosition, uint icons, Color tint)
         {
             if (!IsReady || icons == 0 || _used >= _labels.Count)
                 return;

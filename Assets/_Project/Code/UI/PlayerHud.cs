@@ -181,7 +181,7 @@ namespace TogetherWeFall.UI
             }
 
             for (int i = 0; i < _boxes.Count && i < bar.Length; i++)
-                _boxes[i].WriteCooldown(bar[i].CooldownRemaining);
+                _boxes[i].WriteCooldown(bar[i]);
         }
 
         /// <summary>
@@ -488,8 +488,10 @@ namespace TogetherWeFall.UI
 
             private readonly TextMeshProUGUI _icon;
             private readonly TextMeshProUGUI _cost;
+            private readonly TextMeshProUGUI _charges;
 
             private float _lastCooldown = -1f;
+            private int _lastCharges = -1;
 
             public SkillBox(Transform parent, int slot)
             {
@@ -537,6 +539,14 @@ namespace TogetherWeFall.UI
                 Ugui.Place(_timer.rectTransform, left: 0f, right: 0f, bottom: 12f, height: 18f);
                 _timer.gameObject.SetActive(false);
 
+                // Presses in hand, for a key that stores more than one. Over the
+                // shade, because it is the number that says the shade is not the
+                // whole story.
+                _charges = Ugui.Text(
+                    Root, "Charges", 10f, new Color(0.95f, 0.85f, 0.55f),
+                    TextAlignmentOptions.TopRight, bold: true);
+                Ugui.Place(_charges.rectTransform, right: 4f, top: 2f, width: 20f, height: 12f);
+
                 _border = Ugui.Border(Root, new Color(0.24f, 0.26f, 0.32f), 1f, radius: 6f);
             }
 
@@ -564,8 +574,23 @@ namespace TogetherWeFall.UI
                     : new Color(0.44f, 0.62f, 0.94f);
             }
 
-            public void WriteCooldown(float remaining)
+            public void WriteCooldown(in SkillSlot slot)
             {
+                int charges = Mathf.Max(1, slot.Charges);
+                int ready = Mathf.Max(0, charges - slot.ChargesSpent);
+
+                int chargeKey = charges * 1000 + ready;
+                if (chargeKey != _lastCharges)
+                {
+                    _lastCharges = chargeKey;
+                    _charges.text = charges > 1 ? ready.ToString() : string.Empty;
+                }
+
+                // Shaded only when nothing is left to press. A charge still in
+                // hand is a key that works, whatever the timer on the next says.
+                float remaining = ready > 0 ? 0f : slot.CooldownRemaining;
+
+
                 // Compared against the last value so a bar sitting idle — which
                 // is most of the time, for most keys — writes no styles at all.
                 if (Mathf.Approximately(remaining, _lastCooldown))

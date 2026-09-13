@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace TogetherWeFall.Player
 {
@@ -22,5 +23,28 @@ namespace TogetherWeFall.Player
     public struct PlayerCharacter : IComponentData
     {
         public int PlayerId;
+    }
+
+    /// <summary>
+    /// The host putting a body somewhere it did not walk.
+    ///
+    /// The transform belongs to a CharacterController on a GameObject, so the
+    /// host cannot write it — it writes this, and PlayerPositionPublisher moves
+    /// the body when the version changes. In a networked build that is exactly
+    /// a server correction arriving in a snapshot, which is why it lands in the
+    /// file a snapshot unpacker will replace.
+    /// </summary>
+    public struct PlayerWarp : IComponentData
+    {
+        /// <summary>Raised on every warp. A counter, so two warps to the same spot are still two.</summary>
+        public uint Version;
+
+        public float3 Position;
+
+        /// <summary>Which way to face on arrival. Zero keeps the facing.</summary>
+        public float3 Facing;
+
+        /// <summary>Whether the host is still holding the body: input neither moves nor turns it.</summary>
+        public bool Holding;
     }
 }

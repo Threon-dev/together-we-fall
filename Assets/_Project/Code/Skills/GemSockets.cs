@@ -766,7 +766,8 @@ namespace TogetherWeFall.Skills
 
             for (int i = 0; i < sockets.Length && candidates.Length > 0; i++)
             {
-                if (!sockets[i].IsWelded)
+                // The signature skill is not a roll, so it is not rerolled.
+                if (!sockets[i].IsWelded || sockets[i].WeldedSkillId == blob.SignatureSkillId)
                     continue;
 
                 int pick = random.NextInt(0, candidates.Length);
@@ -790,7 +791,12 @@ namespace TogetherWeFall.Skills
         {
             int count = blob.ActiveSkillCount;
 
-            if (count <= 0 || blob.InnateSkillIds.Length == 0)
+            // The signature skill takes one more head, after the rolled ones —
+            // so ArmDefaultAttack, which walks welded sockets in order, puts it
+            // on the next key.
+            int heads = count + (blob.SignatureSkillId != 0 ? 1 : 0);
+
+            if (heads <= 0)
                 return;
 
             // A copy on purpose: candidates are drawn out of it as they are
@@ -812,13 +818,13 @@ namespace TogetherWeFall.Skills
             // about a skill no key can reach. It generalises the rule that was
             // already in this method — a weapon with no sockets at all still
             // gets one — from "at least one" to "one per skill".
-            EnsureWeldHeads(sockets, count);
+            EnsureWeldHeads(sockets, heads);
 
             var filled = new FixedList32Bytes<int>();
 
             for (int i = 0; i < sockets.Length; i++)
             {
-                if (filled.Length >= count || candidates.Length == 0)
+                if (filled.Length >= heads)
                     break;
 
                 int group = sockets[i].LinkGroup;
@@ -828,13 +834,22 @@ namespace TogetherWeFall.Skills
 
                 filled.Add(group);
 
-                int pick = random.NextInt(0, candidates.Length);
-
                 GearSocket socket = sockets[i];
-                socket.WeldedSkillId = candidates[pick];
-                sockets[i] = socket;
 
-                candidates.RemoveAtSwapBack(pick);
+                // ActiveSkillCount is capped by the candidates at bake, so the
+                // rolled heads never run out before the signature's turn.
+                if (filled.Length > count)
+                {
+                    socket.WeldedSkillId = blob.SignatureSkillId;
+                }
+                else
+                {
+                    int pick = random.NextInt(0, candidates.Length);
+                    socket.WeldedSkillId = candidates[pick];
+                    candidates.RemoveAtSwapBack(pick);
+                }
+
+                sockets[i] = socket;
             }
         }
 

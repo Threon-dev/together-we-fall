@@ -161,6 +161,16 @@ namespace TogetherWeFall.Combat
         /// button, and everything deeper is a consequence.
         /// </summary>
         public bool FromTrigger;
+
+        /// <summary>
+        /// A team spell rather than a blow: Amount is health given back, and the
+        /// only other thing it carries is its status.
+        ///
+        /// A flag on the same event rather than a second buffer, so the resolver
+        /// stays the one place health changes in either direction. It is never
+        /// scaled by what makes blows hurt, never kills, and never reacts.
+        /// </summary>
+        public bool Supportive;
     }
 
     /// <summary>
@@ -192,6 +202,18 @@ namespace TogetherWeFall.Combat
     }
 
     /// <summary>
+    /// "Nothing lands on this right now."
+    ///
+    /// Enableable and read by the resolver, which throws the frame's events away
+    /// rather than applying them: the one place health changes is the one place
+    /// "cannot be hurt" can mean one thing. Raised by a blink for as long as it
+    /// is stepping.
+    /// </summary>
+    public struct Invulnerable : IComponentData, IEnableableComponent
+    {
+    }
+
+    /// <summary>
     /// PRESENTATION — what to put on screen about the damage this entity took.
     ///
     /// Written by the resolver because that is the only place that knows the
@@ -220,6 +242,9 @@ namespace TogetherWeFall.Combat
         /// worth looking at.
         /// </summary>
         public bool Crit;
+
+        /// <summary>Health given back this frame, drawn as its own green number.</summary>
+        public float Healed;
     }
 
     /// <summary>

@@ -78,6 +78,8 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.CreateMaterial("EnemyBody", new Color(0.85f, 0.25f, 0.22f));
             Material dummyMaterial =
                 SceneBuildUtility.CreateMaterial("TrainingDummy", new Color(0.72f, 0.62f, 0.35f));
+            Material allyMaterial =
+                SceneBuildUtility.CreateMaterial("AllyDummy", new Color(0.30f, 0.70f, 0.40f));
 
             var enemyConfig = SceneBuildUtility.CreateOrLoadConfig<EnemyConfig>("EnemyConfig");
             var spawnConfig = SceneBuildUtility.CreateOrLoadConfig<SpawnConfig>("SpawnConfig");
@@ -150,6 +152,7 @@ namespace TogetherWeFall.EditorTools
 
             GameObject spawnPoints = CreateSpawnPoints();
             GameObject trainingDummies = CreateTrainingDummies(dummyMaterial);
+            GameObject allyDummy = CreateAllyDummy(allyMaterial);
             GameObject waveSpawner = SceneBuildUtility.CreateWaveSpawner(enemyPrefab, spawnConfig);
             GameObject simulationSettings =
                 SceneBuildUtility.CreateSimulationSettings(pathfindingConfig, separationConfig);
@@ -214,13 +217,13 @@ namespace TogetherWeFall.EditorTools
             Selection.objects = new Object[]
             {
                 spawnPoints, waveSpawner, simulationSettings, characterStats, skillDatabase,
-                elementReactions, lootDatabase, trainingDummies
+                elementReactions, lootDatabase, trainingDummies, allyDummy
             };
 
             Debug.Log(
                 $"[ArenaSceneBuilder] Arena built: {ScenePath}\n" +
                 "ONE STEP LEFT: SpawnPoints, WaveSpawner, SimulationSettings, CharacterStats, " +
-                "SkillDatabase, ElementReactions, LootDatabase and TrainingDummies are already " +
+                "SkillDatabase, ElementReactions, LootDatabase, TrainingDummies and AllyDummy are already " +
                 "selected in the hierarchy — right-click them, then New Sub Scene > " +
                 "From Selection. Without a SubScene they are never baked into entities: no " +
                 "waves spawn, enemies receive no " +
@@ -232,7 +235,10 @@ namespace TogetherWeFall.EditorTools
                 "arrangement is the player's.\n" +
                 "Then Space spawns a wave, and left mouse, right mouse, Q and R cast whatever " +
                 "was bound. The three dummies ahead of the start take damage, flash and never " +
-                "fall over — the quickest way to watch a status tick and a reaction go off.");
+                "fall over — the quickest way to watch a status tick and a reaction go off.\n" +
+                "The green capsule is a second player that stands still and stays wounded: aim " +
+                "Mending Word at it, or stand beside it and cast Battle Hymn (both in the library " +
+                "test kit). Waves will chase it, as they would a partner.");
         }
 
         private static GameObject CreateGround(Material material)
@@ -330,6 +336,24 @@ namespace TogetherWeFall.EditorTools
             }
 
             return root;
+        }
+
+        /// <summary>
+        /// A second player that stands still and stays wounded, for team spells.
+        /// Beside the start rather than among the targets, so a heal is aimed
+        /// away from the enemy dummies. No collider, for the navmesh reason above.
+        /// </summary>
+        private static GameObject CreateAllyDummy(Material material)
+        {
+            GameObject dummy = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            dummy.name = "AllyDummy";
+            dummy.transform.position = new Vector3(-5f, 1f, 2f);
+            dummy.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            Object.DestroyImmediate(dummy.GetComponent<CapsuleCollider>());
+
+            dummy.AddComponent<AllyDummyAuthoring>();
+            return dummy;
         }
 
         /// <summary>

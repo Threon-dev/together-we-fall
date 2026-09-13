@@ -140,9 +140,71 @@ namespace TogetherWeFall.EditorTools
             // resolves to nothing.
             CreateDefaultAttacks(out SkillDefinition strike, out SkillDefinition bolt);
             SkillDefinition arrow = CreateArrowAttack();
+            SkillDefinition blink = CreateBlinkStrike();
 
-            return new[] { splinter, nova, lance, sweep, wall, strike, bolt, arrow };
+            return new[]
+            {
+                splinter, nova, lance, sweep, wall, strike, bolt, arrow, blink,
+                CreateMendingWord(), CreateBattleHymn()
+            };
         }
+
+        /// <summary>
+        /// The first team spell: a heal aimed at a partner. Its damage is the
+        /// heal, and weapon damage does not add to it.
+        /// </summary>
+        public static SkillDefinition CreateMendingWord()
+            => Skill("MendingWord", "Mending Word", skill =>
+            {
+                skill.Effect = SkillEffectKind.AllyTarget;
+                skill.DamageType = DamageType.Physical;
+                skill.BaseDamage = 60f;     // TUNE: health back
+                skill.Cooldown = 1.2f;      // TUNE
+                skill.ManaCost = 14f;       // TUNE
+                skill.Range = 16f;          // TUNE
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+            });
+
+        /// <summary>
+        /// The second: every ally around you hits harder for a while. No heal —
+        /// the buff is the whole spell.
+        /// </summary>
+        public static SkillDefinition CreateBattleHymn()
+            => Skill("BattleHymn", "Battle Hymn", skill =>
+            {
+                skill.Effect = SkillEffectKind.AllyAura;
+                skill.DamageType = DamageType.Physical;
+                skill.BaseDamage = 0f;
+                skill.Cooldown = 8f;        // TUNE
+                skill.ManaCost = 25f;       // TUNE
+                skill.Range = 8f;
+                skill.Radius = 8f;          // TUNE
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+                skill.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Empower);
+            });
+
+        /// <summary>
+        /// The blink every sword carries on its second key.
+        ///
+        /// No damage and no cost: it lands the primary key's skill on each body,
+        /// so the numbers here are only where and how often. Three steps before
+        /// any chain gem, and the cooldown starts when the last one lands.
+        /// Create-or-load and in the starter list, for the reason the welded
+        /// attacks are: an id the database has never heard of is a dead key.
+        /// </summary>
+        public static SkillDefinition CreateBlinkStrike()
+            => Skill("ShadowStep", "Shadow Step", skill =>
+            {
+                skill.Effect = SkillEffectKind.BlinkStrike;
+                skill.DamageType = DamageType.Physical;
+                skill.BaseDamage = 0f;
+                skill.Cooldown = 4f;        // TUNE
+                skill.Range = 12f;          // TUNE: reach for the first body
+                skill.BaseChains = 2;       // TUNE: three steps
+                skill.ChainRange = 9f;      // TUNE: reach from one landing to the next body
+                skill.ChainDelay = 0.2f;    // TUNE: seconds between steps
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+            });
 
 
         /// <summary>

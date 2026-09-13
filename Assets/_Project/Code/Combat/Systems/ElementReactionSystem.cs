@@ -93,9 +93,12 @@ namespace TogetherWeFall.Combat.Systems
         private const float ZoneRenewFraction = 0.5f;
 
         private EntityQuery _characterQuery;
+        private ComponentLookup<LocalTransform> _positions;
 
         public void OnCreate(ref SystemState state)
         {
+            _positions = state.GetComponentLookup<LocalTransform>(isReadOnly: true);
+
             _characterQuery = SystemAPI.QueryBuilder()
                 .WithAll<PlayerCharacter, KeystoneComponent>()
                 .Build();
@@ -118,9 +121,12 @@ namespace TogetherWeFall.Combat.Systems
             // whatever already reads these buffers has to be finished first —
             // the same call the projectile system makes for the same reason.
             state.CompleteDependency();
+            _positions.Update(ref state);
 
             new ReactJob
             {
+                Positions = _positions,
+
                 Database = SystemAPI.GetSingleton<ElementReactionDatabase>(),
                 ElapsedTime = (float)SystemAPI.Time.ElapsedTime,
 
@@ -220,14 +226,19 @@ namespace TogetherWeFall.Combat.Systems
         }
 
         /// <summary>
-        /// WithAll on the enemy tag, which is enableable, so a body already
+        /// WithAny on the enemy tag, which is enableable, so a body already
         /// fading is out of this: a corpse taking splash damage should not light
-        /// up with reactions on its way off the screen.
+        /// up with reactions on its way off the screen. Player characters are in
+        /// it too — a team spell puts its status on an ally here, the same Apply
+        /// every status goes through — but a character is a sheet, not a body:
+        /// it has no position, so it stands in no zone and announces no trigger.
         /// </summary>
         [BurstCompile]
-        [WithAll(typeof(EnemyTag))]
+        [WithAny(typeof(EnemyTag), typeof(PlayerCharacter))]
         private partial struct ReactJob : IJobEntity
         {
+            [ReadOnly] public ComponentLookup<LocalTransform> Positions;
+
             public ElementReactionDatabase Database;
             public float ElapsedTime;
             public KeystoneSet Keystones;
@@ -256,11 +267,13 @@ namespace TogetherWeFall.Combat.Systems
                 public DynamicBuffer<ActiveStatusEffect> Statuses;
                 public DynamicBuffer<CrowdControlImmunity> Immunities;
                 public CrowdControlResistance Resistance;
+
+                /// <summary>Whether this is something standing in the world rather than a character sheet.</summary>
+                public bool IsBody;
             }
 
             private void Execute(
                 Entity entity,
-                in LocalTransform transform,
                 DynamicBuffer<DamageEvent> events,
                 DynamicBuffer<ActiveStatusEffect> statuses,
                 DynamicBuffer<CrowdControlImmunity> immunities,
@@ -269,13 +282,16 @@ namespace TogetherWeFall.Combat.Systems
                 if (events.Length == 0 && Zones.Zones.Length == 0)
                     return;
 
+                bool isBody = Positions.TryGetComponent(entity, out LocalTransform body);
+
                 var target = new Afflicted
                 {
                     Entity = entity,
-                    Position = transform.Position,
+                    Position = isBody ? body.Position : float3.zero,
                     Statuses = statuses,
                     Immunities = immunities,
-                    Resistance = resistance
+                    Resistance = resistance,
+                    IsBody = isBody
                 };
 
                 // Standing in something counts, whether or not it hit you this
@@ -283,11 +299,20 @@ namespace TogetherWeFall.Combat.Systems
                 // a cloud is already poisoned when the pulse that catches it
                 // arrives — and so the pulse refreshes a mark rather than
                 // creating one a frame later.
-                StandingInZones(target);
+                if (target.IsBody)
+                    StandingInZones(target);
 
                 for (int i = 0; i < events.Length; i++)
                 {
                     DamageEvent damage = events[i];
+
+                    // A team spell: its status and nothing else — no element
+                    // mark and no reaction. A heal is not a physical blow.
+                    if (damage.Supportive)
+                    {
+                        Applied(damage, target);
+                        continue;
+                    }
 
                     // A burn tick, or the blast a reaction already produced.
                     // It does its damage and nothing else — no reaction of its
@@ -704,7 +729,9 @@ namespace TogetherWeFall.Combat.Systems
                 // Capped by the list rather than by anything here: three hundred
                 // burning bodies are three hundred applications and, for a
                 // trigger on a cooldown, one cast.
-                if (Triggers.Length < TriggerEvents.MaxPerFrame)
+                // Not for a character: "on status applied" gems aim at the body
+                // the status landed on, and a sheet has nowhere to aim.
+                if (target.IsBody && Triggers.Length < TriggerEvents.MaxPerFrame)
                 {
                     Triggers.Add(new TriggerEvent
                     {

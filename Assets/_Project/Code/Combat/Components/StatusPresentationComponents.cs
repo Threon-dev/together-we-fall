@@ -30,7 +30,7 @@ namespace TogetherWeFall.Combat
     public struct StatusVisual : IComponentData
     {
         /// <summary>Every status on this body, as a StatusMask. Zero is a clean one.</summary>
-        public ushort Icons;
+        public uint Icons;
 
         /// <summary>
         /// The colour to wash the body in, decided by the loudest status on it.

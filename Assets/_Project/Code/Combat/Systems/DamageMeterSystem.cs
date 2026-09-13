@@ -63,6 +63,11 @@ namespace TogetherWeFall.Combat.Systems
                 {
                     DamageEvent blow = damage[i];
 
+                    // A heal is not damage, and a meter that counted it would
+                    // make a support build look like a damage build.
+                    if (blow.Supportive)
+                        continue;
+
                     log.Add(new DamageMeterEntry
                     {
                         Timestamp = now,

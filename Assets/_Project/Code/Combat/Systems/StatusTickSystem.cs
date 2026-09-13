@@ -47,9 +47,12 @@ namespace TogetherWeFall.Combat.Systems
     public partial struct StatusTickSystem : ISystem
     {
         private EntityQuery _characterQuery;
+        private ComponentLookup<LocalTransform> _positions;
 
         public void OnCreate(ref SystemState state)
         {
+            _positions = state.GetComponentLookup<LocalTransform>(isReadOnly: true);
+
             _characterQuery = SystemAPI.QueryBuilder()
                 .WithAll<PlayerCharacter, KeystoneComponent>()
                 .Build();
@@ -63,6 +66,7 @@ namespace TogetherWeFall.Combat.Systems
             using var hits = new NativeList<PendingHit>(8, Allocator.TempJob);
 
             state.CompleteDependency();
+            _positions.Update(ref state);
 
             using NativeArray<PlayerCharacter> characters =
                 _characterQuery.ToComponentDataArray<PlayerCharacter>(Allocator.Temp);
@@ -78,7 +82,8 @@ namespace TogetherWeFall.Combat.Systems
                 // it as a player id, and a player id is not something a
                 // ComponentLookup can be asked about.
                 Keystones = KeystoneSet.Gather(characters, keystones),
-                Hits = hits
+                Hits = hits,
+                Positions = _positions
             }.Run();
 
             if (hits.Length == 0)
@@ -90,14 +95,17 @@ namespace TogetherWeFall.Combat.Systems
         }
 
         /// <summary>
-        /// WithAll on the enemy tag, which is enableable — so a body that has
+        /// WithAny on the enemy tag, which is enableable — so a body that has
         /// died stops burning, and its statuses stop costing anything, without
-        /// this system knowing that death exists.
+        /// this system knowing that death exists. Player characters too, so a
+        /// buff an ally cast runs out and folds into their gate like any status.
         /// </summary>
         [BurstCompile]
-        [WithAll(typeof(EnemyTag))]
+        [WithAny(typeof(EnemyTag), typeof(PlayerCharacter))]
         private partial struct TickStatusesJob : IJobEntity
         {
+            [ReadOnly] public ComponentLookup<LocalTransform> Positions;
+
             public float DeltaTime;
             public ElementReactionDatabase Database;
             public KeystoneSet Keystones;
@@ -106,12 +114,16 @@ namespace TogetherWeFall.Combat.Systems
 
             private void Execute(
                 Entity entity,
-                in LocalTransform transform,
                 DynamicBuffer<ActiveStatusEffect> statuses,
                 DynamicBuffer<CrowdControlImmunity> immunities,
                 ref StatusGate gate,
                 ref StatusVisual visual)
             {
+                // Only a burn needs it, and a character sheet has none to give.
+                float3 position = Positions.TryGetComponent(entity, out LocalTransform body)
+                    ? body.Position
+                    : float3.zero;
+
                 RunImmunitiesDown(immunities);
 
                 // Rebuilt from nothing every frame rather than adjusted as
@@ -142,7 +154,7 @@ namespace TogetherWeFall.Combat.Systems
                     // A burn that resolved all at once has nothing left to run
                     // down, so it leaves rather than sitting at zero damage for
                     // the rest of its duration.
-                    if (Burn(entity, transform.Position, ref status))
+                    if (Burn(entity, position, ref status))
                     {
                         statuses.RemoveAtSwapBack(i);
                         continue;

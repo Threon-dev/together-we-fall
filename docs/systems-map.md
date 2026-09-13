@@ -253,6 +253,27 @@
   burst і on-impact тригер спрацьовують, розвилки нема, `SkillHit`-VFX у точці.
   Дуло підрізає `SkillCastSystem.Muzzle`. Unity Physics (ECS) у проєкті досі нема —
   це вбудований PhysX.
+- **Блінк (BlinkStrike, Shadow Step на ПКМ меча)**: старт — `SkillCastSystem.BeginBlink`
+  (вмикає `BlinkSequence` + `Invulnerable` на персонажі, `SkillSlot.Held`); кроки —
+  `Code/Skills/Systems/BlinkStrikeSystem.cs` (перед `SkillCastSystem`): пише
+  `PlayerWarp` (`Code/Player/Components/PlayerCharacter.cs`) і `PendingCast` скіла
+  слота 0 з його gear/socket. Тіло рухає `PlayerPositionPublisher.ApplyWarp` →
+  `PlayerMotor.Teleport`/`Held`. Невразливість — перевірка в `DamageResolutionSystem`.
+  Вварювання на ПКМ — `ItemDefinition._signatureSkill` → `ItemBlob.SignatureSkillId` →
+  `GemSockets.Weld` (окрема голова після рольованих; `RerollWelded` її пропускає);
+  контент — `SkillContentFactory.CreateBlinkStrike`, мечам проставляє
+  `WeaponContentFactory.CreateSwords`.
+- **Заряди**: `SkillModifierKind.AddedCharges` → `ResolvedSkill.Charges`; облік —
+  `SkillSlot.ChargesSpent/Charges/Recharge/Held`, тік у `SkillCastSystem.TickCooldowns`,
+  бар — `PlayerHud.SkillBox.WriteCooldown`. Гем — `GemStockpile` у `BuildLibraryFactory.LeverGems`.
+- **Командні спели (AllyTarget / AllyAura)**: `SkillModifiers.IsSupportive`;
+  вибір союзників і `PendingHit.Supportive` — `SkillCastSystem.EmitSupport`/`FindAlly`;
+  хіл — `DamageResolutionSystem` (`DamageEvent.Supportive`, `DamageFeedback.Healed`),
+  зелене число — `DamageNumberSystem`; статус на персонажі — `ElementReactionSystem`
+  і `StatusTickSystem` (`WithAny<EnemyTag, PlayerCharacter>`, позиція lookup'ом);
+  баф шкоди читає `SkillCastSystem.ScaleOutgoing`. Статус `Empower` —
+  `StatusEffects` (маска тепер `uint`). Контент — `SkillContentFactory.CreateMendingWord`
+  / `CreateBattleHymn`, геми — `BuildLibraryFactory.TeamGems`.
 - Пошук цілей: `Code/Skills/EnemyTargets.cs`.
 - Зони: `Code/Skills/Components/ElementZone.cs` (+ `ZoneSpawn`),
   `Systems/ElementZoneSystem.cs`, `ZonePoolSystem.cs`, `ProjectileZoneOverlapSystem.cs`.
@@ -403,6 +424,10 @@
 - Манекени: `Code/Debug/Components/TrainingDummy.cs`, `DummyPatrol.cs`,
   `Authoring/TrainingDummyAuthoring.cs`, `Systems/TrainingDummySystem.cs`,
   `Systems/DummyPatrolSystem.cs`.
+- Манекен союзника (фейковий гравець): `Code/Debug/Components/AllyDummy.cs`,
+  `Authoring/AllyDummyAuthoring.cs`, `Systems/AllyDummySystem.cs` (Initialization,
+  після реєстру: публікує позицію, ставить `StarterKitGranted`, тримає поранення,
+  дзеркалить `DamageFeedback` і тінт статусу на тіло). Ставить `ArenaSceneBuilder.CreateAllyDummy`.
 
 ## Конфіги й контент-фабрики
 - Усі ScriptableObject-типи: `Code/Config/` — Enemy, Spawn, Pathfinding, Separation,
