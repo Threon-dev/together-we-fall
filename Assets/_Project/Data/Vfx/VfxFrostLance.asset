@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxFrostLance
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 876949634925983196, guid: cc873cc6f9ca10248917b4dfb7ef0adc, type: 3}
+  _projectile: {fileID: 3814496778439236206, guid: 0e97097ebbad225488a0264463560ec6, type: 3}
+  _hit: {fileID: 8260617210669617129, guid: 5ebe2034595c94f41a8e89907c5be9a5, type: 3}
+  _scale: 0.5
+  _lift: 0

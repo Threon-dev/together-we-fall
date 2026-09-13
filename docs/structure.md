@@ -120,22 +120,29 @@ Assets/_Project/
 │       ├── ArenaSceneBuilder.cs          арена для замірів
 │       ├── DungeonSceneBuilder.cs        сцена данжу (порожня, поверх — у рантаймі)
 │       └── LobbySceneBuilder.cs          хаб: NPC, манекени, портал
-├── Data/                                 Enemy/Spawn/Pathfinding/Separation/
+├── Data/
+│   ├── Config/                           Enemy/Spawn/Pathfinding/Separation/
 │   │                                     DungeonGeneration/Loot/Character/
-│   │                                     StarterKit/TreasureLootTable
-│   ├── Items/                            спорядження, монета, геми (активні
-│   │                                     й супорти), keystone-персні,
-│   │                                     Riftwood Staff на 14 отворів
-│   │                                     і тестбед-пара з вільними головами
-│   ├── Elements/                         StatusEffectDefinition (CC, DoT,
-│   │                                     дебафи), правила реакцій
-│   │                                     і ElementReactionTable
-│   ├── Skills/                           SkillDefinition (разом із двома
-│   │                                     вшитими атаками зброї) і SkillModifier
+│   │                                     StarterKit/Audio/Vfx/TreasureLootTable
+│   ├── Items/
+│   │   ├── Weapons/                      по підпапці на тип: Swords, Daggers,
+│   │   │                                 Bows, Wands, Staves (Riftwood Staff
+│   │   │                                 на 14 отворів), Foci
+│   │   ├── Armour/                       шоломи, броня, рукавиці, щити
+│   │   ├── Jewellery/                    персні (і keystone-персні), амулети
+│   │   ├── Currency/                     монета
+│   │   └── Gems/{Active,Support}/        геми активних скілів / супорти
+│   ├── Elements/                         ElementReactionTable
+│   │   ├── Statuses/                     StatusEffectDefinition (CC, DoT, дебафи)
+│   │   └── Reactions/                    ElementReactionRule
+│   ├── Skills/
+│   │   ├── Active/                       SkillDefinition (разом із двома
+│   │   │                                 вшитими атаками зброї)
+│   │   └── Supports/                     SkillModifier
 │   ├── Sets/                             ItemSetDefinition — членство сету
 │   │                                     й бонуси за порогами
-│   └── Vfx/                              SkillVfxSet — cast / projectile / hit
-│                                         на скіл
+│   └── Vfx/                              SkillVfxSet — cast / projectile / hit,
+│                                         по одному на кожен активний скіл
 ├── UI/                                   PanelSettings + RuntimeTheme.tss (від
 │                                          UI Toolkit; ні на що не посилаються)
 ├── Prefabs/                              Enemy, Chest, LootItem, SkillProjectile,

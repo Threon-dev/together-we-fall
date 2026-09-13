@@ -31,8 +31,8 @@
   (єдина `SystemBase`, бо NavMesh — головний потік), `FollowPath`, `Separation`,
   `StatusMovement`, `NavMeshProjection`, `MovementApply` (**єдина, що рухає**).
 - Пул: `Code/Enemies/EnemyPool.cs` + `Code/Spawning/Systems/EnemyPoolSystem.cs`.
-- Налаштування: `Code/Shared/SimulationSettings.cs` ← `Data/PathfindingConfig.asset`,
-  `Data/SeparationConfig.asset` через `Code/Shared/SimulationSettingsAuthoring.cs`.
+- Налаштування: `Code/Shared/SimulationSettings.cs` ← `Data/Config/PathfindingConfig.asset`,
+  `Data/Config/SeparationConfig.asset` через `Code/Shared/SimulationSettingsAuthoring.cs`.
 
 ## Спавн і хвилі
 - ECS: `Code/Spawning/Components/SpawningComponents.cs` — `SpawnPoint`,
@@ -56,7 +56,7 @@
   `DungeonRunPhase`, `DungeonRoomPhase`, `DungeonGrid`, `DungeonRoomElement`.
 - Системи: `Code/Dungeon/Systems/` — `DungeonSpawnPoint`, `RoomOccupancy`,
   `RoomActivation`, `DungeonChest`.
-- Дані: `Data/DungeonGenerationConfig.asset`.
+- Дані: `Data/Config/DungeonGenerationConfig.asset`.
 
 ## Взаємодія (підійшов і натиснув)
 - ECS: `Code/Interaction/Components/InteractionComponents.cs` — `InteractionRequest`
@@ -80,8 +80,8 @@
   `Code/Loot/Authoring/LootDatabaseAuthoring.cs` (`BuildItemDatabase`/`BuildItem`,
   `BuildLootDatabase`/`BuildTable`). Тобто `ItemDatabase` приходить
   **з Loot-бейкера**, а не з Equipment, хоч тип і лежить в Equipment.
-- Дані: `Data/Items/*.asset` (`Code/Config/ItemDefinition.cs`),
-  `Data/TreasureLootTable.asset` (`Code/Config/LootTable.cs`), `Data/LootConfig.asset`.
+- Дані: `Data/Items/**/*.asset` (Weapons/<тип>, Armour, Jewellery, Currency, Gems) (`Code/Config/ItemDefinition.cs`),
+  `Data/Config/TreasureLootTable.asset` (`Code/Config/LootTable.cs`), `Data/Config/LootConfig.asset`.
 
 ## Предмети: база даних
 - Блоб: `Code/Equipment/Components/ItemDatabaseBlob.cs` — `ItemBlob`, `AffixBlob`,
@@ -111,8 +111,8 @@
 - Системи: `Code/Equipment/Systems/` — `EquipmentSystem`, `PlayerStatsSystem`,
   `SocketSystem`, `SetBonusEvaluationSystem`.
 - База персонажа: `Code/Equipment/Authoring/CharacterStatsAuthoring.cs` ←
-  `Data/CharacterConfig.asset` (стати, розмір сумки) **і**
-  `Data/StarterKitConfig.asset` (стартовий набір, окреме поле `_starterKit`).
+  `Data/Config/CharacterConfig.asset` (стати, розмір сумки) **і**
+  `Data/Config/StarterKitConfig.asset` (стартовий набір, окреме поле `_starterKit`).
 - Стартовий набір: `Code/Config/StarterKitConfig.cs` (`StarterKitEntry`,
   `StarterKitPlacement`) → буфер `StarterItem` (`Worn`-прапорець на запис) →
   `Code/Skills/Systems/StarterKitSystem.cs` (`TryWear` бере перший вільний
@@ -154,7 +154,7 @@
 - Уся логіка читання отворів: `Code/Skills/GemSockets.cs` — `TryDescribeGem`,
   `TryReadSocket`, `TryResolveActive`, `GatherSupports`, `TryGetTrigger`,
   `ArmDefaultAttack`, `IsWorn`, `Rebuild`, `RerollWelded`.
-- Зв'язок: гем — це звичайний предмет (`Data/Items/Gem*.asset`); який скіл він дає,
+- Зв'язок: гем — це звичайний предмет (`Data/Items/Gems/{Active,Support}/`); який скіл він дає,
   лежить у `ItemBlob`, а сам скіл — у `SkillDatabase`. Тобто
   **Skills → `GemSockets` → `GearSocket` + `ItemDatabase` → `SkillDatabase`**.
 - Змінювати вміст отворів — через `SocketSystem`, не правкою буфера.
@@ -203,7 +203,7 @@
   `Systems/ElementZoneSystem.cs`, `ZonePoolSystem.cs`, `ProjectileZoneOverlapSystem.cs`.
 - Системи: `Code/Skills/Systems/` — `SkillRegistry`, `SkillLoadout`, `SkillCast`,
   `SkillProjectile`, `ProjectilePool`, `SkillArea`, `SkillHit`, `StarterKit`.
-- Дані: `Data/Skills/*.asset` (`Code/Config/SkillDefinition.cs`,
+- Дані: `Data/Skills/{Active,Supports}/*.asset` (`Code/Config/SkillDefinition.cs`,
   `Code/Config/SkillModifier.cs`).
 
 ## Бій: урон і смерть
@@ -225,8 +225,8 @@
 - Реакції: `Code/Combat/Components/ElementReactionBlob.cs`, бейк —
   `Code/Combat/Authoring/ElementReactionAuthoring.cs`, логіка —
   `Systems/ElementReactionSystem.cs`; тік — `Systems/StatusTickSystem.cs`.
-- Дані: `Data/Elements/Status*.asset` (`Code/Config/StatusEffectDefinition.cs`),
-  `Data/Elements/Reaction*.asset` + `Data/Elements/ElementReactionTable.asset`.
+- Дані: `Data/Elements/Statuses/*.asset` (`Code/Config/StatusEffectDefinition.cs`),
+  `Data/Elements/Reactions/*.asset` + `Data/Elements/ElementReactionTable.asset`.
 
 ## Ресурси гравця
 - ECS: `Code/Player/Components/PlayerResources.cs` (`Mana`; здоров'я — `Health`
@@ -245,7 +245,7 @@
 - Гроші: `Code/Lobby/Currency.cs` — `BasePrice`, `ValueOf`, `Balance`, `TryPay`,
   `Grant`, **`TryCollect`**. Баланс — це `Wallet` на персонажі
   (`Code/Player/Components/PlayerResources.cs`), **не** обхід сумки. Монета
-  лишається предметом (`Data/Items/GoldSliver.asset`), поки лежить на підлозі;
+  лишається предметом (`Data/Items/Currency/GoldSliver.asset`), поки лежить на підлозі;
   `ItemPickupSystem` і `StarterKitSystem` переганяють її в гаманець через
   `TryCollect`.
 - Портал і вихід зі сцени: `Systems/DungeonPortalSystem.cs` +
@@ -317,13 +317,13 @@
   Контент і список для презентера: `Code/Editor/SkillVfxContentFactory.cs`
   (шлях до паку — одна константа `Pack`).
 - Системи: `Code/Vfx/Systems/` — `VfxEventRegistry`, `DamageNumber`, `StatusTint`.
-- Дані: `Data/VfxConfig.asset`.
+- Дані: `Data/Config/VfxConfig.asset`.
 
 ## Звук
 - Шов: `Code/Audio/Components/AudioComponents.cs` — `AudioCue`, `AudioEvent`.
 - `Code/Audio/AudioPresenter.cs` (бюджети, дистанція від камери),
   `AudioSourcePool.cs`, `Systems/AudioEventRegistrySystem.cs`.
-- Дані: `Data/AudioConfig.asset`.
+- Дані: `Data/Config/AudioConfig.asset`.
 
 ## Завіса і переходи між сценами
 - `Code/Curtain/Components/CurtainComponents.cs` — `CurtainReason`, `CurtainState`,
@@ -340,7 +340,10 @@
 - Усі ScriptableObject-типи: `Code/Config/` — Enemy, Spawn, Pathfinding, Separation,
   DungeonGeneration, Audio, Vfx, Loot, LootTable, Item, Character, SkillDefinition,
   SkillModifier, StatusEffect, ElementReactionRule/Table.
-- Ассети: `Data/` (+ `Data/Items`, `Data/Skills`, `Data/Elements`).
+- Ассети: `Data/` — `Config/`, `Items/`, `Skills/`, `Elements/`, `Sets/`, `Vfx/`.
+  **Фабрики шукають ассет за іменем будь-де під `Data/`** (`SceneBuildUtility.LoadConfig`,
+  ним же користується `CreateOrLoadConfig`); папка у фабриці — лише куди ляже новий.
+  Тож перекладати ассети по підпапках руками можна, дубля при білді не буде.
 - Генерація контенту з редактора: `Code/Editor/` — `ItemContentFactory.cs`,
   `SkillContentFactory.cs`, `ElementContentFactory.cs`, `LobbyContentFactory.cs`,
   `BuildLibraryFactory.cs` (меню `Tools → Together We Fall → Grant Library Test Kit`).

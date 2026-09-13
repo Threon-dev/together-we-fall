@@ -45,7 +45,7 @@ namespace TogetherWeFall.EditorTools
         public static ItemDefinition CreateOrLoadCoin(LootTable table)
         {
             ItemDefinition coin = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                "GoldSliver", ItemFolder, out bool created);
+                "GoldSliver", $"{ItemFolder}/Currency", out bool created);
 
             if (created)
             {
@@ -137,8 +137,7 @@ namespace TogetherWeFall.EditorTools
 
             for (int i = 0; i < names.Length; i++)
             {
-                var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(
-                    $"{ItemFolder}/{names[i]}.asset");
+                var item = SceneBuildUtility.LoadConfig<ItemDefinition>(names[i]);
 
                 if (item != null)
                     stock.Add(item);

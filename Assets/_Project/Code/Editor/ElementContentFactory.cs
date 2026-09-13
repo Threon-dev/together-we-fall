@@ -291,7 +291,7 @@ namespace TogetherWeFall.EditorTools
         {
             StatusEffectDefinition status =
                 SceneBuildUtility.CreateOrLoadConfig<StatusEffectDefinition>(
-                    assetName, ElementFolder, out bool created);
+                    assetName, $"{ElementFolder}/Statuses", out bool created);
 
             var serialized = new SerializedObject(status);
 
@@ -328,7 +328,7 @@ namespace TogetherWeFall.EditorTools
             StatusEffectDefinition resultStatus = null)
         {
             ElementReactionRule rule = SceneBuildUtility.CreateOrLoadConfig<ElementReactionRule>(
-                assetName, ElementFolder, out bool created);
+                assetName, $"{ElementFolder}/Reactions", out bool created);
 
             if (!created)
                 return rule;

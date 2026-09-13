@@ -41,6 +41,7 @@ namespace TogetherWeFall.EditorTools
     {
         public const string ArtFolder = "Assets/_Project/Art";
         public const string DataFolder = "Assets/_Project/Data";
+        public const string ConfigFolder = DataFolder + "/Config";
         public const string PrefabFolder = "Assets/_Project/Prefabs";
 
         public static void CreateLighting()
@@ -418,11 +419,11 @@ namespace TogetherWeFall.EditorTools
         }
 
         public static T CreateOrLoadConfig<T>(string assetName) where T : ScriptableObject
-            => CreateOrLoadConfig<T>(assetName, DataFolder, out _);
+            => CreateOrLoadConfig<T>(assetName, ConfigFolder, out _);
 
         public static T CreateOrLoadConfig<T>(string assetName, out bool created)
             where T : ScriptableObject
-            => CreateOrLoadConfig<T>(assetName, DataFolder, out created);
+            => CreateOrLoadConfig<T>(assetName, ConfigFolder, out created);
 
         /// <summary>
         /// Loads the asset or creates an empty one.
@@ -430,24 +431,46 @@ namespace TogetherWeFall.EditorTools
         /// The created flag matters for assets the builder fills with starter
         /// content: rebuilding a scene must not overwrite a table somebody has
         /// since tuned by hand.
+        ///
+        /// The folder is only where a NEW asset lands. An existing one is found
+        /// by name anywhere under Data, so assets can be filed into subfolders
+        /// by hand — otherwise the next build would make a second copy at the
+        /// old path, with the same name and therefore the same id.
         /// </summary>
         public static T CreateOrLoadConfig<T>(string assetName, string folder, out bool created)
             where T : ScriptableObject
         {
-            EnsureAssetFolder(folder);
-            string path = $"{folder}/{assetName}.asset";
-
-            var existing = AssetDatabase.LoadAssetAtPath<T>(path);
+            T existing = LoadConfig<T>(assetName);
             if (existing != null)
             {
                 created = false;
                 return existing;
             }
 
+            EnsureAssetFolder(folder);
             var asset = ScriptableObject.CreateInstance<T>();
-            AssetDatabase.CreateAsset(asset, path);
+            AssetDatabase.CreateAsset(asset, $"{folder}/{assetName}.asset");
             created = true;
             return asset;
+        }
+
+        /// <summary>One asset by name, wherever under Data it is filed, or null.</summary>
+        public static T LoadConfig<T>(string assetName) where T : ScriptableObject
+        {
+            string[] guids = AssetDatabase.FindAssets(
+                $"t:{typeof(T).Name} {assetName}", new[] { DataFolder });
+
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+
+                // FindAssets matches names loosely — "SupportHemorrhage" also
+                // finds "SupportHemorrhageWeak".
+                if (System.IO.Path.GetFileNameWithoutExtension(path) == assetName)
+                    return AssetDatabase.LoadAssetAtPath<T>(path);
+            }
+
+            return null;
         }
 
         /// <summary>

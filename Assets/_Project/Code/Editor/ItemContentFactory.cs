@@ -57,8 +57,7 @@ namespace TogetherWeFall.EditorTools
 
         private static void Weld(string assetName, SkillDefinition skill)
         {
-            var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(
-                $"{ItemFolder}/{assetName}.asset");
+            var item = SceneBuildUtility.LoadConfig<ItemDefinition>(assetName);
 
             // A weapon that is not on disk yet is not an error: the sample items
             // are created on the first build, and this runs beside them.
@@ -196,8 +195,7 @@ namespace TogetherWeFall.EditorTools
             SerializedProperty fourPiece = thresholds.GetArrayElementAtIndex(1);
             fourPiece.FindPropertyRelative("_requiredPieceCount").intValue = 4;
             fourPiece.FindPropertyRelative("_bonusSkillModifier").objectReferenceValue =
-                AssetDatabase.LoadAssetAtPath<SkillModifier>(
-                    "Assets/_Project/Data/Skills/SupportChain.asset");
+                SceneBuildUtility.LoadConfig<SkillModifier>("SupportChain");
             fourPiece.FindPropertyRelative("_bonusKeystone").enumValueIndex =
                 (int)KeystoneEffect.None;
 
@@ -214,7 +212,7 @@ namespace TogetherWeFall.EditorTools
 
         /// <summary>One sample item by asset name, or null when it is not there yet.</summary>
         private static ItemDefinition LoadItem(string assetName)
-            => AssetDatabase.LoadAssetAtPath<ItemDefinition>($"{ItemFolder}/{assetName}.asset");
+            => SceneBuildUtility.LoadConfig<ItemDefinition>(assetName);
 
         /// <summary>
         /// The starter items.
@@ -336,8 +334,17 @@ namespace TogetherWeFall.EditorTools
             {
                 string assetName = definitions[i].name.Replace(" ", string.Empty);
 
+                // By slot only: the slot cannot tell a sword from a dagger, so a
+                // regenerated weapon lands in Weapons/ and is filed by hand.
+                string folder = definitions[i].slot switch
+                {
+                    EquipmentSlot.MainHand => "Weapons",
+                    EquipmentSlot.Ring1 or EquipmentSlot.Ring2 or EquipmentSlot.Amulet => "Jewellery",
+                    _ => "Armour"
+                };
+
                 ItemDefinition item = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                    assetName, ItemFolder, out bool created);
+                    assetName, $"{ItemFolder}/{folder}", out bool created);
 
                 if (created)
                 {

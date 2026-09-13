@@ -83,7 +83,7 @@
 влучиш), а в данжі це означало б бойову кімнату, яку неможливо зачистити.
 
 **Стартовий набір — окремий асет, який можна правити руками.**
-`Data/StarterKitConfig.asset` (тип `StarterKitConfig`): список рядків, у
+`Data/Config/StarterKitConfig.asset` (тип `StarterKitConfig`): список рядків, у
 кожному предмет, `Placement` (**Worn** — надіти в перший вільний дозволений
 слот, **Bag** — покласти в сумку) і `Count`. Посилання на асет живе на
 `CharacterStatsAuthoring` у SubScene, тож сцену можна навести на **копію**

@@ -20,7 +20,6 @@ namespace TogetherWeFall.EditorTools
     public static class SkillVfxContentFactory
     {
         private const string SetFolder = "Assets/_Project/Data/Vfx";
-        private const string SkillFolder = "Assets/_Project/Data/Skills";
 
         /// <summary>
         /// The pack this project happens to have. One constant, so a different
@@ -41,10 +40,9 @@ namespace TogetherWeFall.EditorTools
         {
             // skill asset, set name, cast, projectile, hit
             //
-            // Three to start with, and the three the request named: a bow shot,
-            // a fireball and a frost nova. Every other skill keeps the coloured
-            // line and ring until somebody authors a set for it — which is one
-            // asset and one field, with no code.
+            // Only the first three are generated. The sets for every other
+            // skill were authored straight into Data/Vfx, which is how a new
+            // one is added too: one asset and one field, with no code.
             Assign(
                 "WeaponBolt",
                 Set("VfxWeaponBolt",
@@ -138,8 +136,7 @@ namespace TogetherWeFall.EditorTools
         /// </summary>
         private static void Assign(string skillAsset, SkillVfxSet set)
         {
-            var skill = AssetDatabase.LoadAssetAtPath<SkillDefinition>(
-                $"{SkillFolder}/{skillAsset}.asset");
+            var skill = SceneBuildUtility.LoadConfig<SkillDefinition>(skillAsset);
 
             if (skill == null || set == null)
                 return;

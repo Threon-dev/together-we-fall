@@ -365,7 +365,7 @@ namespace TogetherWeFall.EditorTools
             LootTable table)
         {
             ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                assetName, ItemFolder, out bool created);
+                assetName, $"{ItemFolder}/Gems/Active", out bool created);
 
             if (created)
             {
@@ -409,7 +409,7 @@ namespace TogetherWeFall.EditorTools
             SkillModifier second = null)
         {
             ItemDefinition gem = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                assetName, ItemFolder, out bool created);
+                assetName, $"{ItemFolder}/Gems/Support", out bool created);
 
             if (created)
             {
@@ -452,7 +452,7 @@ namespace TogetherWeFall.EditorTools
             ItemAffix[] affixes = null, ItemRarity rarity = ItemRarity.Legendary)
         {
             ItemDefinition ring = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                assetName, ItemFolder, out bool created);
+                assetName, $"{ItemFolder}/Jewellery", out bool created);
 
             if (created)
             {
@@ -500,7 +500,7 @@ namespace TogetherWeFall.EditorTools
             StatusEffectType appliedStatus = StatusEffectType.None)
         {
             SkillModifier modifier = SceneBuildUtility.CreateOrLoadConfig<SkillModifier>(
-                assetName, SkillFolder, out bool created);
+                assetName, $"{SkillFolder}/Supports", out bool created);
 
             if (!created)
                 return modifier;
@@ -539,7 +539,7 @@ namespace TogetherWeFall.EditorTools
             string assetName, string displayName, System.Action<SkillFields> fill)
         {
             SkillDefinition skill = SceneBuildUtility.CreateOrLoadConfig<SkillDefinition>(
-                assetName, SkillFolder, out bool created);
+                assetName, $"{SkillFolder}/Active", out bool created);
 
             var fields = new SkillFields();
             fill(fields);

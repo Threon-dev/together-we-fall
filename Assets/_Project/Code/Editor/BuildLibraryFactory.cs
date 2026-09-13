@@ -868,7 +868,7 @@ namespace TogetherWeFall.EditorTools
             SkillDefinition[] skills, LootTable table)
         {
             ItemDefinition staff = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                "RiftwoodStaff", ItemFolder, out bool created);
+                "RiftwoodStaff", $"{ItemFolder}/Weapons/Staves", out bool created);
 
             var serialized = new SerializedObject(staff);
 
@@ -960,19 +960,19 @@ namespace TogetherWeFall.EditorTools
         /// </summary>
         private static void CreateTestbedPair(LootTable table)
         {
-            Testbed("TestbedWand", "Testbed Wand", EquipmentSlot.MainHand,
+            Testbed("TestbedWand", "Testbed Wand", EquipmentSlot.MainHand, "Wands",
                 new[] { 0, 0, 0, 0 }, table);
 
-            Testbed("TestbedFocus", "Testbed Focus", EquipmentSlot.OffHand,
+            Testbed("TestbedFocus", "Testbed Focus", EquipmentSlot.OffHand, "Foci",
                 new[] { 0, 0 }, table);
         }
 
         private static void Testbed(
-            string assetName, string displayName, EquipmentSlot slot,
+            string assetName, string displayName, EquipmentSlot slot, string weaponFolder,
             int[] groups, LootTable table)
         {
             ItemDefinition item = SceneBuildUtility.CreateOrLoadConfig<ItemDefinition>(
-                assetName, ItemFolder, out bool created);
+                assetName, $"{ItemFolder}/Weapons/{weaponFolder}", out bool created);
 
             var serialized = new SerializedObject(item);
 
@@ -1118,8 +1118,7 @@ namespace TogetherWeFall.EditorTools
 
             for (int i = 0; i < wanted.Length; i++)
             {
-                var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(
-                    $"{ItemFolder}/{wanted[i]}.asset");
+                var item = SceneBuildUtility.LoadConfig<ItemDefinition>(wanted[i]);
 
                 if (item == null || Contains(entries, item))
                     continue;
