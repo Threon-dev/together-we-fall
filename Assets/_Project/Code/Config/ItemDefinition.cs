@@ -78,6 +78,11 @@ namespace TogetherWeFall.Config
         [Tooltip("Shown to the player. Falls back to the asset name when empty.")]
         [SerializeField] private string _displayName;
 
+        [Tooltip("Drawn in the bag, the drag ghost and the socket. Empty keeps " +
+                 "the name in the cell, as before. Reaches the panel only " +
+                 "through a scene rebuild, which lists every item that has one.")]
+        [SerializeField] private Sprite _icon;
+
         [SerializeField] private ItemRarity _rarity = ItemRarity.Common;
         [SerializeField] private EquipmentSlot _slot = EquipmentSlot.MainHand;
 
@@ -159,6 +164,8 @@ namespace TogetherWeFall.Config
         [SerializeField] private bool _canRotate;
 
         public string DisplayName => string.IsNullOrWhiteSpace(_displayName) ? name : _displayName;
+
+        public Sprite Icon => _icon;
 
         public ItemRarity Rarity => _rarity;
         public EquipmentSlot Slot => _slot;

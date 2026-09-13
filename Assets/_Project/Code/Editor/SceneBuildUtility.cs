@@ -810,6 +810,26 @@ namespace TogetherWeFall.EditorTools
             SetReference(ui, "_canvas", canvas);
             SetReference(ui, "_portrait", portrait);
 
+            // Every item with art, found rather than named: an icon is set on
+            // the asset, and should not also need a line here.
+            var serialized = new SerializedObject(ui);
+            SerializedProperty icons = serialized.FindProperty("_icons");
+            icons.arraySize = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets($"t:{nameof(ItemDefinition)}", new[] { DataFolder }))
+            {
+                var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(AssetDatabase.GUIDToAssetPath(guid));
+                if (item == null || item.Icon == null)
+                    continue;
+
+                icons.arraySize++;
+                SerializedProperty entry = icons.GetArrayElementAtIndex(icons.arraySize - 1);
+                entry.FindPropertyRelative("ItemId").intValue = item.ItemId;
+                entry.FindPropertyRelative("Sprite").objectReferenceValue = item.Icon;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
             return ui;
         }
 

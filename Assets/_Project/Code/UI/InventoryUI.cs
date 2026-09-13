@@ -160,6 +160,24 @@ namespace TogetherWeFall.UI
                  "everything else works.")]
         [SerializeField] private CharacterPortrait _portrait;
 
+        [Tooltip("Item art by item id. Written by the scene build from every item " +
+                 "that has an icon; an item missing here is drawn by its name.")]
+        [SerializeField] private ItemIcon[] _icons = System.Array.Empty<ItemIcon>();
+
+        /// <summary>
+        /// Id and sprite rather than the ItemDefinition itself: a definition
+        /// references its skills, and a skill its effect prefabs, so listing the
+        /// definitions would load every one of those with the scene.
+        /// </summary>
+        [System.Serializable]
+        public struct ItemIcon
+        {
+            public int ItemId;
+            public Sprite Sprite;
+        }
+
+        private readonly Dictionary<int, Sprite> _iconsById = new Dictionary<int, Sprite>();
+
         private PlayerInputReader _input;
         private EntityManager _entityManager;
         private EntityQuery _characterQuery;
@@ -200,6 +218,7 @@ namespace TogetherWeFall.UI
         /// re-colouring it for a different item means replacing it.
         /// </summary>
         private Image _ghostBorder;
+        private Image _ghostIcon;
 
         /// <summary>
         /// Where the next stat row goes, while the stats are being filled.
@@ -254,6 +273,13 @@ namespace TogetherWeFall.UI
             _input = input;
             _playerId = playerId;
             _lastSignature = int.MinValue;
+
+            _iconsById.Clear();
+            foreach (ItemIcon icon in _icons)
+            {
+                if (icon.Sprite != null)
+                    _iconsById[icon.ItemId] = icon.Sprite;
+            }
 
             World world = World.DefaultGameObjectInjectionWorld;
             if (world == null || !world.IsCreated)
@@ -452,6 +478,8 @@ namespace TogetherWeFall.UI
 
             _ghostLabel = Ugui.Text(
                 _ghost.rectTransform, "Name", 11f, Color.white, wrap: true);
+
+            _ghostIcon = MakeIcon(_ghost.rectTransform, ItemIconInset);
 
             // Made once and re-coloured per item. A frame is a child in uGUI, and
             // replacing it every time something is picked up would leave the old
@@ -1445,9 +1473,14 @@ namespace TogetherWeFall.UI
                 width * _cellSize - CellGap,
                 height * _cellSize - CellGap);
 
-            TextMeshProUGUI text = Ugui.Text(
-                element.rectTransform, "Name", 11f, border, wrap: true);
-            text.text = label;
+            // The art when there is some, the name otherwise — the tooltip says
+            // the name either way.
+            if (AddIcon(element.rectTransform, instance.ItemId, ItemIconInset) == null)
+            {
+                TextMeshProUGUI text = Ugui.Text(
+                    element.rectTransform, "Name", 11f, border, wrap: true);
+                text.text = label;
+            }
 
             Ugui.Border(element.rectTransform, border, 1f);
 
@@ -1473,6 +1506,31 @@ namespace TogetherWeFall.UI
                 if (data.clickCount >= 2)
                     SendEquipAuto(capturedItem);
             });
+        }
+
+        /// <summary>Inset of an icon inside a bag item, clear of its frame.</summary>
+        private const float ItemIconInset = 3f;
+
+        /// <summary>The item's icon inside a box, or null when it has none.</summary>
+        private Image AddIcon(RectTransform parent, int itemId, float inset)
+        {
+            if (!_iconsById.TryGetValue(itemId, out Sprite sprite))
+                return null;
+
+            Image icon = MakeIcon(parent, inset);
+            icon.sprite = sprite;
+            return icon;
+        }
+
+        private static Image MakeIcon(RectTransform parent, float inset)
+        {
+            RectTransform rect = Ugui.Node(parent, "Icon");
+            Ugui.Place(rect, left: inset, right: inset, top: inset, bottom: inset);
+
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            return image;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1598,7 +1656,11 @@ namespace TogetherWeFall.UI
             _ghost.color = Tint(rarity);
             _ghostBorder.color = border;
 
-            _ghostLabel.text = NameOf(items, _drag.ItemId);
+            bool hasIcon = _iconsById.TryGetValue(_drag.ItemId, out Sprite sprite);
+            _ghostIcon.sprite = sprite;
+            _ghostIcon.enabled = hasIcon;
+
+            _ghostLabel.text = hasIcon ? string.Empty : NameOf(items, _drag.ItemId);
             _ghostLabel.color = border;
         }
 
@@ -2112,6 +2174,16 @@ namespace TogetherWeFall.UI
                 border = RarityColour(rarity);
                 cell.color = Tint(rarity);
 
+                Image icon = AddIcon(cell.rectTransform, itemId, 1f);
+
+                if (icon != null)
+                {
+                    // Under the letter, which moves to the corner: the art says
+                    // which gem, the letter still says what kind.
+                    icon.transform.SetAsFirstSibling();
+                    Ugui.Place(mark.rectTransform, right: 0f, bottom: 0f, width: 9f, height: 11f);
+                }
+
                 // One letter, because a socket cell is twenty pixels across
                 // and that is what fits. An active gem says so; a support says
                 // WHEN it acts, which is the thing a player has to know to
@@ -2146,6 +2218,9 @@ namespace TogetherWeFall.UI
 
                     mark.text = "–";
                     mark.color = border;
+
+                    if (icon != null)
+                        icon.color = new Color(1f, 1f, 1f, 0.3f);
                 }
 
                 Entity capturedGem = socket.InsertedGem;

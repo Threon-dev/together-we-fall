@@ -30,3 +30,4 @@ MonoBehaviour:
   _gridHeight: 1
   _currencyValue: 0
   _canRotate: 0
+  _icon: {fileID: 13489954, guid: 681e7e53eb6b2464796a3b703bbcd396, type: 3}

@@ -24,3 +24,4 @@ MonoBehaviour:
   _gridWidth: 1
   _gridHeight: 1
   _canRotate: 0
+  _icon: {fileID: -1162619669, guid: 681e7e53eb6b2464796a3b703bbcd396, type: 3}

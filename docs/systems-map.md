@@ -272,6 +272,13 @@
 - `Code/UI/PlayerHud.cs` — колби й бар скілів.
 - Тултіп: `Code/UI/ItemTooltip.cs` (`ItemTooltip.Text` — текст про предмет) +
   `Code/UI/TooltipView.cs` (малювання). Обидві панелі беруть ту саму пару.
+- Іконки предметів: `ItemDefinition._icon`. Панель тримає не визначення, а пари
+  `InventoryUI._icons` (`ItemId` → `Sprite`), які пише `SceneBuildUtility.CreateInventoryUI`
+  з усіх ассетів з іконкою — **нова іконка видна лише після перезбирання сцени**.
+  Малюються в сумці, на привиді драгу й у сокеті (літера фази — у кутку); без іконки — назва.
+  Прямим посиланням, не Addressables — як і VFX-сети: Addressables ще ніде не підключені.
+  Спрайти гемів — `Assets/Gem Pack Complete/128 Full Content/Pack-ElementsGEMS.png`:
+  активні — ограновані камені кольору стихії, супорти — квадратні в оправі.
 - **Усе на uGUI + TextMeshPro.** UI Toolkit у проєкті більше немає ніде:
   кожен екран тримає `Canvas` у `[SerializeField]` замість `UIDocument`.
   Збирається кодом — ні `.uxml`, ні префабів панелей.
