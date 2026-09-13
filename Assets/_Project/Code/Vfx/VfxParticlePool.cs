@@ -25,9 +25,10 @@ namespace TogetherWeFall.Vfx
     ///   particles have had time to finish, so nothing has to remember it.
     /// - Rent and Release: an effect that has to FOLLOW something — a trail on a
     ///   projectile. The caller holds the instance, moves it, and releases it
-    ///   when the thing it was following is gone. Release stops the emission and
-    ///   lets what is already in the air fade, which is what makes a trail read
-    ///   as a trail rather than as something that was switched off.
+    ///   when the thing it was following is gone. Release clears the body at
+    ///   once and lets only what it left in the air fade, for as long as that
+    ///   lives — which is what makes a trail run out rather than get cut, without
+    ///   the head hanging where the projectile landed.
     ///
     /// Unscaled time throughout, like the line pool: freezing the effect that
     /// caused a hit-stop would be an odd way to sell the hit-stop.
@@ -61,6 +62,16 @@ namespace TogetherWeFall.Vfx
             internal TrailRenderer[] Trails;
 
             internal float[] TrailWidths;
+
+            /// <summary>
+            /// Which systems are the body — simulated in local space, so they
+            /// ride along with the root — as opposed to what the body leaves
+            /// behind in the world. Read once, when the instance is made.
+            /// </summary>
+            internal bool[] Body;
+
+            /// <summary>How long what the body leaves behind needs to die out, read off the prefab.</summary>
+            internal float TrailSeconds;
 
             /// <summary>Seconds until it goes back. Negative means a follower owns it.</summary>
             internal float SecondsLeft;
@@ -177,7 +188,26 @@ namespace TogetherWeFall.Vfx
                 return;
 
             StopEmitting(instance);
-            instance.SecondsLeft = _fadeSeconds;
+
+            // The body goes at once; only what it left behind is let fade. A
+            // fireball whose head hangs where it landed for the whole fade reads
+            // as a projectile that stopped rather than one that hit. Per system
+            // and without children, because the prefab's root is itself a body
+            // system, and clearing it with its children would take the trail too.
+            //
+            // Nothing is detached for this: a released instance is neither moved
+            // nor handed out again until it retires, so the trail already stays
+            // where it was drawn.
+            for (int i = 0; i < instance.Systems.Length; i++)
+            {
+                if (instance.Body[i])
+                    instance.Systems[i].Stop(false, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+
+            // As long as the trail itself lives, so it runs out rather than being
+            // cut. The configured fade is the floor, the one-shot ceiling the cap.
+            instance.SecondsLeft = Mathf.Min(
+                _maxSeconds, Mathf.Max(_fadeSeconds, instance.TrailSeconds));
         }
 
         public void Tick(float unscaledDeltaTime)
@@ -246,14 +276,32 @@ namespace TogetherWeFall.Vfx
             for (int i = 0; i < trails.Length; i++)
                 widths[i] = trails[i].widthMultiplier;
 
+            ParticleSystem[] systems = root.GetComponentsInChildren<ParticleSystem>(true);
+            var body = new bool[systems.Length];
+            float trailSeconds = 0f;
+
+            for (int i = 0; i < trails.Length; i++)
+                trailSeconds = Mathf.Max(trailSeconds, trails[i].time);
+
+            for (int i = 0; i < systems.Length; i++)
+            {
+                ParticleSystem.MainModule main = systems[i].main;
+                body[i] = main.simulationSpace == ParticleSystemSimulationSpace.Local;
+
+                if (!body[i])
+                    trailSeconds = Mathf.Max(trailSeconds, main.startLifetime.constantMax);
+            }
+
             var instance = new Instance
             {
                 Prefab = prefab,
                 Root = root,
                 Transform = root.transform,
-                Systems = root.GetComponentsInChildren<ParticleSystem>(true),
+                Systems = systems,
                 Trails = trails,
-                TrailWidths = widths
+                TrailWidths = widths,
+                Body = body,
+                TrailSeconds = trailSeconds
             };
 
             instances.Add(instance);

@@ -131,9 +131,9 @@ namespace TogetherWeFall.Config
                  "prefab, so importing a pack of forty does not multiply this.")]
         [SerializeField, Range(2, 64)] private int _particlesPerEffect = 16;
 
-        [Tooltip("How long a trail is left to fade after the thing carrying it " +
-                 "is gone. It stops emitting immediately; this is only how long " +
-                 "what is already in the air has to die out.")]
+        [Tooltip("The least time a trail is left to fade after the thing carrying " +
+                 "it is gone. The body vanishes at once; the trail gets this or " +
+                 "its own lifetime, whichever is longer, capped by the ceiling below.")]
         [SerializeField, Range(0.05f, 3f)] private float _particleFadeSeconds = 0.6f;
 
         [Tooltip("Ceiling on a one-shot's own duration. A looping prefab " +
