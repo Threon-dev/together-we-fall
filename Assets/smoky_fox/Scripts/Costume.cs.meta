@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 38efa57ef1888f0439b096588cac4167
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 338406
+  packageName: Fina Anime Fitness Girl
+  packageVersion: 1.0
+  assetPath: Assets/smoky_fox/Scripts/Costume.cs
+  uploadId: 801058

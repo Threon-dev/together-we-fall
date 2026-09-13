@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b35a2abbdd5b15d4ca40103088758eac
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 338406
+  packageName: Fina Anime Fitness Girl
+  packageVersion: 1.0
+  assetPath: Assets/smoky_fox/UnityChanShader/Shader/Unitychan_chara_hada.shader
+  uploadId: 801058
