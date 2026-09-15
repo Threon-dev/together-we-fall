@@ -42,6 +42,7 @@ namespace TogetherWeFall.Combat.Systems
     /// symptom would not look like a bug in this file — it would look like an
     /// enemy that cannot be killed by anything else.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateBefore(typeof(TogetherWeFall.Skills.Systems.SkillHitSystem))]
     public partial struct StatusTickSystem : ISystem

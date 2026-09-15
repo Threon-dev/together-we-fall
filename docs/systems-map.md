@@ -10,8 +10,39 @@
 ## Bootstrap / вхід у сцену
 - Код: `Code/Bootstrap/GameBootstrap.cs` — єдина точка `Initialize()`; усі презентери
   й UI — `[SerializeField]`, більшість опційні.
-- Збірка сцен: `Code/Editor/{Lobby,Dungeon,Arena}SceneBuilder.cs` + спільне
+- Збірка сцен: `Code/Editor/{Menu,Lobby,Dungeon,Arena}SceneBuilder.cs` + спільне
   `Code/Editor/SceneBuildUtility.cs`.
+- Id гравця — `NetworkId` клієнтського світу: `GameBootstrap.ResolvePlayerId`.
+
+## Мережа (Netcode for Entities + Relay)
+- Опис моделі — `docs/multiplayer-seams.md`.
+- Світи на старті: `Code/Network/NetworkBootstrap.cs`. Меню, сесія, Relay, перехід у
+  лоббі: `Code/Network/SessionLauncher.cs` + `Code/Editor/MenuSceneBuilder.cs`.
+- In-game і спавн аватара: `Code/Network/GoInGameSystems.cs`.
+- Потік команд: `Code/Network/PlayerCommand.cs` (`PlayerCommand`, `PlayerAvatar`,
+  `NetworkPrefabs`), `Code/Network/Systems/PlayerCommand{Send,Receive}System.cs`.
+  Authoring: `Code/Network/Authoring/PlayerAvatarAuthoring.cs` (на префабі),
+  `NetworkPrefabsAuthoring.cs` (на `CharacterStats`: аватар, персонаж, сумка, полиця).
+- Лист персонажа ghost-ом: `Code/Player/Authoring/PlayerCharacterAuthoring.cs` (усі
+  компоненти персонажа — **тут**, не в `PlayerCharacterRegistrySystem`),
+  `Code/Inventory/Authoring/PlayerBagAuthoring.cs`, `Code/Lobby/Authoring/VendorShelfAuthoring.cs`
+  (+ тег `VendorShelf` у `VendorComponents.cs`).
+- Запити панелей і результати: `Code/Network/CharacterRequestSync.cs` (`GhostRef` —
+  сутність як ghost-id); полиця для клієнтського торговця — `Code/Network/VendorShelfSync.cs`.
+- Завіса після переходу: закриває `DungeonPortalSystem`, відкриває
+  `Code/Dungeon/Systems/FloorArrivalCurtainSystem.cs`, коли поверх `Ready` (обидва на хості,
+  клієнтам несе `CurtainSync`).
+- RPC-пересилання: `Code/Network/EventSync.cs` (VFX/звук), `CurtainSync.cs`,
+  `PortalSync.cs`, `NpcSessionSync.cs`, `DungeonSeedChannel.cs`.
+- Ghost-поля: `Code/Network/GhostVariants.cs` (колір; `LocalTransform` зі
+  `MaxSmoothingDistance` — видача з пулу не згладжується); `[GhostEnabledBit]` — на
+  `EnemyTag`, `Dead`, `DeathFade`, `ProjectileActive`, `ZoneActive`; `[GhostField]` —
+  прямо в компонентах листа, предмета й контейнера.
+- Тіла чужих гравців: `Code/Network/RemotePlayerPresenter.cs`.
+- Префаби-ghost-и пише `SceneBuildUtility`: `CreateAvatarPrefab`, `CreateCharacterPrefab`,
+  `CreateBagPrefab`, `CreateVendorShelfPrefab`, `AddInterpolatedGhost`, `CreateRemotePlayers`.
+- Неочевидне: мости читають `ClientWorld` і на хості; `DungeonLayoutPublisher` пише в
+  `ServerWorld`; реєстри черг живуть в обох світах.
 
 ## Гравець: ввід і рух
 - Код: `Code/Player/PlayerInputReader.cs` (New Input System), `PlayerMotor.cs`,
@@ -186,6 +217,10 @@
   сокет), `ItemTooltip.SetLines`, `InventoryUI.AddSetRow`, `LobbyUI`.
 - Демо-контент: `ItemContentFactory.CreateOrLoadDemoSet()` →
   `Data/Sets/WarlordsRegalia.asset`.
+- Десять сетів: `Code/Editor/SetContentFactory.cs` (`CreateSets`, кличе
+  `SceneBuildUtility.WriteSets`) → `Data/Sets/*.asset`, частини — `Data/Items/Sets/<Сет>/`,
+  супорти — `Data/Skills/Supports/SupportSet*.asset`. Тест: ПКМ по асету сету →
+  `Wear In Starter Kit`.
 
 ## Геми й сокети
 - ECS: `Code/Equipment/Components/SocketComponents.cs` — **`GemKind`**, `GearSocket`,
@@ -259,10 +294,15 @@
   `PlayerWarp` (`Code/Player/Components/PlayerCharacter.cs`) і `PendingCast` скіла
   слота 0 з його gear/socket. Тіло рухає `PlayerPositionPublisher.ApplyWarp` →
   `PlayerMotor.Teleport`/`Held`. Невразливість — перевірка в `DamageResolutionSystem`.
-  Вварювання на ПКМ — `ItemDefinition._signatureSkill` → `ItemBlob.SignatureSkillId` →
-  `GemSockets.Weld` (окрема голова після рольованих; `RerollWelded` її пропускає);
-  контент — `SkillContentFactory.CreateBlinkStrike`, мечам проставляє
-  `WeaponContentFactory.CreateSwords`.
+  Вварювання — `ItemDefinition._signatureSkills` (масив, по клавіші на кожен) →
+  `ItemBlob.SignatureSkillIds` → `GemSockets.Weld` (кожен — окрема голова після рольованих;
+  `RerollWelded` їх пропускає); контент — `SkillContentFactory.CreateBlinkStrike`, мечам
+  проставляє `WeaponContentFactory.CreateSwords`.
+- **Слайд (DashStrike, Steel Rush на Q меча)**: старт — `SkillCastSystem.BeginDash` (зупинка —
+  `EnemyTargets.FindFirstAlong` і `WallQuery`); той самий `BlinkSequence` з `StrikeOnArrival`;
+  удар після таймера — `BlinkStrikeSystem` (`QueuePrimary`). Рух — `PlayerWarp.SlideSeconds` →
+  `PlayerPositionPublisher.ApplyWarp` → `PlayerMotor.Slide`. Контент —
+  `SkillContentFactory.CreateDashStrike`.
 - **Заряди**: `SkillModifierKind.AddedCharges` → `ResolvedSkill.Charges`; облік —
   `SkillSlot.ChargesSpent/Charges/Recharge/Held`, тік у `SkillCastSystem.TickCooldowns`,
   бар — `PlayerHud.SkillBox.WriteCooldown`. Гем — `GemStockpile` у `BuildLibraryFactory.LeverGems`.
@@ -286,7 +326,15 @@
   й не бігло за гравцем). Інші нові супорти (`AddedCount`, `ImpactBurst`,
   `IncreasedCritMultiplier`, `IncreasedChainRange`, `InfuseElement` → `CarriedElements`,
   `PatternTempo`) — лише фолд у `SkillDatabase.Accumulate`/`Resolve`.
-- **Арсенал (контент)**: `Code/Editor/ArsenalContentFactory.cs` — 25 скілів із гемами, 10
+- **Промінь-канал (`SkillEffectKind.Beam`)**: окремого стану немає — утримана кнопка й так
+  шле `SkillCastRequest` щотіку, тож короткий кулдаун = пульс, `ManaCost` = за пульс.
+  Пульс — `SkillCastSystem.EmitBeam` (усі тіла в `Radius` від лінії до `Range`/стіни,
+  `BeamEnd` → `WallQuery`); кінці й сет пише `Cast` у `CastCue.BeamOrigin/BeamEnd/BeamVfxId`
+  (ghost, інтерпольовані). Промінь тримає `VfxPresenter.DrawBeams` (запит `CastCue`, живе,
+  поки `Count` росте частіше за `max(0.25, 2 × Interval)`; `VfxParticlePool.Stretch`), рука
+  піднімається раз на канал (`PlayerAnimationPresenter`, `ChannelGap`). `TriggerOnHit`,
+  Multicast і Spread на промені інертні (`SkillModifiers.AppliesTo`).
+- **Арсенал (контент)**: `Code/Editor/ArsenalContentFactory.cs` — 37 скілів із гемами, 11
   допоміжних (кастуються лише тригерами), 103 супорт-геми, `Arsenal Rod` (7 порожніх отворів),
   меню `Grant Arsenal Showcase Kit`. У базу скілів іде через `BuildLibraryFactory.WithLibrary`,
   геми — через `BuildLibraryFactory.CreateGems`.
@@ -405,12 +453,16 @@
 - Шов: `Code/Vfx/Components/VfxComponents.cs` — `VfxEventKind`, `VfxEvent`
   (+ `VfxId` для авторованих сетів).
 - Презентер: `Code/Vfx/VfxPresenter.cs` (лише читає ECS) + пули
-  `Code/Vfx/VfxLinePool.cs`, `VfxParticlePool.cs`, `DamageNumberPool.cs`,
-  `StatusIconPool.cs`. Hit-stop прибрано — `Time.timeScale` у проєкті
+  `Code/Vfx/VfxParticlePool.cs` (одноразові, слідувачі, промені `PlayBetween`),
+  `DamageNumberPool.cs`, `StatusIconPool.cs`. Hit-stop прибрано — `Time.timeScale` у проєкті
   не чіпає ніхто.
+- **Загальні ефекти за елементом** (стрибок ланцюга, удар болта, реакція, вибух трупа):
+  `VfxConfig._elements` (`ElementVfxSettings`: beam / reaction / blast) ← заповнює
+  `SkillVfxContentFactory.FillElementEffects` (лише порожню таблицю). Елемент їде в
+  `VfxEvent.Element` (+ `VfxEventRpc`); `Explosion` з `VfxId != 0` загального blast не малює.
 - **Авторовані ефекти на скіл**: `Code/Config/SkillVfxSet.cs` (cast /
   projectile / hit + scale, lift, **yaw** — поворот cast-ефекту поверх напряму
-  касту; `Slash/*` з Casual RPG VFX авторовані назад → 180) ← ассети `Data/Vfx/*.asset`; `SkillDefinition._vfx`
+  касту, + `_castSound`/`_hitSound`) ← ассети `Data/Vfx/*.asset`; `SkillDefinition._vfx`
   → `SkillBlob.VfxId` → `ResolvedSkill.VfxId` →
   `SkillProjectile.VfxId` / `PendingHit.VfxId` → `VfxEvent.VfxId`.
   Каст оголошує `SkillCastSystem` (`CastVfxPoint`), удар — `SkillHitSystem.Apply`,
@@ -420,7 +472,15 @@
   підхопленого елемента (`URPMaterialPropertyBaseColor` на сутності) `DrawTrails`
   кладе на `MeshRenderer` слідувача через `VfxParticlePool.Tint`; частинки не фарбуються.
   Контент і список для презентера: `Code/Editor/SkillVfxContentFactory.cs`
-  (шлях до паку — одна константа `Pack`).
+  (пак — Retro Arsenal: константи `Pack` для префабів і `Sounds` для кліпів; арсенал
+  будує шляхи від них же). Сети без фабрики (Arc, Spark, Cleave…) — лише ассети.
+  Префаби паку ~1 м, тож площам потрібен `Scale` ≈ радіус; усі числа — TUNE.
+- **Звук сету**: `VfxParticlePool.Create` вимикає `AudioSource` префаба;
+  `VfxPresenter.HandleSkillCast/HandleSkillHit` → `AudioPresenter.PlayAuthored`
+  (бюджет `SkillCast`/`ProjectileImpact`). Кліп — `SkillVfxSet.ResolveCastSound/ResolveHitSound`,
+  кешується в `Initialize`. Загальні `Explosion`/`ChainZap` мовчать для `VfxId != 0`
+  (`SkillAreaSystem`, `SkillHitSystem`). Презентер аудіо приходить у
+  `VfxPresenter.Initialize` з `GameBootstrap`.
 - Системи: `Code/Vfx/Systems/` — `VfxEventRegistry`, `DamageNumber`, `StatusTint`.
 - Дані: `Data/Config/VfxConfig.asset`.
 
@@ -428,7 +488,9 @@
 - Шов: `Code/Audio/Components/AudioComponents.cs` — `AudioCue`, `AudioEvent`.
 - `Code/Audio/AudioPresenter.cs` (бюджети, дистанція від камери),
   `AudioSourcePool.cs`, `Systems/AudioEventRegistrySystem.cs`.
-- Дані: `Data/Config/AudioConfig.asset`.
+- Дані: `Data/Config/AudioConfig.asset` — кліпи з `Assets/Retro Arsenal/Sound` (дефолти —
+  `SceneBuildUtility.CreateAudioConfig`). `SkillCast`/`ProjectileImpact` без кліпів: це лише
+  бюджет, під яким грають звуки сетів (див. «VFX і презентація»).
 
 ## Завіса і переходи між сценами
 - `Code/Curtain/Components/CurtainComponents.cs` — `CurtainReason`, `CurtainState`,

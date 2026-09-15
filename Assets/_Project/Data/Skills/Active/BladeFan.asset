@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9b264467090da44a34c9771d9817de, type: 3}
+  m_Name: BladeFan
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillDefinition
+  _displayName: Blade Fan
+  _effect: 8
+  _damageType: 0
+  _baseDamage: 11
+  _cooldown: 0.7
+  _manaCost: 8
+  _range: 16
+  _radius: 0
+  _arcDegrees: 70
+  _projectileSpeed: 30
+  _zoneDuration: 5
+  _zoneTickInterval: 0.5
+  _baseChains: 0
+  _chainRange: 8
+  _chainDelay: 0.07
+  _count: 7
+  _interval: 0.1
+  _scatter: 4
+  _appliedStatus: {fileID: 11400000, guid: cc0845a050d6ca84a8713206aee4011e, type: 2}
+  _vfx: {fileID: 11400000, guid: 390d3a1fbbb2af348a0e2acb00aca4c2, type: 2}
+  _modifiers:
+  - {fileID: 11400000, guid: c1296490bd66f7946bc11daaa302447a, type: 2}

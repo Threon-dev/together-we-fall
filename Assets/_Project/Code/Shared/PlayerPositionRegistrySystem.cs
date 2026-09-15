@@ -11,6 +11,7 @@ namespace TogetherWeFall.Shared
     /// earlier and need a valid (if empty) buffer, not a "has it been created
     /// yet" check in every frame.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
     public partial struct PlayerPositionRegistrySystem : ISystem
     {

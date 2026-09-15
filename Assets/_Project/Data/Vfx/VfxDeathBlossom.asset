@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxDeathBlossom
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 7379911347399038514, guid: c846826093dcf504da0ee2d49c908260, type: 3}
+  _projectile: {fileID: 0}
+  _hit: {fileID: 8905666514069622321, guid: a84cbbb54404c3d499340f02e684aab0, type: 3}
+  _scale: 2
+  _lift: 0.9
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: 6b0199c57b3e79448b2a1d172527781f, type: 3}
+  _hitSound: {fileID: 0}

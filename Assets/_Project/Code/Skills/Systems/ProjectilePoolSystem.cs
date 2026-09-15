@@ -15,6 +15,7 @@ namespace TogetherWeFall.Skills.Systems
     /// exactly the way MaxAlive caps enemies. Past it a shot is not fired, which
     /// under the kind of barrage that reaches the ceiling is invisible.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct ProjectilePoolSystem : ISystem
     {

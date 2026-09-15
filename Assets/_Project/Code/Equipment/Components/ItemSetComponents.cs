@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 using TogetherWeFall.Skills;
 
 namespace TogetherWeFall.Equipment
@@ -111,11 +112,14 @@ namespace TogetherWeFall.Equipment
     public struct ActiveSetBonusStatus : IBufferElementData
     {
         /// <summary>The set, by authored id. What a save or a packet would name.</summary>
+        [GhostField]
         public FixedString64Bytes SetId;
 
         /// <summary>Its index in the database, for everything that is not a save.</summary>
+        [GhostField]
         public int SetIndex;
 
+        [GhostField]
         public int CurrentEquippedCount;
 
         /// <summary>
@@ -127,13 +131,21 @@ namespace TogetherWeFall.Equipment
         /// per set to balance instead of a sum of them, and "4-piece bonus" is
         /// a sentence rather than a derivation.
         /// </summary>
+        [GhostField]
         public int HighestActiveThreshold;
 
+        // The bonus itself is not sent: the panels only show which set and how
+        // many pieces, and a replicated buffer must still annotate every field.
+        [GhostField(SendData = false)]
         public StatBlock FlatBonuses;
+        [GhostField(SendData = false)]
         public StatBlock IncreasedBonuses;
 
+        [GhostField(SendData = false)]
         public SkillModifierBlob BonusSupport;
+        [GhostField(SendData = false)]
         public bool HasBonusSupport;
+        [GhostField(SendData = false)]
         public KeystoneEffect BonusKeystone;
 
         public bool IsActive => HighestActiveThreshold > 0;

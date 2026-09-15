@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxVoidOrb
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 2142482693563172369, guid: de6085a89fa12214ebcc91ddeb3d1cca, type: 3}
+  _projectile: {fileID: 4342055861898439711, guid: 61ce45f97d8eafb42b161cb0bdb222a4,
+    type: 3}
+  _hit: {fileID: 2782069568082390294, guid: b512323560c91754790e68c0f94fd5d4, type: 3}
+  _scale: 1.6
+  _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

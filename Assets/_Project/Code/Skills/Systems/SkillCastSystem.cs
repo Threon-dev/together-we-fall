@@ -30,6 +30,7 @@ namespace TogetherWeFall.Skills.Systems
     /// anyway, and it happens on the frames a player presses a button, not every
     /// frame.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct SkillCastSystem : ISystem
     {
@@ -94,6 +95,18 @@ namespace TogetherWeFall.Skills.Systems
 
         /// <summary>The golden angle, in radians: drops of a rain turned by it never line up.</summary>
         private const float GoldenAngle = 2.39996323f;
+
+        /// <summary>How fast a dash slides, in metres per second. A full dash is a blink of an eye.</summary>
+        private const float DashSpeed = 60f;        // TUNE
+
+        /// <summary>How far short of the first body's centre a dash stops — close enough for a swing.</summary>
+        private const float DashBodyGap = 1.2f;     // TUNE
+
+        /// <summary>Half the width of the path a body blocks: the capsule and the enemy side by side.</summary>
+        private const float DashPathHalfWidth = 0.9f;
+
+        /// <summary>How far short of a wall a dash stops, so the capsule is not put inside it.</summary>
+        private const float DashWallMargin = 0.5f;
 
         private EntityQuery _enemyQuery;
         private EntityQuery _characterQuery;
@@ -427,6 +440,12 @@ namespace TogetherWeFall.Skills.Systems
                 produced = BeginBlink(ref state, character, request, resolved, targets);
                 slot.Held = produced;
             }
+            else if (resolved.Effect == SkillEffectKind.DashStrike)
+            {
+                // Held the same way: the refill starts once the blow has landed.
+                produced = BeginDash(ref state, character, request, resolved, targets, effects);
+                slot.Held = produced;
+            }
             else if (SkillModifiers.IsSupportive(resolved.Effect))
             {
                 produced = EmitSupport(ref state, resolved, context, direction, hits, effects);
@@ -498,12 +517,25 @@ namespace TogetherWeFall.Skills.Systems
 
             // Not for a blink: the arm swings on each blow it lands, and
             // BlinkStrikeSystem counts those.
-            if (hasCue && resolved.Effect != SkillEffectKind.BlinkStrike)
+            if (hasCue &&
+                resolved.Effect != SkillEffectKind.BlinkStrike &&
+                resolved.Effect != SkillEffectKind.DashStrike)
             {
                 cue.Count++;
                 cue.Effect = resolved.Effect;
                 cue.Interval = resolved.Cooldown;
                 cue.StrikeDelay = strikeDelay;
+
+                // Where the beam ran this pulse, for the presenter holding it
+                // between pulses. Asked again rather than handed back from Emit,
+                // which a multicast, a trigger and an echo share: one wall ray a
+                // pulse is cheaper than threading an answer through all three.
+                if (resolved.Effect == SkillEffectKind.Beam)
+                {
+                    cue.BeamOrigin = request.Origin;
+                    cue.BeamEnd = BeamEnd(resolved, request.Origin, direction);
+                    cue.BeamVfxId = resolved.VfxId;
+                }
                 state.EntityManager.SetComponentData(character, cue);
             }
         }
@@ -931,9 +963,11 @@ namespace TogetherWeFall.Skills.Systems
             // feedback that the key was heard.
             //
             // Skipped entirely by a skill with no visual set, which is every
-            // skill until somebody authors one — and by a pattern whose blasts
-            // each play it where they land.
-            if (skill.VfxId != 0 && !AnnouncesPerBlast(skill.Effect))
+            // skill until somebody authors one — by a pattern whose blasts
+            // each play it where they land — and by a beam, whose look is held
+            // between pulses by the presenter reading CastCue, not replayed per
+            // pulse.
+            if (skill.VfxId != 0 && !AnnouncesPerBlast(skill.Effect) && skill.Effect != SkillEffectKind.Beam)
             {
                 float3 point = CastVfxPoint(skill, context, direction);
 
@@ -1068,6 +1102,10 @@ namespace TogetherWeFall.Skills.Systems
 
                     return true;
 
+                case SkillEffectKind.Beam:
+                    EmitBeam(skill, context, direction, targets, hits);
+                    return true;
+
                 default:
                     return false;
             }
@@ -1200,11 +1238,82 @@ namespace TogetherWeFall.Skills.Systems
                     Position = context.Origin,
                     EndPosition = struck,
                     Color = DamageTypePalette.For(skill.Type),
+                    Element = skill.Type,
                     Magnitude = math.max(0.05f, skill.ChainDelay)
                 });
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// One pulse of a beam: every body within Radius of the line from the
+        /// caster along the aim, up to Range or the first wall.
+        ///
+        /// Nothing to find and nothing to refuse — a beam goes off wherever it
+        /// points, like a swing — so a held button pays for every pulse whether
+        /// it touches anybody or not, which is what spending mana while
+        /// channelling means.
+        ///
+        /// The hits carry no trigger. A pulse is an effect instance and a held
+        /// beam makes eight a second; a trigger per pulse would be a cast per
+        /// frame. SkillModifiers.AppliesTo tells the panel the same.
+        /// </summary>
+        private static void EmitBeam(
+            in ResolvedSkill skill, in CastContext context, float3 direction,
+            in EnemyTargets targets, NativeList<PendingHit> hits)
+        {
+            float3 span = BeamEnd(skill, context.Origin, direction) - context.Origin;
+            span.y = 0f;
+
+            float reach = math.length(span);
+            float halfWidth = math.max(0.3f, skill.Radius);
+
+            for (int i = 0; i < targets.Length; i++)
+            {
+                float3 offset = targets.PositionOf(i) - context.Origin;
+                offset.y = 0f;
+
+                float along = math.dot(offset, direction);
+                if (along < 0f || along > reach + halfWidth)
+                    continue;
+
+                if (math.lengthsq(offset) - along * along > halfWidth * halfWidth)
+                    continue;
+
+                var hit = new PendingHit
+                {
+                    Target = targets.Entities[i],
+                    Origin = targets.PositionOf(i),
+                    Damage = skill.Damage,
+                    Type = skill.Type,
+                    SourcePlayerId = context.PlayerId,
+                    VfxId = skill.VfxId,
+                    ChainsRemaining = skill.Chains,
+                    ChainRange = skill.ChainRange,
+                    ChainDelay = skill.ChainDelay,
+                    Delay = 0f,
+                    ExplosionRadius = skill.ExplosionRadius,
+                    ExplosionDamage = skill.ExplosionDamage,
+                    CullThreshold = skill.CullThreshold,
+                    ManaOnKill = skill.ManaOnKill,
+                    CritChance = skill.CritChance,
+                    CritMultiplier = skill.CritMultiplier,
+                    AppliedStatus = skill.AppliedStatus,
+                    CarriedElements = skill.CarriedElements,
+                    FromTrigger = context.Depth > 0
+                };
+
+                hit.Visited.Add(targets.Entities[i]);
+                hits.Add(hit);
+            }
+        }
+
+        /// <summary>Where a beam from here stops: Range along the aim, or at the first wall.</summary>
+        private static float3 BeamEnd(in ResolvedSkill skill, float3 origin, float3 direction)
+        {
+            float3 end = origin + direction * math.max(1f, skill.Range);
+            return WallQuery.Cast(origin, end, WallQuery.Mask(), out float3 stop) ? stop : end;
         }
 
         private static PendingArea MakeArea(
@@ -1466,6 +1575,7 @@ namespace TogetherWeFall.Skills.Systems
             warp.Position = landing;
             warp.Facing = heading;
             warp.Holding = false;
+            warp.SlideSeconds = 0f;
             state.EntityManager.SetComponentData(character, warp);
 
             PendingArea slam = MakeArea(skill, context, landing, heading);
@@ -1541,6 +1651,7 @@ namespace TogetherWeFall.Skills.Systems
             if (skill.Echoes <= 0 ||
                 character == Entity.Null ||
                 skill.Effect == SkillEffectKind.BlinkStrike ||
+                skill.Effect == SkillEffectKind.DashStrike ||
                 SkillModifiers.IsSupportive(skill.Effect) ||
                 !state.EntityManager.HasBuffer<DelayedStrike>(character))
             {
@@ -1778,6 +1889,92 @@ namespace TogetherWeFall.Skills.Systems
         }
 
         /// <summary>
+        /// Starts a dash: slides along the aim up to the skill's range, stopping
+        /// short of the first body in the path or of a wall, and hands the blow at
+        /// the end to BlinkStrikeSystem. Always goes off — a dash with a body right
+        /// in front of it simply does not move, and swings.
+        ///
+        /// Where it stops is decided here, once, from the press. Something that
+        /// walks into the path during the slide is struck rather than stopped for.
+        /// </summary>
+        private static bool BeginDash(
+            ref SystemState state,
+            Entity character,
+            in SkillCastRequest request,
+            in ResolvedSkill skill,
+            in EnemyTargets targets,
+            NativeList<VfxEvent> effects)
+        {
+            if (!state.EntityManager.HasComponent<BlinkSequence>(character) ||
+                !state.EntityManager.HasComponent<PlayerWarp>(character))
+            {
+                return false;
+            }
+
+            float3 direction = Flatten(request.Direction);
+            float distance = skill.Range;
+
+            int blocker = targets.FindFirstAlong(
+                request.Origin, direction, skill.Range, DashPathHalfWidth, out float along);
+
+            if (blocker >= 0)
+                distance = along - DashBodyGap;
+
+            if (WallQuery.Cast(request.Origin, request.Origin + direction * skill.Range, WallQuery.Mask(), out float3 stop))
+            {
+                float3 offset = stop - request.Origin;
+                offset.y = 0f;
+                distance = math.min(distance, math.length(offset) - DashWallMargin);
+            }
+
+            distance = math.max(0f, distance);
+
+            float3 landing = request.Origin + direction * distance;
+            float slide = distance / DashSpeed;
+
+            state.EntityManager.SetComponentData(character, new BlinkSequence
+            {
+                PlayerId = request.PlayerId,
+                SlotIndex = request.SlotIndex,
+                Next = blocker >= 0 ? targets.Entities[blocker] : Entity.Null,
+                Position = landing,
+                Facing = direction,
+                StrikeOnArrival = true,
+
+                // What the swing is paced against; see CastCue.Interval.
+                Interval = skill.Cooldown,
+
+                // The blow waits for the body to arrive.
+                Timer = slide
+            });
+
+            state.EntityManager.SetComponentEnabled<BlinkSequence>(character, true);
+
+            PlayerWarp warp = state.EntityManager.GetComponentData<PlayerWarp>(character);
+            warp.Version++;
+            warp.Position = landing;
+            warp.Facing = direction;
+            warp.Holding = true;
+            warp.SlideSeconds = slide;
+            state.EntityManager.SetComponentData(character, warp);
+
+            // Announced where the dash leaves from, facing the way it goes.
+            if (skill.VfxId != 0)
+            {
+                effects.Add(new VfxEvent
+                {
+                    Kind = VfxEventKind.SkillCast,
+                    Position = request.Origin,
+                    EndPosition = request.Origin + direction,
+                    Color = DamageTypePalette.For(skill.Type),
+                    VfxId = skill.VfxId
+                });
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// A team spell: health and a beneficial status for allies, never a blow.
         ///
         /// Allies are the position buffer — the list of who is playing — and each
@@ -1847,6 +2044,7 @@ namespace TogetherWeFall.Skills.Systems
                     Position = context.Origin,
                     EndPosition = at,
                     Color = DamageTypePalette.For(skill.Type),
+                    Element = skill.Type,
                     Magnitude = 0.15f
                 });
             }

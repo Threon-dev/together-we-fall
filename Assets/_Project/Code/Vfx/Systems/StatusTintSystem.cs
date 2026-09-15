@@ -27,6 +27,7 @@ namespace TogetherWeFall.Vfx.Systems
     /// struck, and two writers of one field is the thing this project does not
     /// do; they have no spawn defaults, so the query excludes them by itself.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Combat.Systems.StatusTickSystem))]
     public partial struct StatusTintSystem : ISystem

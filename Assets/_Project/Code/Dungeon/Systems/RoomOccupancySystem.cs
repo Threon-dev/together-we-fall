@@ -24,6 +24,7 @@ namespace TogetherWeFall.Dungeon.Systems
     /// per-thread counters to avoid racing on the room buffer, and would cost
     /// more in scheduling than it saves.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct RoomOccupancySystem : ISystem
     {

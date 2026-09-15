@@ -12,8 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxCinderNova
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 640602461530948004, guid: e5cbf3cc3d48cd54c8d90a77336a929f, type: 3}
+  _cast: {fileID: 4336148736547899720, guid: 1b129dafe5746274abbd30ee99b7b2fd, type: 3}
   _projectile: {fileID: 0}
-  _hit: {fileID: 1835174905073365006, guid: adfd6c86cf180e64aaaa1bece2395926, type: 3}
-  _scale: 1
+  _hit: {fileID: 2176172322166607268, guid: 0d8abecf31c310246ac425ff54d5cbb7, type: 3}
+  _scale: 4
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: cb2ea3d377a53fd4cbb05c24c4fc6725, type: 3}
+  _hitSound: {fileID: 0}

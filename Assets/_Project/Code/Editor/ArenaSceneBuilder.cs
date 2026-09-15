@@ -181,9 +181,7 @@ namespace TogetherWeFall.EditorTools
             InventoryUI inventoryUI = SceneBuildUtility.CreateInventoryUI(
                 SceneBuildUtility.CreateCharacterPortrait(player));
 
-            Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
-            VfxPresenter vfxPresenter =
-                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial);
+            VfxPresenter vfxPresenter = SceneBuildUtility.CreateVfxPresenter(vfxConfig);
 
             // Above every other panel, so a fade covers the inventory too.
             CurtainPresenter curtainPresenter =

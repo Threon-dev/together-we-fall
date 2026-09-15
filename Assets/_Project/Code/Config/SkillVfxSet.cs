@@ -63,6 +63,16 @@ namespace TogetherWeFall.Config
                  "box to flip if every slash runs against the blade.")]
         [SerializeField] private bool _sweepsRight;
 
+        [Tooltip("Heard where the skill goes off. Empty uses the sound the cast " +
+                 "prefab carries, else the projectile's — which is where a pack " +
+                 "keeps its launch sound. Played through the audio presenter's " +
+                 "budget, never by the prefab itself.")]
+        [SerializeField] private AudioClip _castSound;
+
+        [Tooltip("Heard at every impact, under the same budget. Empty uses the " +
+                 "sound the hit prefab carries.")]
+        [SerializeField] private AudioClip _hitSound;
+
         public GameObject Cast => _cast;
         public GameObject Projectile => _projectile;
         public GameObject Hit => _hit;
@@ -70,6 +80,36 @@ namespace TogetherWeFall.Config
         public float Lift => _lift;
         public float Yaw => _yaw;
         public bool SweepsRight => _sweepsRight;
+
+        /// <summary>
+        /// The cast sound: the authored clip, else what the cast prefab carries,
+        /// else what the projectile carries. Resolved by a lookup, so read once.
+        /// </summary>
+        public AudioClip ResolveCastSound()
+        {
+            if (_castSound != null)
+                return _castSound;
+
+            AudioClip carried = CarriedSound(_cast);
+            return carried != null ? carried : CarriedSound(_projectile);
+        }
+
+        /// <summary>The impact sound: the authored clip, else what the hit prefab carries.</summary>
+        public AudioClip ResolveHitSound()
+            => _hitSound != null ? _hitSound : CarriedSound(_hit);
+
+        /// <summary>
+        /// The clip a prefab's own AudioSource would play. Explicit null checks
+        /// rather than ?? — Unity's destroyed-object null does not survive it.
+        /// </summary>
+        private static AudioClip CarriedSound(GameObject prefab)
+        {
+            if (prefab == null)
+                return null;
+
+            AudioSource source = prefab.GetComponentInChildren<AudioSource>(true);
+            return source != null && source.clip != null ? source.clip : null;
+        }
 
         /// <summary>
         /// The id the simulation refers to this set by.

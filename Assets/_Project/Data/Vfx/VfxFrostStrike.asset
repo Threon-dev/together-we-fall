@@ -12,9 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxFrostStrike
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 2223439838157312332, guid: 4492a5f685d41b743ad4bca57eac6734, type: 3}
+  _cast: {fileID: 7106790332966239296, guid: e397657a4743b4b4eb35f12b1395864c, type: 3}
   _projectile: {fileID: 0}
-  _hit: {fileID: 255788326938483169, guid: 09eaf0dd98afc4049ade8c1ae00073ad, type: 3}
-  _scale: 1
+  _hit: {fileID: 7296331579315003788, guid: 30f5bf2678e57a643b6b90f63d7ba2e5, type: 3}
+  _scale: 1.7
   _lift: 0.9
-  _yaw: 180
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: 6b0199c57b3e79448b2a1d172527781f, type: 3}
+  _hitSound: {fileID: 0}

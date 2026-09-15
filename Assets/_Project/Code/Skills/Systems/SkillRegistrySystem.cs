@@ -15,6 +15,7 @@ namespace TogetherWeFall.Skills.Systems
     /// they exist in every scene, including the arena, where no SubScene carries
     /// a skill database at all.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
     public partial struct SkillRegistrySystem : ISystem
     {

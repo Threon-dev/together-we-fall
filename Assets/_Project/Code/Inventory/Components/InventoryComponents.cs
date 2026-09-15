@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 
 namespace TogetherWeFall.Inventory
 {
@@ -18,7 +19,9 @@ namespace TogetherWeFall.Inventory
     /// </summary>
     public struct InventoryGridComponent : IComponentData
     {
+        [GhostField]
         public int Width;
+        [GhostField]
         public int Height;
 
         public int CellCount => Width * Height;
@@ -45,6 +48,7 @@ namespace TogetherWeFall.Inventory
     [InternalBufferCapacity(64)]
     public struct InventoryCell : IBufferElementData
     {
+        [GhostField]
         public Entity OccupyingItem;
 
         public bool IsFree => OccupyingItem == Entity.Null;
@@ -63,9 +67,13 @@ namespace TogetherWeFall.Inventory
     /// </summary>
     public struct ItemGridPlacement : IComponentData
     {
+        [GhostField]
         public Entity ContainerEntity;
+        [GhostField]
         public int OriginX;
+        [GhostField]
         public int OriginY;
+        [GhostField]
         public bool IsRotated;
     }
 
@@ -176,6 +184,7 @@ namespace TogetherWeFall.Inventory
     /// </summary>
     public struct CarriedBag : IComponentData
     {
+        [GhostField]
         public Entity Container;
     }
 
@@ -190,6 +199,7 @@ namespace TogetherWeFall.Inventory
     /// </summary>
     public struct ContainerOwner : IComponentData
     {
+        [GhostField]
         public int PlayerId;
     }
 

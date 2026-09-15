@@ -19,6 +19,7 @@ namespace TogetherWeFall.Dungeon.Systems
     /// Points are placed inside the room rather than at its centre so a wave
     /// arrives around the players instead of on top of them.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateBefore(typeof(WaveSpawnSystem))]
     public partial struct DungeonSpawnPointSystem : ISystem

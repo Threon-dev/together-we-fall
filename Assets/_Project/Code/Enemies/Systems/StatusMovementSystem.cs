@@ -27,6 +27,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// separation ran would have looked identical for one enemy and wrong for a
     /// wave.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SeparationSystem))]
     [UpdateAfter(typeof(TogetherWeFall.Combat.Systems.StatusTickSystem))]

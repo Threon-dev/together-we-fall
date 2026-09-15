@@ -26,6 +26,7 @@ namespace TogetherWeFall.Skills.Systems
     /// lands: a burst goes off against the wall, an on-impact trigger fires —
     /// but it does not fork, because forking is for bodies.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillCastSystem))]
     public partial struct SkillProjectileSystem : ISystem

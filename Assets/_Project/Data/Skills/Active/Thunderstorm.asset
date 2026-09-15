@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9b264467090da44a34c9771d9817de, type: 3}
+  m_Name: Thunderstorm
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillDefinition
+  _displayName: Thunderstorm
+  _effect: 10
+  _damageType: 3
+  _baseDamage: 18
+  _cooldown: 4
+  _manaCost: 32
+  _range: 18
+  _radius: 2.4
+  _arcDegrees: 360
+  _projectileSpeed: 26
+  _zoneDuration: 5
+  _zoneTickInterval: 0.5
+  _baseChains: 2
+  _chainRange: 7
+  _chainDelay: 0.06
+  _count: 6
+  _interval: 0.22
+  _scatter: 4.5
+  _appliedStatus: {fileID: 0}
+  _vfx: {fileID: 11400000, guid: d3db1cd568155894baf5bdc90e82e8a1, type: 2}
+  _modifiers: []

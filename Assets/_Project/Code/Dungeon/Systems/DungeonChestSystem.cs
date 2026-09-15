@@ -20,6 +20,7 @@ namespace TogetherWeFall.Dungeon.Systems
     /// Re-seeding the loot dice here does the same for what comes out of them:
     /// a strange drop becomes reproducible from one number.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct DungeonChestSystem : ISystem
     {

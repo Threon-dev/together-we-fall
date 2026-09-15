@@ -24,6 +24,7 @@ namespace TogetherWeFall.Lobby.Systems
     /// before the first write, because a craft that took the money and did
     /// nothing is worse than one that never happened.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct CraftingSystem : ISystem
     {

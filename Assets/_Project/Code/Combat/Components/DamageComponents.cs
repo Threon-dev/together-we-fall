@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 
 namespace TogetherWeFall.Combat
@@ -50,7 +51,9 @@ namespace TogetherWeFall.Combat
     /// </summary>
     public struct Health : IComponentData
     {
+        [GhostField]
         public float Current;
+        [GhostField]
         public float Max;
     }
 
@@ -181,6 +184,8 @@ namespace TogetherWeFall.Combat
     /// the explosion, the entity going away — belongs to the system that reads
     /// this, one stage later.
     /// </summary>
+    // The enabled bit is replicated: a client draws, counts and hides by it.
+    [GhostEnabledBit]
     public struct Dead : IComponentData, IEnableableComponent
     {
         public int KilledByPlayerId;
@@ -259,6 +264,8 @@ namespace TogetherWeFall.Combat
     /// The starting scale and colour are captured at the moment of death rather
     /// than baked, so whatever the body looked like is where the fade begins.
     /// </summary>
+    // The enabled bit is replicated: a client draws, counts and hides by it.
+    [GhostEnabledBit]
     public struct DeathFade : IComponentData, IEnableableComponent
     {
         public float Remaining;

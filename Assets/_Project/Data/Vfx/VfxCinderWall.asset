@@ -12,8 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxCinderWall
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 5013878782555061258, guid: d9fa0c80412e48448acaa78def63d086, type: 3}
+  _cast: {fileID: 8317629536878773794, guid: fbedc1b530274d848bf1d948c9ea4125, type: 3}
   _projectile: {fileID: 0}
-  _hit: {fileID: 8649103730900180663, guid: d170123f1eae05a42b7a908a3bc4cc32, type: 3}
-  _scale: 1
+  _hit: {fileID: 2176172322166607268, guid: 0d8abecf31c310246ac425ff54d5cbb7, type: 3}
+  _scale: 3
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

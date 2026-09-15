@@ -23,6 +23,7 @@ namespace TogetherWeFall.Combat.Systems
     /// and durations run on, so damage per second here is damage per second of
     /// the fight rather than of the hit-stop.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(ElementReactionSystem))]
     [UpdateBefore(typeof(DamageResolutionSystem))]

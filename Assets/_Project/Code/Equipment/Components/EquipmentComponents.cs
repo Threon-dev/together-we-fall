@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 
 namespace TogetherWeFall.Equipment
 {
@@ -37,6 +38,7 @@ namespace TogetherWeFall.Equipment
     [InternalBufferCapacity(10)]
     public struct EquippedItem : IBufferElementData
     {
+        [GhostField]
         public EquipmentSlot Slot;
 
         /// <summary>
@@ -49,9 +51,11 @@ namespace TogetherWeFall.Equipment
         /// keeping it here means PlayerStatsSystem never has to chase a
         /// reference to add up a number.
         /// </summary>
+        [GhostField]
         public Entity Item;
 
         /// <summary>What the equipped item is, or Empty.</summary>
+        [GhostField]
         public int ItemId;
 
         /// <summary>

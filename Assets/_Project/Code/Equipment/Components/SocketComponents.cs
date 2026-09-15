@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 
 namespace TogetherWeFall.Equipment
 {
@@ -54,10 +55,13 @@ namespace TogetherWeFall.Equipment
     [InternalBufferCapacity(14)]
     public struct GearSocket : IBufferElementData
     {
+        [GhostField]
         public int SocketIndex;
+        [GhostField]
         public int LinkGroup;
 
         /// <summary>The gem sitting in it, or Entity.Null.</summary>
+        [GhostField]
         public Entity InsertedGem;
 
         /// <summary>
@@ -76,6 +80,7 @@ namespace TogetherWeFall.Equipment
         /// gems nobody can touch. The consequence is the rule itself — there is
         /// no entity to hand back, so a welded socket cannot be emptied.
         /// </summary>
+        [GhostField]
         public int WeldedSkillId;
 
         public bool IsWelded => WeldedSkillId != 0;

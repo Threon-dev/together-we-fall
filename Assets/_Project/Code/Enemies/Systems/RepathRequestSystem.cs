@@ -13,6 +13,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// apart means the expensive half only ever sees a pre-filtered list, and
     /// the cheap half scales freely with enemy count.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(ChaseTargetSystem))]
     public partial struct RepathRequestSystem : ISystem

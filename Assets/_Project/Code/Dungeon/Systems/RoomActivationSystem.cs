@@ -20,6 +20,7 @@ namespace TogetherWeFall.Dungeon.Systems
     /// gone, which is the honest reading: the encounter has moved, and re-arming
     /// the room the players just fought through would be the wrong answer.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(RoomOccupancySystem))]
     [UpdateBefore(typeof(WaveSpawnSystem))]

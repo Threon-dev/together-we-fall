@@ -11,7 +11,8 @@ namespace TogetherWeFall.Skills.Systems
 {
     /// <summary>
     /// Steps a blinking character from body to body, and strikes each one with
-    /// whatever the primary key casts.
+    /// whatever the primary key casts. A dash is the same sequence with a single
+    /// landing chosen at the press: it waits out the slide and strikes once.
     ///
     /// The strike is a PendingCast naming the primary key's gear and hole, so it
     /// goes through the same door a condition trigger does: the link group's
@@ -26,6 +27,7 @@ namespace TogetherWeFall.Skills.Systems
     /// Main thread, because the landing is checked against walls with PhysX, and
     /// because it runs only on the frames somebody is mid-blink.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateBefore(typeof(SkillCastSystem))]
     public partial struct BlinkStrikeSystem : ISystem
@@ -96,6 +98,17 @@ namespace TogetherWeFall.Skills.Systems
                 if (sequence.Timer > 0f)
                 {
                     state.EntityManager.SetComponentData(character, sequence);
+                    continue;
+                }
+
+                // A dash has arrived: one blow from where it stopped, then let go.
+                if (sequence.StrikeOnArrival)
+                {
+                    QueuePrimary(
+                        ref state, character, sequence.PlayerId, sequence.Interval,
+                        sequence.Next, sequence.Position, sequence.Facing, skills, items, strikes);
+
+                    Finish(ref state, character, sequence);
                     continue;
                 }
 
@@ -177,6 +190,7 @@ namespace TogetherWeFall.Skills.Systems
             warp.Position = landing;
             warp.Facing = facing;
             warp.Holding = true;
+            warp.SlideSeconds = 0f;
             state.EntityManager.SetComponentData(character, warp);
 
             QueuePrimary(
@@ -226,7 +240,7 @@ namespace TogetherWeFall.Skills.Systems
 
             SkillEffectKind effect = skills.EffectOf(skillIndex);
 
-            if (effect == SkillEffectKind.BlinkStrike)
+            if (effect == SkillEffectKind.BlinkStrike || effect == SkillEffectKind.DashStrike)
                 return;
 
             strikes.Add(new PendingCast

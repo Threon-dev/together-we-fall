@@ -22,6 +22,7 @@ namespace TogetherWeFall.Lobby.Systems
     /// vendor transaction only ever moves items between the vendor shelf and the
     /// bag of whoever asked.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InteractionResolveSystem))]
     public partial struct NpcInteractionSystem : ISystem

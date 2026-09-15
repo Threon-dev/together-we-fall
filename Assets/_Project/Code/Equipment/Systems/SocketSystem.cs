@@ -25,6 +25,7 @@ namespace TogetherWeFall.Equipment.Systems
     /// The skill is derived from the socket at cast time, so an emptied socket
     /// simply casts nothing — there is no cached skill to go stale.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InventoryPlacementSystem))]
     public partial struct SocketSystem : ISystem

@@ -16,6 +16,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// (nearest, then most aggressive, then a threat table) without touching
     /// movement.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct ChaseTargetSystem : ISystem
     {

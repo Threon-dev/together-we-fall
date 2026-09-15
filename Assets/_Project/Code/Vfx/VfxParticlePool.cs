@@ -64,6 +64,15 @@ namespace TogetherWeFall.Vfx
             internal float[] TrailWidths;
 
             /// <summary>
+            /// Line renderers — a beam, whose two ends are set on every use — and
+            /// the widths they were authored with, scaled from the original each
+            /// time for the same reason as the trails.
+            /// </summary>
+            internal LineRenderer[] Lines;
+
+            internal float[] LineWidths;
+
+            /// <summary>
             /// Mesh renderers under the root — an arrow, rather than a particle
             /// effect. The only thing a tint reaches: particles carry their own
             /// colours, and overriding them would flatten the effect.
@@ -125,6 +134,53 @@ namespace TogetherWeFall.Vfx
         }
 
         /// <summary>
+        /// Plays a beam between two points for a set time: every line renderer in
+        /// the prefab is stretched from one to the other. A beam has no particle
+        /// lifetime to read, so the caller says how long — a chain's jump delay.
+        /// Width is a multiplier on the prefab's own.
+        /// </summary>
+        public void PlayBetween(GameObject prefab, Vector3 from, Vector3 to, float width, float seconds)
+        {
+            Vector3 span = to - from;
+            Quaternion facing = span.sqrMagnitude > 0.0001f
+                ? Quaternion.LookRotation(span)
+                : Quaternion.identity;
+
+            Instance instance = Rent(prefab, from, facing, 1f);
+
+            if (instance == null)
+                return;
+
+            Stretch(instance, from, to, width);
+            instance.SecondsLeft = Mathf.Max(0.01f, seconds);
+        }
+
+        /// <summary>
+        /// Stretches a rented beam between two points — every frame, if the
+        /// caller likes, which is how a channelled beam follows its caster.
+        /// Width is a multiplier on the prefab's own.
+        /// </summary>
+        public void Stretch(Instance instance, Vector3 from, Vector3 to, float width)
+        {
+            if (instance == null)
+                return;
+
+            Vector3 span = to - from;
+
+            if (span.sqrMagnitude > 0.0001f)
+                instance.Transform.SetPositionAndRotation(from, Quaternion.LookRotation(span));
+
+            for (int i = 0; i < instance.Lines.Length; i++)
+            {
+                LineRenderer line = instance.Lines[i];
+                line.positionCount = 2;
+                line.SetPosition(0, from);
+                line.SetPosition(1, to);
+                line.widthMultiplier = instance.LineWidths[i] * Mathf.Max(0.01f, width);
+            }
+        }
+
+        /// <summary>
         /// Takes an instance the caller will move itself, or null when the
         /// prefab is missing or the ceiling is reached and everything live is
         /// owned by a follower.
@@ -182,6 +238,10 @@ namespace TogetherWeFall.Vfx
                 instance.Trails[i].Clear();
             }
 
+            // Hidden by the last release; see Release.
+            for (int i = 0; i < instance.Lines.Length; i++)
+                instance.Lines[i].enabled = true;
+
             // A pooled arrow that flew through fire last time is not on fire now.
             Tint(instance, null);
 
@@ -234,6 +294,11 @@ namespace TogetherWeFall.Vfx
                 return;
 
             StopEmitting(instance);
+
+            // A beam leaves nothing in the air to fade: it goes the moment its
+            // caster lets go, rather than hanging for the release window.
+            for (int i = 0; i < instance.Lines.Length; i++)
+                instance.Lines[i].enabled = false;
 
             // The body goes at once; only what it left behind is let fade. A
             // fireball whose head hangs where it landed for the whole fade reads
@@ -314,6 +379,15 @@ namespace TogetherWeFall.Vfx
 
             GameObject root = Object.Instantiate(prefab, _parent);
             root.name = $"{prefab.name} #{instances.Count}";
+
+            // Packs ship their sound on the prefab, playing on enable — which
+            // here means on every rent, outside every budget the audio presenter
+            // keeps, at whatever distance the pack chose. Silenced in the same
+            // frame it was made; the presenter asks for the clip instead.
+            // Disabled rather than destroyed: pack scripts still reach for it.
+            foreach (AudioSource source in root.GetComponentsInChildren<AudioSource>(true))
+                source.enabled = false;
+
             root.SetActive(false);
 
             TrailRenderer[] trails = root.GetComponentsInChildren<TrailRenderer>(true);
@@ -321,6 +395,18 @@ namespace TogetherWeFall.Vfx
 
             for (int i = 0; i < trails.Length; i++)
                 widths[i] = trails[i].widthMultiplier;
+
+            LineRenderer[] lines = root.GetComponentsInChildren<LineRenderer>(true);
+            var lineWidths = new float[lines.Length];
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                // World space, because both ends are set per use; tiled, so a
+                // long jump repeats the texture rather than stretching it.
+                lines[i].useWorldSpace = true;
+                lines[i].textureMode = LineTextureMode.Tile;
+                lineWidths[i] = lines[i].widthMultiplier;
+            }
 
             ParticleSystem[] systems = root.GetComponentsInChildren<ParticleSystem>(true);
             var body = new bool[systems.Length];
@@ -346,6 +432,8 @@ namespace TogetherWeFall.Vfx
                 Systems = systems,
                 Trails = trails,
                 TrailWidths = widths,
+                Lines = lines,
+                LineWidths = lineWidths,
                 Meshes = root.GetComponentsInChildren<MeshRenderer>(true),
                 Body = body,
                 TrailSeconds = trailSeconds

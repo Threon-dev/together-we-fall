@@ -141,10 +141,11 @@ namespace TogetherWeFall.EditorTools
             CreateDefaultAttacks(out SkillDefinition strike, out SkillDefinition bolt);
             SkillDefinition arrow = CreateArrowAttack();
             SkillDefinition blink = CreateBlinkStrike();
+            SkillDefinition dash = CreateDashStrike();
 
             return new[]
             {
-                splinter, nova, lance, sweep, wall, strike, bolt, arrow, blink,
+                splinter, nova, lance, sweep, wall, strike, bolt, arrow, blink, dash,
                 CreateMendingWord(), CreateBattleHymn()
             };
         }
@@ -203,6 +204,22 @@ namespace TogetherWeFall.EditorTools
                 skill.BaseChains = 2;       // TUNE: three steps
                 skill.ChainRange = 9f;      // TUNE: reach from one landing to the next body
                 skill.ChainDelay = 0.2f;    // TUNE: seconds between steps
+                skill.Modifiers = System.Array.Empty<SkillModifier>();
+            });
+
+        /// <summary>
+        /// The dash every sword carries on the key after the blink. No damage and
+        /// no cost, like the blink: it slides up to its range, stops short of the
+        /// first body or wall, and lands the primary key's skill there.
+        /// </summary>
+        public static SkillDefinition CreateDashStrike()
+            => Skill("SteelRush", "Steel Rush", skill =>
+            {
+                skill.Effect = SkillEffectKind.DashStrike;
+                skill.DamageType = DamageType.Physical;
+                skill.BaseDamage = 0f;
+                skill.Cooldown = 1.5f;      // TUNE
+                skill.Range = 9f;           // TUNE: the longest slide
                 skill.Modifiers = System.Array.Empty<SkillModifier>();
             });
 

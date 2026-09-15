@@ -15,6 +15,7 @@ namespace TogetherWeFall.Loot.Systems
     /// jobs, and keeping them apart is what lets a boss chest, a breakable urn
     /// or a reward for clearing a room all reuse the rolling half untouched.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InteractionResolveSystem))]
     public partial struct ChestInteractionSystem : ISystem

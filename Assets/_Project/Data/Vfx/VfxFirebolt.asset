@@ -12,9 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxFirebolt
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 3070518327953465789, guid: 433b6e2242d295e46998fa898ff277a4, type: 3}
-  _projectile: {fileID: 5385578143268510625, guid: 24893163081eb36458cfcf1e437592fa,
-    type: 3}
-  _hit: {fileID: 1835174905073365006, guid: adfd6c86cf180e64aaaa1bece2395926, type: 3}
-  _scale: 0.5
+  _cast: {fileID: 7703829709045445098, guid: ffeae941ff25cc549931c3e017612660, type: 3}
+  _projectile: {fileID: 2367334733768428185, guid: 8fdf5dd206ef33f4491d919abea7b88c, type: 3}
+  _hit: {fileID: 4374370317186983222, guid: 45c94e769ce2b854b8117ae90d091a3e, type: 3}
+  _scale: 1.2
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

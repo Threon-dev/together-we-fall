@@ -25,6 +25,7 @@ namespace TogetherWeFall.Combat.Systems
     /// The fade runs in parallel, the removal on the main thread, because only
     /// one of those is a structural change.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(DeathReactionSystem))]
     public partial struct DeathFadeSystem : ISystem

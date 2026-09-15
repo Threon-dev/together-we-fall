@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 
 namespace TogetherWeFall.Player
 {
@@ -32,6 +33,7 @@ namespace TogetherWeFall.Player
     /// </summary>
     public struct Mana : IComponentData
     {
+        [GhostField]
         public float Current;
     }
 
@@ -57,6 +59,7 @@ namespace TogetherWeFall.Player
     /// </summary>
     public struct Wallet : IComponentData
     {
+        [GhostField]
         public int Coin;
     }
 }

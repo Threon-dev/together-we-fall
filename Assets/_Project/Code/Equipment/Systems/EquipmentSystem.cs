@@ -31,6 +31,7 @@ namespace TogetherWeFall.Equipment.Systems
     /// It never computes a stat. All it does is raise StatsDirty, and the
     /// recompute happens once, in the system that owns that job.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InventoryPlacementSystem))]
     public partial struct EquipmentSystem : ISystem

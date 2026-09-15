@@ -28,42 +28,51 @@ MonoBehaviour:
     _maxVoicesPerFrame: 4
     _minIntervalSeconds: 0.03
   - _cue: 3
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: cf0727807f7f9c9478459c147960fbe7, type: 3}
+    - {fileID: 8300000, guid: a47e9afad0f58914997bd27aa0edbe99, type: 3}
+    - {fileID: 8300000, guid: 50da103b93f260440b24f01e7ba01a6c, type: 3}
     _volume: 0.9
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 1
     _maxVoicesPerFrame: 2
     _minIntervalSeconds: 0.1
   - _cue: 4
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: aad4d002b7038ec4ebf07bb18ff612b3, type: 3}
     _volume: 0.6
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 1
     _maxVoicesPerFrame: 3
     _minIntervalSeconds: 0.06
   - _cue: 5
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: 8394c1ff3e9831f4ba98323999b5bc23, type: 3}
+    - {fileID: 8300000, guid: ab550f3382717ad4587b75dde690f166, type: 3}
     _volume: 0.7
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 1
     _maxVoicesPerFrame: 3
     _minIntervalSeconds: 0.09
   - _cue: 6
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: 7a54435bf7746a44d86c3552b41c349d, type: 3}
     _volume: 0.9
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 1
     _maxVoicesPerFrame: 1
     _minIntervalSeconds: 0
   - _cue: 7
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: a5f9ea9d90e8b1b4a86940f61ead879f, type: 3}
     _volume: 0.8
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 0
     _maxVoicesPerFrame: 2
     _minIntervalSeconds: 0
   - _cue: 8
-    _clips: []
+    _clips:
+    - {fileID: 8300000, guid: a5f9ea9d90e8b1b4a86940f61ead879f, type: 3}
     _volume: 0.6
     _pitchRange: {x: 0.95, y: 1.05}
     _spatial: 0

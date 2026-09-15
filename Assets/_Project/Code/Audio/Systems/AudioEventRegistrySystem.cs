@@ -23,6 +23,7 @@ namespace TogetherWeFall.Audio.Systems
     /// the dependency the whole seam exists to avoid: a headless build produces
     /// these events too, and has nothing to draw them with.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
     public partial struct AudioEventRegistrySystem : ISystem
     {

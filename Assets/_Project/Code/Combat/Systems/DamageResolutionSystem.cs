@@ -18,6 +18,7 @@ namespace TogetherWeFall.Combat.Systems
     /// its own buffer and its own health. That is the payoff for putting the
     /// events on the target rather than in one global stream.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Skills.Systems.SkillHitSystem))]
     public partial struct DamageResolutionSystem : ISystem

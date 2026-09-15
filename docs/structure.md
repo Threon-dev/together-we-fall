@@ -70,7 +70,7 @@ Assets/_Project/
 │   │   ├── Systems/                      VfxEventRegistry, DamageNumber, StatusTint
 │   │   ├── StatusIconPool.cs             пул гліфів статусів над тілами
 │   │   ├── VfxPresenter.cs               міст-презентер, лише читає ECS
-│   │   ├── VfxLinePool.cs                пул LineRenderer: лінії й кільця
+│   │   ├── VfxParticlePool.cs            пул префабів паку: спалахи, трейли, промені
 │   │   └── DamageNumberPool.cs           пул TMP-лейблів на канвасі
 │   ├── Skills/
 │   │   ├── Components/                   Skill*, ProjectileSpawn, SkillDatabaseBlob,

@@ -1,5 +1,6 @@
 using Unity.Entities;
 using Unity.Mathematics;
+using TogetherWeFall.Combat;
 
 namespace TogetherWeFall.Vfx
 {
@@ -8,9 +9,9 @@ namespace TogetherWeFall.Vfx
     //
     // The one seam this whole part of the project hangs on. Simulation systems
     // announce what happened and never learn what it looked like; whatever is
-    // drawing reads the queue and decides. Today that is pooled line renderers
-    // and a camera that shakes. When VFX Graph arrives, one file changes and no
-    // system that produces these events is touched.
+    // drawing reads the queue and decides. Today that is pooled prefabs from an
+    // effect pack and a camera that shakes. When the pack changes, assets change
+    // and no system that produces these events is touched.
     //
     // It is also the boundary a networked build needs: these are derived from
     // state a client already has, so they are generated locally rather than
@@ -61,7 +62,7 @@ namespace TogetherWeFall.Vfx
         /// point the effect visually starts: the muzzle for something that
         /// flies, the blast centre for something that does not. What it looks
         /// like is the skill's own visual set, which is why this kind carries an
-        /// id while the five above carry only a colour.
+        /// id while the five above carry only an element.
         /// </summary>
         SkillCast = 6,
 
@@ -102,6 +103,13 @@ namespace TogetherWeFall.Vfx
         /// <summary>Element colour, so a fire burst does not look like a frost one.</summary>
         public float4 Color;
 
+        /// <summary>
+        /// Which element this was, for the effects no skill authored: the
+        /// presenter draws that element's beam, burst or blast. A type rather
+        /// than the colour above, because a prefab is chosen, not tinted.
+        /// </summary>
+        public DamageType Element;
+
         /// <summary>Radius for an explosion, damage for a number, strength otherwise.</summary>
         public float Magnitude;
 
@@ -113,10 +121,11 @@ namespace TogetherWeFall.Vfx
         public bool Emphasis;
 
         /// <summary>
-        /// Which authored visual set draws this, or zero for the built-in lines
-        /// and rings.
+        /// Which authored visual set draws this, or zero for none.
         ///
-        /// Read by SkillCast and SkillHit alone. An id rather than a kind per
+        /// Read by SkillCast and SkillHit — and by Explosion, which leaves a
+        /// blast that has a set to that set rather than drawing its element's
+        /// generic one on top. An id rather than a kind per
         /// effect, because "which fireball" is content — the alternative is an
         /// enum value and a branch in the presenter for every prefab somebody
         /// imports, which is precisely what this seam exists to avoid.

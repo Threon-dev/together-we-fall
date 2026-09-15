@@ -5,6 +5,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
 using TogetherWeFall.UI;
+using TogetherWeFall.Audio;
 using TogetherWeFall.CameraRig;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Config;
@@ -27,20 +28,45 @@ namespace TogetherWeFall.Vfx
     /// player's attention, not about the game state, so the threshold and the
     /// window are read here from the events rather than tracked by any system.
     ///
-    /// On VFX Graph: it is not in this project, and a .vfx asset is a serialised
-    /// graph that cannot be written as text. What is here instead is pooled line
-    /// renderers, which cover the two shapes this game needs — a chain link and
-    /// a shockwave ring — and cost nothing per frame. Swapping in VFX Graph
-    /// means rewriting the four Handle methods below and nothing else, because
-    /// everything upstream only ever said what happened.
+    /// Everything it draws is a pooled prefab from the effect pack: a skill's own
+    /// visual set, or — for what no skill authored, a chain jump, a reaction, a
+    /// corpse going off — its element's row in the config. Swapping the pack
+    /// means swapping those assets and nothing else, because everything upstream
+    /// only ever said what happened.
     /// </summary>
     [DefaultExecutionOrder(200)]
     public sealed class VfxPresenter : MonoBehaviour
     {
-        [SerializeField] private VfxConfig _config;
+        /// <summary>
+        /// Further than any projectile flies between two frames, even through a
+        /// hitch at recording frame rates — 34 m/s at 10 fps is 3.4 m. A trail
+        /// whose projectile moved more than this is following a new shot.
+        /// </summary>
+        private const float TrailJumpDistanceSq = 6f * 6f;
 
-        [Tooltip("Material for the chain lines and blast rings.")]
-        [SerializeField] private Material _lineMaterial;
+        /// <summary>
+        /// How long after its last pulse a beam is still drawn: this, or two
+        /// pulses. Pulses reach a client as snapshots, and one late snapshot
+        /// should not cut the beam and restart its sound.
+        /// </summary>
+        private const float MinChannelGap = 0.25f;
+
+        /// <summary>
+        /// A channelled beam per caster: the cast count last seen, when it last
+        /// moved, and the stretched instance while the channel lasts.
+        /// </summary>
+        private struct Channel
+        {
+            public uint Count;
+            public float LastPulse;
+            public VfxParticlePool.Instance Beam;
+        }
+
+        private readonly Dictionary<Entity, Channel> _channels = new Dictionary<Entity, Channel>();
+        private readonly List<Entity> _goneChannels = new List<Entity>();
+        private EntityQuery _castersQuery;
+
+        [SerializeField] private VfxConfig _config;
 
         [Tooltip("Canvas the damage numbers are drawn on. Without it everything " +
                  "else still works and the numbers are simply absent.")]
@@ -48,15 +74,26 @@ namespace TogetherWeFall.Vfx
 
         [Tooltip("Every authored visual set in the project, filled in by the " +
                  "scene build. A skill whose set is missing from this list " +
-                 "draws the built-in line and ring, exactly as it did before " +
-                 "sets existed.")]
+                 "draws only its element's generic effects.")]
         [SerializeField] private SkillVfxSet[] _skillVfx = System.Array.Empty<SkillVfxSet>();
 
-        private readonly VfxLinePool _pool = new VfxLinePool();
+        /// <summary>The config's element rows, indexed by DamageType.</summary>
+        private ElementVfxSettings[] _elements = System.Array.Empty<ElementVfxSettings>();
+
         private readonly VfxParticlePool _particles = new VfxParticlePool();
 
         /// <summary>Visual sets by id, the way the simulation refers to them.</summary>
         private readonly Dictionary<int, SkillVfxSet> _sets = new Dictionary<int, SkillVfxSet>();
+
+        /// <summary>
+        /// Each set's sounds, resolved once: the fallback to what a prefab
+        /// carries is a component lookup, and a cast is the fastest event there is.
+        /// </summary>
+        private readonly Dictionary<int, AudioClip> _castSounds = new Dictionary<int, AudioClip>();
+        private readonly Dictionary<int, AudioClip> _hitSounds = new Dictionary<int, AudioClip>();
+
+        /// <summary>Optional. Without it every effect still draws, silently.</summary>
+        private AudioPresenter _audio;
 
         /// <summary>
         /// Which trail is following which projectile.
@@ -86,14 +123,15 @@ namespace TogetherWeFall.Vfx
         private float _shakeCooldown;
         private float _lastShakeStrength;
 
-        public void Initialize(TopDownCameraRig cameraRig)
+        public void Initialize(TopDownCameraRig cameraRig, AudioPresenter audio)
         {
             _camera = cameraRig;
+            _audio = audio;
 
-            if (_config == null || _lineMaterial == null)
+            if (_config == null)
             {
                 Debug.LogError(
-                    $"[{nameof(VfxPresenter)}] No VfxConfig or line material assigned — " +
+                    $"[{nameof(VfxPresenter)}] No VfxConfig assigned — " +
                     "the game will play correctly and look flat.", this);
                 return;
             }
@@ -129,6 +167,9 @@ namespace TogetherWeFall.Vfx
                 ComponentType.ReadOnly<LocalTransform>(),
                 ComponentType.ReadOnly<URPMaterialPropertyBaseColor>());
 
+            // Every character, for the beams they channel.
+            _castersQuery = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<CastCue>());
+
             for (int i = 0; i < _skillVfx.Length; i++)
             {
                 if (_skillVfx[i] == null)
@@ -145,9 +186,11 @@ namespace TogetherWeFall.Vfx
                 }
 
                 _sets[_skillVfx[i].VfxId] = _skillVfx[i];
+                _castSounds[_skillVfx[i].VfxId] = _skillVfx[i].ResolveCastSound();
+                _hitSounds[_skillVfx[i].VfxId] = _skillVfx[i].ResolveHitSound();
             }
 
-            _pool.Initialize(_config.PoolSize, _lineMaterial, transform);
+            _elements = _config.BuildElementIndex();
             _particles.Initialize(
                 transform,
                 _config.ParticlesPerEffect,
@@ -185,10 +228,10 @@ namespace TogetherWeFall.Vfx
 
             DrainEvents();
             DrawTrails();
+            DrawBeams();
             DrawStatusMarkers();
             AdvanceMassKillWindow(unscaled);
 
-            _pool.Tick(unscaled);
             _particles.Tick(unscaled);
             _numbers.Tick(unscaled);
         }
@@ -249,17 +292,9 @@ namespace TogetherWeFall.Vfx
 
         private void HandleChainLink(in VfxEvent effect)
         {
-            // Lifted to roughly chest height at both ends: a line drawn between
-            // two entity origins runs along the floor and reads as a decal
-            // rather than as lightning between two bodies.
-            Vector3 from = ToWorld(effect.Position);
-            Vector3 to = ToWorld(effect.EndPosition);
-
             // The link lives as long as the jump delay, so one link is on screen
             // until the next appears and the chain reads as travelling.
-            float seconds = Mathf.Max(_config.ChainLinkSeconds, effect.Magnitude);
-
-            _pool.AddLink(from, to, ToColor(effect.Color), seconds, _config.ChainLinkWidth);
+            PlayBeam(effect, Mathf.Max(_config.ChainLinkSeconds, effect.Magnitude), _config.ChainLinkWidth);
         }
 
         /// <summary>
@@ -269,17 +304,26 @@ namespace TogetherWeFall.Vfx
         /// more link.
         /// </summary>
         private void HandleBoltStrike(in VfxEvent effect)
+            => PlayBeam(effect, Mathf.Max(_config.BoltStrikeSeconds, effect.Magnitude), _config.BoltStrikeWidth);
+
+        /// <summary>
+        /// The element's beam between the event's two ends, lifted to roughly
+        /// chest height: drawn between two entity origins it would run along the
+        /// floor and read as a decal rather than as lightning between two bodies.
+        /// </summary>
+        private void PlayBeam(in VfxEvent effect, float seconds, float width)
         {
-            _pool.AddLink(
-                ToWorld(effect.Position),
-                ToWorld(effect.EndPosition),
-                ToColor(effect.Color),
-                Mathf.Max(_config.BoltStrikeSeconds, effect.Magnitude),
-                _config.BoltStrikeWidth);
+            ElementVfxSettings element = ElementOf(effect);
+
+            if (element == null || element.Beam == null)
+                return;
+
+            _particles.PlayBetween(
+                element.Beam, ToWorld(effect.Position), ToWorld(effect.EndPosition), width, seconds);
         }
 
         /// <summary>
-        /// A ring in the colour of whatever just combined, and nothing else.
+        /// The burst of whatever just combined, and nothing else.
         ///
         /// Deliberately no shake and no freeze. A reaction can fire on every hit
         /// that lands in a burning crowd, and punctuating each one would mean
@@ -287,29 +331,32 @@ namespace TogetherWeFall.Vfx
         /// coming back to one. The same reasoning that gives the shake and the
         /// hit-stop the right to refuse, applied one step earlier: some things
         /// simply do not ask.
-        ///
-        /// It borrows the explosion's timing and width because it is the same
-        /// shape drawn smaller, and a pair of numbers of its own on the config
-        /// would be two more things to keep in step for no visible gain.
         /// </summary>
         private void HandleElementBurst(in VfxEvent effect)
         {
-            _pool.AddRing(
-                ToWorld(effect.Position),
-                effect.Magnitude,
-                ToColor(effect.Color),
-                _config.ExplosionSeconds,
-                _config.ExplosionWidth);
+            ElementVfxSettings element = ElementOf(effect);
+
+            if (element != null && element.Reaction != null)
+            {
+                _particles.Play(
+                    element.Reaction, ToWorld(effect.Position), Quaternion.identity,
+                    BlastScale(effect.Magnitude));
+            }
         }
 
         private void HandleExplosion(in VfxEvent effect)
         {
-            _pool.AddRing(
-                ToWorld(effect.Position),
-                effect.Magnitude,
-                ToColor(effect.Color),
-                _config.ExplosionSeconds,
-                _config.ExplosionWidth);
+            // A skill's own blast belongs to its visual set, which has already
+            // drawn it at this point. The element's blast is for what nobody
+            // authored: a corpse going off.
+            ElementVfxSettings element = effect.VfxId == 0 ? ElementOf(effect) : null;
+
+            if (element != null && element.Blast != null)
+            {
+                _particles.Play(
+                    element.Blast, ToWorld(effect.Position), Quaternion.identity,
+                    BlastScale(effect.Magnitude));
+            }
 
             // A shake and no freeze. There was a hit-stop here, and in a crowd
             // with exploding deaths it went off often enough to read as the
@@ -496,13 +543,22 @@ namespace TogetherWeFall.Vfx
         /// </summary>
         private void HandleSkillCast(in VfxEvent effect)
         {
-            if (!TryGetSet(effect.VfxId, out SkillVfxSet set) || set.Cast == null)
+            if (!TryGetSet(effect.VfxId, out SkillVfxSet set))
                 return;
 
-            _particles.Play(
-                set.Cast, ToPoint(effect.Position, set.Lift),
-                Facing(effect) * Quaternion.Euler(0f, set.Yaw, 0f), set.Scale,
-                mirrored: effect.SweepRight != set.SweepsRight);
+            Vector3 point = ToPoint(effect.Position, set.Lift);
+
+            if (set.Cast != null)
+            {
+                _particles.Play(
+                    set.Cast, point,
+                    Facing(effect) * Quaternion.Euler(0f, set.Yaw, 0f), set.Scale,
+                    mirrored: effect.SweepRight != set.SweepsRight);
+            }
+
+            // Heard even when nothing is drawn here: an arrow leaves the bow
+            // with a sound and no flash.
+            PlaySound(AudioCue.SkillCast, _castSounds, effect.VfxId, point);
         }
 
         /// <summary>
@@ -511,11 +567,26 @@ namespace TogetherWeFall.Vfx
         /// </summary>
         private void HandleSkillHit(in VfxEvent effect)
         {
-            if (!TryGetSet(effect.VfxId, out SkillVfxSet set) || set.Hit == null)
+            if (!TryGetSet(effect.VfxId, out SkillVfxSet set))
                 return;
 
-            _particles.Play(
-                set.Hit, ToPoint(effect.Position, set.Lift), Quaternion.identity, set.Scale);
+            Vector3 point = ToPoint(effect.Position, set.Lift);
+
+            if (set.Hit != null)
+                _particles.Play(set.Hit, point, Quaternion.identity, set.Scale);
+
+            PlaySound(AudioCue.ProjectileImpact, _hitSounds, effect.VfxId, point);
+        }
+
+        /// <summary>
+        /// A set's sound, through the audio presenter's budget for the cue it
+        /// stands in for. Forty bodies struck by one nova are forty impacts
+        /// drawn and, by that budget, about one heard.
+        /// </summary>
+        private void PlaySound(AudioCue cue, Dictionary<int, AudioClip> sounds, int vfxId, Vector3 point)
+        {
+            if (_audio != null && sounds.TryGetValue(vfxId, out AudioClip clip))
+                _audio.PlayAuthored(cue, clip, point);
         }
 
         /// <summary>
@@ -579,12 +650,23 @@ namespace TogetherWeFall.Vfx
                 if (_trails.TryGetValue(projectile, out VfxParticlePool.Instance live))
                 {
                     _goneTrails.Remove(projectile);
-                    live.Transform.SetPositionAndRotation(position, rotation);
 
-                    if (carried != null)
-                        _particles.Tint(live, carried);
+                    // A pooled projectile can be spent and fired again between
+                    // two frames this presenter sees, so its flag never read as
+                    // down. Dragging the old trail to the new muzzle would draw a
+                    // streak across the room: a jump no flight makes is a new shot.
+                    if ((position - live.Transform.position).sqrMagnitude <= TrailJumpDistanceSq)
+                    {
+                        live.Transform.SetPositionAndRotation(position, rotation);
 
-                    continue;
+                        if (carried != null)
+                            _particles.Tint(live, carried);
+
+                        continue;
+                    }
+
+                    _particles.Release(live);
+                    _trails.Remove(projectile);
                 }
 
                 if (!TryGetSet(projectiles[i].VfxId, out SkillVfxSet set) ||
@@ -616,6 +698,107 @@ namespace TogetherWeFall.Vfx
             }
         }
 
+        /// <summary>
+        /// Keeps a beam stretched from every caster who is channelling one.
+        ///
+        /// A level, like the trails, and for the same reason: a channel is a held
+        /// button, not an event. The host casts a pulse while the button is held
+        /// and the mana lasts, counts it on CastCue and writes where the beam ran;
+        /// this draws while those counts keep coming and lets go when they stop.
+        /// Nothing says "the channel ended" — letting go, running dry and being
+        /// silenced all look the same from here, which is the point.
+        /// </summary>
+        private void DrawBeams()
+        {
+            if (_castersQuery.IsEmptyIgnoreFilter && _channels.Count == 0)
+                return;
+
+            using NativeArray<Entity> casters = _castersQuery.ToEntityArray(Allocator.Temp);
+            using NativeArray<CastCue> cues = _castersQuery.ToComponentDataArray<CastCue>(Allocator.Temp);
+
+            float now = Time.unscaledTime;
+
+            _goneChannels.Clear();
+
+            foreach (KeyValuePair<Entity, Channel> pair in _channels)
+                _goneChannels.Add(pair.Key);
+
+            for (int i = 0; i < casters.Length; i++)
+            {
+                CastCue cue = cues[i];
+                _goneChannels.Remove(casters[i]);
+
+                // First sight only learns the count, as the arm does: a scene
+                // that loads with casts already counted is not a channel opening.
+                if (!_channels.TryGetValue(casters[i], out Channel channel))
+                {
+                    _channels.Add(casters[i], new Channel
+                    {
+                        Count = cue.Count,
+                        LastPulse = float.NegativeInfinity
+                    });
+
+                    continue;
+                }
+
+                if (cue.Count != channel.Count)
+                {
+                    channel.Count = cue.Count;
+
+                    if (cue.Effect == SkillEffectKind.Beam)
+                        channel.LastPulse = now;
+                }
+
+                SkillVfxSet set = null;
+
+                bool channelling = cue.Effect == SkillEffectKind.Beam &&
+                                   now - channel.LastPulse <= Mathf.Max(MinChannelGap, cue.Interval * 2f) &&
+                                   TryGetSet(cue.BeamVfxId, out set) &&
+                                   set.Cast != null;
+
+                if (channelling)
+                {
+                    Vector3 from = ToPoint(cue.BeamOrigin, set.Lift);
+                    Vector3 to = ToPoint(cue.BeamEnd, set.Lift);
+
+                    if (channel.Beam == null)
+                    {
+                        channel.Beam = _particles.Rent(set.Cast, from, Quaternion.identity, 1f);
+
+                        // Heard once as the channel opens, not once a pulse.
+                        PlaySound(AudioCue.SkillCast, _castSounds, cue.BeamVfxId, from);
+                    }
+
+                    _particles.Stretch(channel.Beam, from, to, set.Scale);
+                }
+                else if (channel.Beam != null)
+                {
+                    _particles.Release(channel.Beam);
+                    channel.Beam = null;
+                }
+
+                _channels[casters[i]] = channel;
+            }
+
+            // A character gone from the world — a player who left mid-channel.
+            for (int i = 0; i < _goneChannels.Count; i++)
+            {
+                _particles.Release(_channels[_goneChannels[i]].Beam);
+                _channels.Remove(_goneChannels[i]);
+            }
+        }
+
+        /// <summary>The element row an event names, or null when the config has none.</summary>
+        private ElementVfxSettings ElementOf(in VfxEvent effect)
+        {
+            int index = (int)effect.Element;
+            return index >= 0 && index < _elements.Length ? _elements[index] : null;
+        }
+
+        /// <summary>A prefab scale for a radius, never so small the effect vanishes.</summary>
+        private float BlastScale(float radius)
+            => Mathf.Max(0.3f, radius * _config.BlastScalePerMetre);
+
         /// <summary>The set an event names, or false when nothing names one.</summary>
         private bool TryGetSet(int vfxId, out SkillVfxSet set)
         {
@@ -638,11 +821,12 @@ namespace TogetherWeFall.Vfx
         }
 
         /// <summary>
-        /// A line's end, lifted to roughly chest height.
+        /// A generic effect's point, lifted to roughly chest height.
         ///
-        /// The lift belongs to the LINES and to nothing else: a chain drawn
-        /// between two entity origins runs along the floor and reads as a decal
-        /// rather than as lightning between two bodies.
+        /// The lift belongs to the element effects and to nothing else: a beam
+        /// drawn between two entity origins runs along the floor and reads as a
+        /// decal rather than as lightning between two bodies. A skill's set
+        /// carries its own lift.
         /// </summary>
         private static Vector3 ToWorld(Unity.Mathematics.float3 position)
             => new Vector3(position.x, position.y + 0.9f, position.z);
@@ -655,7 +839,7 @@ namespace TogetherWeFall.Vfx
         /// blow landed, and where that is depends on what produced it: a
         /// projectile hit happens at the height the bolt was flying, while a
         /// nova's and a chain's happen at a body — and a body's origin is on the
-        /// floor, which is the very reason the chain LINES lift themselves by
+        /// floor, which is the very reason the chain BEAMS lift themselves by
         /// nine tenths of a metre. A prefab whose pivot is not where its effect
         /// is gets fixed by the same number.
         /// </summary>
@@ -670,21 +854,23 @@ namespace TogetherWeFall.Vfx
             // Trails are transforms in the scene, not events: left alone they
             // would hang in the air where the last projectile died.
             _trails.Clear();
+            _channels.Clear();
             _particles.Clear();
 
             if (!_hasWorld)
                 return;
 
-            _pool.Clear();
             _numbers.Clear();
         }
 
         private void OnDestroy()
         {
-            if (_hasWorld)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (_hasWorld && World.DefaultGameObjectInjectionWorld is { IsCreated: true })
             {
                 _eventsQuery.Dispose();
                 _flyingQuery.Dispose();
+                _castersQuery.Dispose();
             }
         }
     }

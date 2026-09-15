@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 
 namespace TogetherWeFall.Player
@@ -22,6 +23,7 @@ namespace TogetherWeFall.Player
     /// </summary>
     public struct PlayerCharacter : IComponentData
     {
+        [GhostField]
         public int PlayerId;
     }
 
@@ -37,14 +39,25 @@ namespace TogetherWeFall.Player
     public struct PlayerWarp : IComponentData
     {
         /// <summary>Raised on every warp. A counter, so two warps to the same spot are still two.</summary>
+        [GhostField]
         public uint Version;
 
+        [GhostField]
         public float3 Position;
 
         /// <summary>Which way to face on arrival. Zero keeps the facing.</summary>
+        [GhostField]
         public float3 Facing;
 
         /// <summary>Whether the host is still holding the body: input neither moves nor turns it.</summary>
+        [GhostField]
         public bool Holding;
+
+        /// <summary>
+        /// Seconds the body takes to get there. Zero is a teleport; a dash slides.
+        /// Every writer sets it, because the component keeps the last warp's value.
+        /// </summary>
+        [GhostField]
+        public float SlideSeconds;
     }
 }

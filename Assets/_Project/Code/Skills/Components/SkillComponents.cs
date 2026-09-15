@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 using TogetherWeFall.Combat;
 using TogetherWeFall.Equipment;
@@ -90,7 +91,28 @@ namespace TogetherWeFall.Skills
         /// Count full-circle blows around wherever the caster stands, Interval
         /// apart — they follow a moving caster.
         /// </summary>
-        Cyclone = 12
+        Cyclone = 12,
+
+        /// <summary>
+        /// A sharp slide along the aim that stops short of the first body in the
+        /// way, or of a wall, and lands the primary key's skill there.
+        ///
+        /// A blink with one step: it deals nothing of its own, so a sword swings
+        /// with its own supports, and this skill only decides where from.
+        /// </summary>
+        DashStrike = 13,
+
+        /// <summary>
+        /// A beam from the caster along the aim to Range, stopping at the first
+        /// wall, striking every body within Radius of it.
+        ///
+        /// One cast is one pulse. Authored with a short cooldown and a cost per
+        /// pulse, a held button is the channel: the host already casts while a
+        /// key is down and the cooldown and mana allow, so the beam pulses while
+        /// both hold and ends the tick either stops — there is no channel state
+        /// to switch off.
+        /// </summary>
+        Beam = 14
     }
 
     /// <summary>
@@ -354,14 +376,18 @@ namespace TogetherWeFall.Skills
     public struct SkillSlot : IBufferElementData
     {
         /// <summary>The gear holding the socket, or Entity.Null for an empty key.</summary>
+        [GhostField]
         public Entity Gear;
 
+        [GhostField]
         public int SocketIndex;
 
         /// <summary>Seconds until the next spent charge comes back. Zero when none are spent.</summary>
+        [GhostField]
         public float CooldownRemaining;
 
         /// <summary>Presses used and not yet refilled. The key answers while this is under Charges.</summary>
+        [GhostField]
         public int ChargesSpent;
 
         /// <summary>
@@ -372,15 +398,18 @@ namespace TogetherWeFall.Skills
         /// on every cast. It exists so a held button on an empty key does not
         /// fold its supports every frame just to be told no.
         /// </summary>
+        [GhostField]
         public int Charges;
 
         /// <summary>The cooldown each spent charge refills over, as the last cast folded it.</summary>
+        [GhostField]
         public float Recharge;
 
         /// <summary>
         /// The refill is frozen. Raised by a blink for as long as it is still
         /// stepping, so its cooldown starts when the last blow has landed.
         /// </summary>
+        [GhostField]
         public bool Held;
 
         public bool HasBinding => Gear != Entity.Null;
@@ -400,7 +429,9 @@ namespace TogetherWeFall.Skills
     /// </summary>
     public struct CastCue : IComponentData
     {
+        [GhostField]
         public uint Count;
+        [GhostField]
         public SkillEffectKind Effect;
 
         /// <summary>
@@ -408,12 +439,14 @@ namespace TogetherWeFall.Skills
         /// just charged. What a swing has to fit inside, or a held button
         /// restarts it before the blade ever comes round.
         /// </summary>
+        [GhostField]
         public float Interval;
 
         /// <summary>
         /// Seconds from the press to the blow landing, or zero for a skill that
         /// lands at once. The swing is paced so the blade connects then.
         /// </summary>
+        [GhostField]
         public float StrikeDelay;
 
         /// <summary>
@@ -421,7 +454,23 @@ namespace TogetherWeFall.Skills
         /// way they sweep, and this is the count they alternate on — so the
         /// host, the arm and the slash all read the same answer.
         /// </summary>
+        [GhostField]
         public uint Swings;
+
+        /// <summary>
+        /// Where the last beam pulse ran, and whose look it wears — for the
+        /// presenter that holds a channelled beam between pulses. Interpolated,
+        /// so the beam turns smoothly rather than a step a pulse. Read only while
+        /// Effect is Beam.
+        /// </summary>
+        [GhostField(Quantization = 100, Smoothing = SmoothingAction.Interpolate)]
+        public float3 BeamOrigin;
+
+        [GhostField(Quantization = 100, Smoothing = SmoothingAction.Interpolate)]
+        public float3 BeamEnd;
+
+        [GhostField]
+        public int BeamVfxId;
 
         /// <summary>
         /// Whether a swing sweeps to the caster's right. Even swings do, odd
@@ -476,7 +525,8 @@ namespace TogetherWeFall.Skills
     }
 
     /// <summary>
-    /// A blink strike still stepping from body to body.
+    /// A blink strike still stepping from body to body — or a dash still sliding,
+    /// which is the same sequence with one landing and StrikeOnArrival raised.
     ///
     /// On the character and enableable, like the swing above it belongs to the
     /// one who pressed — and one at a time, because a body is only ever in one
@@ -512,6 +562,16 @@ namespace TogetherWeFall.Skills
         /// same ceiling: past seven a long sequence may revisit.
         /// </summary>
         public FixedList64Bytes<Entity> Visited;
+
+        /// <summary>
+        /// A dash: when the timer runs out the body has arrived at Position, and
+        /// one blow of the primary key's skill goes off there toward Facing, at
+        /// Next if the slide stopped short of a body.
+        /// </summary>
+        public bool StrikeOnArrival;
+
+        /// <summary>Which way a dash was going, and so which way its blow faces.</summary>
+        public float3 Facing;
     }
 
     // The starting loadout used to be a DefaultSkillSlot buffer here. Skills
@@ -619,6 +679,8 @@ namespace TogetherWeFall.Skills
     /// Every query that acts on projectiles filters by it, so an idle one is
     /// invisible to the simulation without anything asking what a pool is.
     /// </summary>
+    // The enabled bit is replicated: a client draws, counts and hides by it.
+    [GhostEnabledBit]
     public struct ProjectileActive : IComponentData, IEnableableComponent
     {
     }
@@ -646,6 +708,8 @@ namespace TogetherWeFall.Skills
     /// </summary>
     public struct SkillProjectile : IComponentData
     {
+        // Replicated: VfxPresenter draws the trail from it on every screen.
+        [GhostField]
         public float3 Velocity;
         public float Damage;
         public DamageType Type;
@@ -755,6 +819,8 @@ namespace TogetherWeFall.Skills
         /// whatever it lands on; the pool clears it when the projectile is fired
         /// again, because activation writes this whole struct.
         /// </summary>
+        // Replicated: VfxPresenter draws the trail from it on every screen.
+        [GhostField]
         public byte CarriedElements;
 
         /// <summary>
@@ -778,6 +844,8 @@ namespace TogetherWeFall.Skills
         /// Inherited by a fork for free, which is the right answer: a split
         /// fireball is still a fireball.
         /// </summary>
+        // Replicated: VfxPresenter draws the trail from it on every screen.
+        [GhostField]
         public int VfxId;
     }
 

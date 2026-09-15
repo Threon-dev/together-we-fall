@@ -12,8 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxPoisonCloud
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 1267626628730432487, guid: 53934e26e7458014a82d3dfa0a0b0109, type: 3}
+  _cast: {fileID: 2875593238434986760, guid: d3385230b2da7414c99163e3afd0867c, type: 3}
   _projectile: {fileID: 0}
-  _hit: {fileID: 6426256190938255714, guid: 2b234aa3fbca2cc4bac107ae891e8b5f, type: 3}
-  _scale: 1
+  _hit: {fileID: 6159446689826667016, guid: e28de347ee14cd947b0b4d5f55f42117, type: 3}
+  _scale: 3.5
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: cd79fbbe4ca2d204090b0dc30b85100d, type: 3}
+  _hitSound: {fileID: 0}

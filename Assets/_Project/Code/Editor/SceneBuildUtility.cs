@@ -23,6 +23,12 @@ using TogetherWeFall.Spawning.Authoring;
 using TogetherWeFall.UI;
 using TogetherWeFall.Vfx;
 
+using TogetherWeFall.Network;
+using TogetherWeFall.Network.Authoring;
+using TogetherWeFall.Player.Authoring;
+using TogetherWeFall.Inventory.Authoring;
+using TogetherWeFall.Lobby.Authoring;
+
 namespace TogetherWeFall.EditorTools
 {
     /// <summary>
@@ -63,42 +69,11 @@ namespace TogetherWeFall.EditorTools
             player.transform.position = position;
 
             CharacterController controller = player.AddComponent<CharacterController>();
-            controller.height = 2f;
+            controller.height = PlayerHeight;
             controller.radius = 0.5f;
             controller.center = Vector3.zero;
 
-            PlayerAnimationPresenter animation = player.AddComponent<PlayerAnimationPresenter>();
-
-            // The model is a child, so the motor turns the root and the model
-            // only animates. Its origin is at the feet; the controller's is in
-            // the middle of the capsule.
-            var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CharacterContentFactory.ModelPrefabPath);
-
-            if (modelPrefab == null)
-            {
-                Debug.LogError(
-                    $"[SceneBuildUtility] No player model at '{CharacterContentFactory.ModelPrefabPath}'. " +
-                    "The player will be invisible.");
-            }
-            else
-            {
-                var model = (GameObject)PrefabUtility.InstantiatePrefab(modelPrefab, player.transform);
-                model.transform.localPosition = new Vector3(0f, -controller.height * 0.5f, 0f);
-                model.transform.localRotation = Quaternion.identity;
-
-                CharacterContentFactory.ConvertMaterials(model);
-
-                // Not ??: a missing component is Unity's fake null, not a real one.
-                if (!model.TryGetComponent(out Animator animator))
-                    animator = model.AddComponent<Animator>();
-                animator.runtimeAnimatorController = CharacterContentFactory.CreateLocomotionController();
-
-                // The motor owns position and facing; clips only pose the body.
-                animator.applyRootMotion = false;
-
-                SetReference(animation, "_animator", animator);
-                WriteWeaponModels(animation);
-            }
+            AddBody(player);
 
             // Its own layer, so the portrait camera can be pointed at the
             // character and see nothing else. Recursive because the model has
@@ -110,6 +85,77 @@ namespace TogetherWeFall.EditorTools
             player.AddComponent<PlayerPositionPublisher>();
             player.AddComponent<PlayerActionPublisher>();
             return player.AddComponent<PlayerMotor>();
+        }
+
+        /// <summary>
+        /// Capsule height of a player, and the distance from its centre — where
+        /// the transform and the network position sit — down to the feet the
+        /// model stands on is half of it.
+        /// </summary>
+        private const float PlayerHeight = 2f;
+
+        /// <summary>
+        /// The presenter that draws other players, with an inactive body to copy
+        /// per remote player.
+        ///
+        /// The body is built by the same <see cref="AddBody"/> as the local
+        /// player's, so a friend has the same model, controller and weapon list —
+        /// and it is left on the default layer, because the portrait camera
+        /// looks at the character layer and should find only this screen's player.
+        /// </summary>
+        public static RemotePlayerPresenter CreateRemotePlayers()
+        {
+            var presenterObject = new GameObject("RemotePlayers");
+            RemotePlayerPresenter presenter = presenterObject.AddComponent<RemotePlayerPresenter>();
+
+            var template = new GameObject("RemotePlayerTemplate");
+            template.transform.SetParent(presenterObject.transform, worldPositionStays: false);
+
+            PlayerAnimationPresenter body = AddBody(template);
+            template.SetActive(false);
+
+            SetReference(presenter, "_bodyTemplate", body);
+            return presenter;
+        }
+
+        /// <summary>
+        /// The model, its animator and the animation presenter on a body root.
+        /// </summary>
+        private static PlayerAnimationPresenter AddBody(GameObject root)
+        {
+            PlayerAnimationPresenter animation = root.AddComponent<PlayerAnimationPresenter>();
+
+            // The model is a child, so the motor turns the root and the model
+            // only animates. Its origin is at the feet; the controller's is in
+            // the middle of the capsule.
+            var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CharacterContentFactory.ModelPrefabPath);
+
+            if (modelPrefab == null)
+            {
+                Debug.LogError(
+                    $"[SceneBuildUtility] No player model at '{CharacterContentFactory.ModelPrefabPath}'. " +
+                    "The player will be invisible.");
+                return animation;
+            }
+
+            var model = (GameObject)PrefabUtility.InstantiatePrefab(modelPrefab, root.transform);
+            model.transform.localPosition = new Vector3(0f, -PlayerHeight * 0.5f, 0f);
+            model.transform.localRotation = Quaternion.identity;
+
+            CharacterContentFactory.ConvertMaterials(model);
+
+            // Not ??: a missing component is Unity's fake null, not a real one.
+            if (!model.TryGetComponent(out Animator animator))
+                animator = model.AddComponent<Animator>();
+            animator.runtimeAnimatorController = CharacterContentFactory.CreateLocomotionController();
+
+            // The motor owns position and facing; clips only pose the body.
+            animator.applyRootMotion = false;
+
+            SetReference(animation, "_animator", animator);
+            WriteWeaponModels(animation);
+
+            return animation;
         }
 
         /// <summary>
@@ -311,9 +357,75 @@ namespace TogetherWeFall.EditorTools
             serialized.FindProperty("_curtainPresenter").objectReferenceValue = curtainPresenter;
             serialized.FindProperty("_audioPresenter").objectReferenceValue = audioPresenter;
             serialized.FindProperty("_playerHud").objectReferenceValue = playerHud;
+            serialized.FindProperty("_remotePlayers").objectReferenceValue = CreateRemotePlayers();
             serialized.FindProperty("_playerAnimation").objectReferenceValue =
                 player.GetComponent<PlayerAnimationPresenter>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// Makes a prefab a ghost the host replicates to every client.
+        ///
+        /// Interpolated only: nothing but the host simulates enemies, projectiles,
+        /// zones, chests or loot, so a client has nothing to predict and simply
+        /// draws what the snapshots say.
+        /// </summary>
+        private static void AddInterpolatedGhost(GameObject source)
+        {
+            var ghost = source.AddComponent<Unity.NetCode.GhostAuthoringComponent>();
+            ghost.DefaultGhostMode = Unity.NetCode.GhostMode.Interpolated;
+            ghost.SupportedGhostModes = Unity.NetCode.GhostModeMask.Interpolated;
+        }
+
+        /// <summary>
+        /// The character sheet the host instantiates per player — replicated, so
+        /// every screen draws its own HUD, bag and shop, and the bodies of the
+        /// others, from the host's numbers.
+        /// </summary>
+        public static GameObject CreateCharacterPrefab()
+        {
+            var source = new GameObject("PlayerCharacter");
+            AddInterpolatedGhost(source);
+            source.AddComponent<PlayerCharacterAuthoring>();
+            return SaveAsPrefab(source, "PlayerCharacter");
+        }
+
+        /// <summary>A player's bag, sized and owned at runtime.</summary>
+        public static GameObject CreateBagPrefab()
+        {
+            var source = new GameObject("PlayerBag");
+            AddInterpolatedGhost(source);
+            source.AddComponent<PlayerBagAuthoring>();
+            return SaveAsPrefab(source, "PlayerBag");
+        }
+
+        /// <summary>A vendor's shelf, stocked at runtime by VendorStockSystem.</summary>
+        public static GameObject CreateVendorShelfPrefab()
+        {
+            var source = new GameObject("VendorShelf");
+            AddInterpolatedGhost(source);
+            source.AddComponent<VendorShelfAuthoring>();
+            return SaveAsPrefab(source, "VendorShelf");
+        }
+
+        /// <summary>
+        /// The ghost that stands for a connected player. No mesh: the body is a
+        /// GameObject — the local player, or RemotePlayerPresenter's copy — and
+        /// this only carries commands in and a position out.
+        /// </summary>
+        public static GameObject CreateAvatarPrefab()
+        {
+            var source = new GameObject("PlayerAvatar");
+
+            var ghost = source.AddComponent<Unity.NetCode.GhostAuthoringComponent>();
+            ghost.HasOwner = true;
+            ghost.SupportAutoCommandTarget = true;
+            ghost.DefaultGhostMode = Unity.NetCode.GhostMode.Interpolated;
+            ghost.SupportedGhostModes = Unity.NetCode.GhostModeMask.Interpolated;
+
+            source.AddComponent<PlayerAvatarAuthoring>();
+
+            return SaveAsPrefab(source, "PlayerAvatar");
         }
 
         public static GameObject CreateWaveSpawner(GameObject enemyPrefab, SpawnConfig config)
@@ -366,6 +478,8 @@ namespace TogetherWeFall.EditorTools
             EnemyAuthoring authoring = source.AddComponent<EnemyAuthoring>();
             SetReference(authoring, "_config", config);
 
+            AddInterpolatedGhost(source);
+
             return SaveAsPrefab(source, "EnemyPrefab");
         }
 
@@ -389,6 +503,8 @@ namespace TogetherWeFall.EditorTools
             var authoring = source.AddComponent<ChestAuthoring>();
             SetReference(authoring, "_config", config);
 
+            AddInterpolatedGhost(source);
+
             return SaveAsPrefab(source, "ChestPrefab");
         }
 
@@ -408,6 +524,8 @@ namespace TogetherWeFall.EditorTools
 
             var authoring = source.AddComponent<LootItemAuthoring>();
             SetReference(authoring, "_config", config);
+
+            AddInterpolatedGhost(source);
 
             return SaveAsPrefab(source, "LootItemPrefab");
         }
@@ -429,6 +547,8 @@ namespace TogetherWeFall.EditorTools
             // and their walls by ray.
             var source = new GameObject("SkillProjectilePrefab");
             source.AddComponent<SkillProjectileAuthoring>();
+
+            AddInterpolatedGhost(source);
 
             return SaveAsPrefab(source, "SkillProjectilePrefab");
         }
@@ -462,6 +582,8 @@ namespace TogetherWeFall.EditorTools
             Object.DestroyImmediate(source.GetComponent<CapsuleCollider>());
 
             source.AddComponent<ElementZoneAuthoring>();
+
+            AddInterpolatedGhost(source);
 
             return SaveAsPrefab(source, "ElementZonePrefab");
         }
@@ -664,7 +786,7 @@ namespace TogetherWeFall.EditorTools
             tables.arraySize = 1;
             tables.GetArrayElementAtIndex(0).objectReferenceValue = table;
 
-            WriteSets(serialized.FindProperty("_sets"));
+            WriteSets(serialized.FindProperty("_sets"), table);
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
@@ -685,9 +807,10 @@ namespace TogetherWeFall.EditorTools
         /// The demo set is ensured first, so the mechanism exists in content on
         /// a fresh project rather than only in code.
         /// </summary>
-        private static void WriteSets(SerializedProperty list)
+        private static void WriteSets(SerializedProperty list, LootTable table)
         {
             ItemContentFactory.CreateOrLoadDemoSet();
+            SetContentFactory.CreateSets(table);
 
             string[] guids = AssetDatabase.FindAssets($"t:{nameof(ItemSetDefinition)}");
             list.arraySize = guids.Length;
@@ -738,6 +861,14 @@ namespace TogetherWeFall.EditorTools
             var statsObject = new GameObject("CharacterStats");
             CharacterStatsAuthoring authoring = statsObject.AddComponent<CharacterStatsAuthoring>();
 
+            // The runtime ghost prefabs ride with the sheet: every scene already
+            // puts this object into its SubScene, so no new manual step.
+            var prefabs = statsObject.AddComponent<NetworkPrefabsAuthoring>();
+            SetReference(prefabs, "_avatar", CreateAvatarPrefab());
+            SetReference(prefabs, "_character", CreateCharacterPrefab());
+            SetReference(prefabs, "_bag", CreateBagPrefab());
+            SetReference(prefabs, "_vendorShelf", CreateVendorShelfPrefab());
+
             SetReference(authoring, "_config", config);
 
             // The loadout, as its own asset. Created empty on a fresh project
@@ -786,12 +917,16 @@ namespace TogetherWeFall.EditorTools
         }
 
         /// <summary>
-        /// The object that draws chain lines and blast rings and knocks the
-        /// camera about. Its pooled line renderers are parented to it, so the
-        /// whole effect layer is one collapsible entry in the hierarchy.
+        /// The object that draws the effect pack's prefabs and knocks the camera
+        /// about. Its pooled instances are parented to it, so the whole effect
+        /// layer is one collapsible entry in the hierarchy.
         /// </summary>
-        public static VfxPresenter CreateVfxPresenter(VfxConfig config, Material lineMaterial)
+        public static VfxPresenter CreateVfxPresenter(VfxConfig config)
         {
+            // What a chain jump, a reaction and a corpse blast look like per
+            // element. Written only into an empty table, like every factory here.
+            SkillVfxContentFactory.FillElementEffects(config);
+
             // Behind everything else, and unclickable. Numbers over a crowd must
             // never be the thing covering a panel the player opened, and they
             // must never be the thing that ate a cast.
@@ -809,7 +944,6 @@ namespace TogetherWeFall.EditorTools
 
             var serialized = new SerializedObject(presenter);
             serialized.FindProperty("_config").objectReferenceValue = config;
-            serialized.FindProperty("_lineMaterial").objectReferenceValue = lineMaterial;
             serialized.FindProperty("_canvas").objectReferenceValue = canvas;
 
             SerializedProperty list = serialized.FindProperty("_skillVfx");
@@ -821,36 +955,6 @@ namespace TogetherWeFall.EditorTools
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             return presenter;
-        }
-
-        /// <summary>
-        /// The material the effect lines are drawn with.
-        ///
-        /// Unlit, and picked from a chain of fallbacks because which shaders a
-        /// project has depends on its render pipeline. The pool tints each line
-        /// through a property block AND through vertex colours, so whichever of
-        /// these turns up, one of the two paths colours it.
-        /// </summary>
-        public static Material CreateVfxLineMaterial(string name)
-        {
-            EnsureAssetFolder(ArtFolder);
-            string path = $"{ArtFolder}/{name}.mat";
-
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null)
-                return existing;
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                            ?? Shader.Find("Universal Render Pipeline/Unlit")
-                            ?? Shader.Find("Sprites/Default")
-                            ?? Shader.Find("Unlit/Color");
-
-            var material = new Material(shader) { name = name };
-            material.SetColor("_BaseColor", Color.white);
-            material.color = Color.white;
-
-            AssetDatabase.CreateAsset(material, path);
-            return material;
         }
 
         /// <summary>
@@ -1065,9 +1169,9 @@ namespace TogetherWeFall.EditorTools
         /// Filled in on creation and never touched again, the same way the
         /// sample items are: a table with eight empty rows is something a
         /// designer drops clips into, and an empty table is something they have
-        /// to work out the shape of first. No clips are assigned — there are
-        /// none in the project — so every cue is silent until one is, which is
-        /// a normal state rather than an error.
+        /// to work out the shape of first. Clips come from the effect pack; a
+        /// missing one leaves its slot empty, which is silence rather than an
+        /// error.
         /// </summary>
         public static AudioConfig CreateAudioConfig(string assetName)
         {
@@ -1085,16 +1189,24 @@ namespace TogetherWeFall.EditorTools
             // carnage and still reads as individual bodies. That number is
             // measured; the other two are the same reasoning applied to
             // shorter sounds and want a pass with actual clips in them.
-            var defaults = new (AudioCue cue, float volume, bool spatial, int voices, float gap)[]
+            //
+            // The last column is clips under the pack's Sound folder. The first
+            // two rows have none on purpose: a skill brings its sounds on its
+            // visual set, and those rows are only the budget they play under.
+            var defaults = new (AudioCue cue, float volume, bool spatial, int voices, float gap, string[] clips)[]
             {
-                (AudioCue.SkillCast, 0.6f, true, 4, 0.03f),
-                (AudioCue.ProjectileImpact, 0.5f, true, 4, 0.03f),
-                (AudioCue.Explosion, 0.9f, true, 2, 0.10f),
-                (AudioCue.ChainZap, 0.6f, true, 3, 0.06f),
-                (AudioCue.EnemyDeath, 0.7f, true, 3, 0.09f),
-                (AudioCue.ChestOpen, 0.9f, true, 1, 0f),
-                (AudioCue.ItemPickup, 0.8f, false, 2, 0f),
-                (AudioCue.UiClick, 0.6f, false, 3, 0f)
+                (AudioCue.SkillCast, 0.6f, true, 4, 0.03f, System.Array.Empty<string>()),
+                (AudioCue.ProjectileImpact, 0.5f, true, 4, 0.03f, System.Array.Empty<string>()),
+                (AudioCue.Explosion, 0.9f, true, 2, 0.10f, new[]
+                {
+                    "Explosion/retro_explosion_medium", "Explosion/retro_explosion_medium2",
+                    "Explosion/retro_explosion_small2"
+                }),
+                (AudioCue.ChainZap, 0.6f, true, 3, 0.06f, new[] { "Combat/retro_combat_electric" }),
+                (AudioCue.EnemyDeath, 0.7f, true, 3, 0.09f, new[] { "Gore/retro_blood", "Gore/retro_bone" }),
+                (AudioCue.ChestOpen, 0.9f, true, 1, 0f, new[] { "Misc/retro_treasure_coins" }),
+                (AudioCue.ItemPickup, 0.8f, false, 2, 0f, new[] { "Misc/retro_pop" }),
+                (AudioCue.UiClick, 0.6f, false, 3, 0f, new[] { "Misc/retro_pop" })
             };
 
             var serialized = new SerializedObject(config);
@@ -1112,7 +1224,15 @@ namespace TogetherWeFall.EditorTools
                 element.FindPropertyRelative("_minIntervalSeconds").floatValue = defaults[i].gap;
                 element.FindPropertyRelative("_pitchRange").vector2Value =
                     new Vector2(0.95f, 1.05f);
-                element.FindPropertyRelative("_clips").arraySize = 0;
+                SerializedProperty clips = element.FindPropertyRelative("_clips");
+                clips.arraySize = defaults[i].clips.Length;
+
+                for (int c = 0; c < defaults[i].clips.Length; c++)
+                {
+                    clips.GetArrayElementAtIndex(c).objectReferenceValue =
+                        AssetDatabase.LoadAssetAtPath<AudioClip>(
+                            $"{SkillVfxContentFactory.Sounds}/{defaults[i].clips[c]}.wav");
+                }
             }
 
             serialized.ApplyModifiedPropertiesWithoutUndo();

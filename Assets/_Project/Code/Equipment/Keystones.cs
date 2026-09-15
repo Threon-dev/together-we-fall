@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 using TogetherWeFall.Player;
 
 namespace TogetherWeFall.Equipment
@@ -123,6 +124,7 @@ namespace TogetherWeFall.Equipment
     /// </summary>
     public struct KeystoneComponent : IComponentData
     {
+        [GhostField]
         public KeystoneEffect Effect;
 
         /// <summary>
@@ -133,6 +135,7 @@ namespace TogetherWeFall.Equipment
         /// walks every slot anyway — and finding out later would mean walking
         /// them all again from the UI.
         /// </summary>
+        [GhostField]
         public int Ignored;
     }
 

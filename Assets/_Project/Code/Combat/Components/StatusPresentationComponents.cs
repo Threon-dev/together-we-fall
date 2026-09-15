@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 
 namespace TogetherWeFall.Combat
@@ -30,6 +31,8 @@ namespace TogetherWeFall.Combat
     public struct StatusVisual : IComponentData
     {
         /// <summary>Every status on this body, as a StatusMask. Zero is a clean one.</summary>
+        // Replicated: the status icons over a body are drawn on every screen.
+        [GhostField]
         public uint Icons;
 
         /// <summary>

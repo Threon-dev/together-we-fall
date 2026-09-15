@@ -15,6 +15,7 @@ namespace TogetherWeFall.Skills.Systems
     /// zones. That is the state of every scene built before this feature existed,
     /// and it plays as it always did.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct ZonePoolSystem : ISystem
     {

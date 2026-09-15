@@ -21,6 +21,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// MovementData.DesiredVelocity — the transform is still written by exactly
     /// one system downstream.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(FollowPathSystem))]
     public partial struct SeparationSystem : ISystem

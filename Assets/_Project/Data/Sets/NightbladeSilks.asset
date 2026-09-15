@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6385964d0d314ec18add14df44862408, type: 3}
+  m_Name: NightbladeSilks
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemSetDefinition
+  _setId: NightbladeSilks
+  _setName: Nightblade Silks
+  _members:
+  - {fileID: 11400000, guid: 88c3398833842cb439c8bcb9da8e1ce7, type: 2}
+  - {fileID: 11400000, guid: d0689bc1a6e8abb4cb27d62af56ab6c2, type: 2}
+  - {fileID: 11400000, guid: 561715ee32dde55418081b27c8c2d2e1, type: 2}
+  - {fileID: 11400000, guid: d69bb1860b0a2a142ba8e15afbb2fc01, type: 2}
+  _thresholds:
+  - _requiredPieceCount: 2
+    _bonuses:
+    - _stat: 10
+      _kind: 0
+      _value: 8
+    - _stat: 4
+      _kind: 1
+      _value: 10
+    _bonusSkillModifier: {fileID: 0}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 4
+    _bonuses:
+    - _stat: 10
+      _kind: 0
+      _value: 7
+    _bonusSkillModifier: {fileID: 11400000, guid: 34763fe6d0e78b7458d688b2de98161f,
+      type: 2}
+    _bonusKeystone: 0

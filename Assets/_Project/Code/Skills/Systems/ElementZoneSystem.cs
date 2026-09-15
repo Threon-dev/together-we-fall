@@ -18,6 +18,7 @@ namespace TogetherWeFall.Skills.Systems
     /// would cost more to schedule than to run, and this way the buffer write is
     /// straightforward rather than a list gathered and drained.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillCastSystem))]
     [UpdateBefore(typeof(SkillAreaSystem))]

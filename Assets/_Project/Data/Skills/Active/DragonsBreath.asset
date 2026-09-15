@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9b264467090da44a34c9771d9817de, type: 3}
+  m_Name: DragonsBreath
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillDefinition
+  _displayName: Dragon's Breath
+  _effect: 1
+  _damageType: 1
+  _baseDamage: 22
+  _cooldown: 0.9
+  _manaCost: 12
+  _range: 6
+  _radius: 6
+  _arcDegrees: 50
+  _projectileSpeed: 26
+  _zoneDuration: 5
+  _zoneTickInterval: 0.5
+  _baseChains: 0
+  _chainRange: 8
+  _chainDelay: 0.07
+  _count: 1
+  _interval: 0.1
+  _scatter: 4
+  _appliedStatus: {fileID: 11400000, guid: d7a60f7230a8594469f1e8ff787cefc0, type: 2}
+  _vfx: {fileID: 11400000, guid: 5f97eae1aa955ee41b83f480a54b2387, type: 2}
+  _modifiers: []

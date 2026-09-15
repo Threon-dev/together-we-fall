@@ -21,6 +21,7 @@ namespace TogetherWeFall.Lobby.Systems
     /// What this never does is load a scene. That is the one part that needs
     /// Unity, and it lives in SceneLoadBridge, reading the phase this writes.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct DungeonPortalSystem : ISystem
     {
@@ -62,7 +63,7 @@ namespace TogetherWeFall.Lobby.Systems
                     continue;
                 }
 
-                if (players.Length == 0 || ready.Length < players.Length)
+                if (!EveryoneHereIsReady(players, ready))
                     continue;
 
                 Begin(ref state, transition, portal.ValueRO.TargetScene);
@@ -135,6 +136,32 @@ namespace TogetherWeFall.Lobby.Systems
                 return;
 
             transition.ValueRW.Phase = SceneTransitionPhase.Ready;
+        }
+
+        /// <summary>
+        /// Whether every player who is actually here has agreed, and somebody is.
+        ///
+        /// Targetable rather than merely listed: a player who disconnected keeps
+        /// their element so indices do not shift, and a portal that counted them
+        /// would wait for somebody who is never coming back.
+        /// </summary>
+        private static bool EveryoneHereIsReady(
+            DynamicBuffer<PlayerPositionElement> players, DynamicBuffer<LobbyReadyPlayer> ready)
+        {
+            int present = 0;
+
+            for (int i = 0; i < players.Length; i++)
+            {
+                if (!players[i].IsTargetable)
+                    continue;
+
+                present++;
+
+                if (IndexOf(ready, players[i].PlayerId) < 0)
+                    return false;
+            }
+
+            return present > 0;
         }
 
         private static int IndexOf(DynamicBuffer<LobbyReadyPlayer> ready, int playerId)

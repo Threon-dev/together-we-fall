@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
@@ -102,8 +103,11 @@ namespace TogetherWeFall.Loot
     /// </summary>
     public struct ItemInstance : IComponentData
     {
+        [GhostField]
         public int ItemId;
+        [GhostField]
         public ItemRarity Rarity;
+        [GhostField]
         public ItemRiskState RiskState;
     }
 
@@ -116,6 +120,7 @@ namespace TogetherWeFall.Loot
     /// </summary>
     public struct ItemDisplayName : IComponentData
     {
+        [GhostField]
         public FixedString64Bytes Value;
     }
 

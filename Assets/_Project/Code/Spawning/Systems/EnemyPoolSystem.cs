@@ -16,6 +16,7 @@ namespace TogetherWeFall.Spawning.Systems
     /// for more than is free gets what is free, which is what the cap always
     /// meant anyway.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct EnemyPoolSystem : ISystem
     {

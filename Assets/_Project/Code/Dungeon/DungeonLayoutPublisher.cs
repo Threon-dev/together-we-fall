@@ -24,7 +24,9 @@ namespace TogetherWeFall.Dungeon
 
         public bool Initialize()
         {
-            World world = World.DefaultGameObjectInjectionWorld;
+            // The simulation lives in the server world when this process hosts. A
+            // client has none, and publishing into its own world costs nothing.
+            World world = Unity.NetCode.ClientServerBootstrap.ServerWorld ?? World.DefaultGameObjectInjectionWorld;
             if (world == null || !world.IsCreated)
             {
                 Debug.LogError(

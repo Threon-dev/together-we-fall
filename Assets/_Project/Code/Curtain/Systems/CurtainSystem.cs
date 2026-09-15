@@ -16,6 +16,7 @@ namespace TogetherWeFall.Curtain.Systems
     /// that drops the world to five percent would otherwise turn a half-second
     /// fade into ten. A curtain is not part of the action it is covering.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct CurtainSystem : ISystem
     {

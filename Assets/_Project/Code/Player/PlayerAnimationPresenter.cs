@@ -31,7 +31,6 @@ namespace TogetherWeFall.Player
     ///
     /// Presentation only: nothing reads any of this back.
     /// </summary>
-    [RequireComponent(typeof(CharacterController))]
     public sealed class PlayerAnimationPresenter : MonoBehaviour
     {
         private static readonly int MoveXHash = Animator.StringToHash("MoveX");
@@ -168,7 +167,7 @@ namespace TogetherWeFall.Player
                  "and the bow's upper limb with it.")]
         [SerializeField] private float _quiverLean = 0.35f;
 
-        private CharacterController _controller;
+        private Vector3 _lastPosition;
 
         private EntityManager _entityManager;
         private EntityQuery _characterQuery;
@@ -194,6 +193,15 @@ namespace TogetherWeFall.Player
         private int _held;
         private bool _drawn;
         private float _lastCastTime = float.NegativeInfinity;
+
+        /// <summary>
+        /// What the last cast was, so a beam's next pulse is read as the same
+        /// channel rather than a fresh cast.
+        /// </summary>
+        private SkillEffectKind _lastCastEffect;
+
+        /// <summary>Longer than a beam's pulse and a late snapshot together.</summary>
+        private const float ChannelGap = 0.3f;
         private float _swapAt = -1f;
         private bool _swapToHand;
 
@@ -223,7 +231,7 @@ namespace TogetherWeFall.Player
             _hasWorld = true;
         }
 
-        private void Awake() => _controller = GetComponent<CharacterController>();
+        private void Awake() => _lastPosition = transform.position;
 
         // Late, so the motor has already moved the body this frame.
         private void LateUpdate()
@@ -231,7 +239,11 @@ namespace TogetherWeFall.Player
             if (_animator == null)
                 return;
 
-            Vector3 velocity = _controller.velocity;
+            // Measured from the transform rather than read off a CharacterController,
+            // so the same presenter animates a remote player's body, which has none.
+            Vector3 position = transform.position;
+            Vector3 velocity = Time.deltaTime > 0f ? (position - _lastPosition) / Time.deltaTime : Vector3.zero;
+            _lastPosition = position;
             velocity.y = 0f;
 
             Vector3 local = transform.InverseTransformDirection(velocity) / _runSpeed;
@@ -293,8 +305,16 @@ namespace TogetherWeFall.Player
             {
                 if (cue.Count != _seenCasts)
                 {
+                    // A held beam casts a pulse several times a second. The arm
+                    // raises once for the channel; each pulse after that only
+                    // keeps the guard up — retriggering the clip is a spasm.
+                    bool channelling = cue.Effect == SkillEffectKind.Beam &&
+                                       _lastCastEffect == SkillEffectKind.Beam &&
+                                       Time.time - _lastCastTime < ChannelGap;
+
                     _lastCastTime = Time.time;
                     _lastCombatTime = Time.time;
+                    _lastCastEffect = cue.Effect;
 
                     // Paced so the blade connects when the blow lands, and never
                     // longer than the cooldown leaves before the next one.
@@ -313,7 +333,7 @@ namespace TogetherWeFall.Player
                         _drawnFor = cue.Effect;
                         _drawnSwing = cue.Swings;
                     }
-                    else
+                    else if (!channelling)
                     {
                         Swing(cue.Effect, cue.Swings);
                     }

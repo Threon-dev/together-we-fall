@@ -20,6 +20,7 @@ namespace TogetherWeFall.Spawning.Systems
     /// none of its business; it only knows how many enemies to put down and
     /// which points it may put them on.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct WaveSpawnSystem : ISystem
     {

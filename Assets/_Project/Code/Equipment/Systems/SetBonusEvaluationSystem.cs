@@ -28,6 +28,7 @@ namespace TogetherWeFall.Equipment.Systems
     /// — the equip transaction and the starter kit — and a third has to be added
     /// here too.
     /// </remarks>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(EquipmentSystem))]
     [UpdateAfter(typeof(TogetherWeFall.Skills.Systems.StarterKitSystem))]

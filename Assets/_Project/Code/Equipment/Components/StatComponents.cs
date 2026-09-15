@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 
 namespace TogetherWeFall.Equipment
 {
@@ -157,12 +158,14 @@ namespace TogetherWeFall.Equipment
     /// </summary>
     public struct PlayerStats : IComponentData
     {
+        [GhostField]
         public StatBlock Final;
 
         /// <summary>
         /// Bumped on every recompute. The UI compares it instead of diffing the
         /// numbers, so a panel rebuild happens when something actually changed.
         /// </summary>
+        [GhostField]
         public int Version;
     }
 

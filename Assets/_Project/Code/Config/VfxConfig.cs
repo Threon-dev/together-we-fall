@@ -1,7 +1,42 @@
+using System;
 using UnityEngine;
+using TogetherWeFall.Combat;
 
 namespace TogetherWeFall.Config
 {
+    /// <summary>
+    /// What one element looks like where no skill authored the look: the beam of
+    /// a chain jump, the burst where two elements met, and a blast nobody owns.
+    ///
+    /// Per element rather than one of each, because these carried the element's
+    /// colour when they were lines and rings — and a pack's prefab cannot be
+    /// tinted without flattening it, so the colour became a choice of prefab.
+    /// </summary>
+    [Serializable]
+    public sealed class ElementVfxSettings
+    {
+        [SerializeField] private DamageType _element = DamageType.Physical;
+
+        [Tooltip("A line from one body to the next — a chain jump, a bolt's first " +
+                 "stroke, a heal reaching an ally. Needs a LineRenderer: both ends " +
+                 "are set on every use.")]
+        [SerializeField] private GameObject _beam;
+
+        [Tooltip("Where two elements met: a reaction, or a shot picking one up " +
+                 "from a zone. Scaled by the reaction's radius.")]
+        [SerializeField] private GameObject _reaction;
+
+        [Tooltip("A blast no skill authored a look for — a corpse going off. A " +
+                 "skill's own blast is drawn by its visual set instead. Scaled by " +
+                 "the blast radius.")]
+        [SerializeField] private GameObject _blast;
+
+        public DamageType Element => _element;
+        public GameObject Beam => _beam;
+        public GameObject Reaction => _reaction;
+        public GameObject Blast => _blast;
+    }
+
     /// <summary>
     /// How hard the game hits back when a crowd dies.
     ///
@@ -16,25 +51,30 @@ namespace TogetherWeFall.Config
         menuName = "Together We Fall/VFX Config")]
     public sealed class VfxConfig : ScriptableObject
     {
-        [Header("Chain lines")]
+        [Header("Chain beams")]
         [Tooltip("How long a chain link stays on screen. Roughly the jump delay " +
                  "of the skill, so one link is visible until the next appears.")]
         [SerializeField, Range(0.03f, 0.6f)] private float _chainLinkSeconds = 0.12f;
 
-        [SerializeField, Range(0.02f, 0.5f)] private float _chainLinkWidth = 0.16f;
+        [Tooltip("Multiplier on the beam prefab's own width.")]
+        [SerializeField, Range(0.1f, 3f)] private float _chainLinkWidth = 0.5f;
 
         [Tooltip("The opening stroke, from the caster to the first target. " +
                  "Heavier than the jumps it sets off, because it is the part the " +
-                 "player aimed.")]
-        [SerializeField, Range(0.02f, 0.8f)] private float _boltStrikeWidth = 0.3f;
+                 "player aimed. A multiplier on the beam's own width.")]
+        [SerializeField, Range(0.1f, 3f)] private float _boltStrikeWidth = 0.8f;
 
         [SerializeField, Range(0.03f, 0.8f)] private float _boltStrikeSeconds = 0.18f;
 
-        [Header("Explosion ring")]
-        [Tooltip("How long the shockwave ring takes to reach the blast radius.")]
-        [SerializeField, Range(0.05f, 0.8f)] private float _explosionSeconds = 0.22f;
+        [Header("Element effects")]
+        [Tooltip("One row per element. An element with no row, or a row with an " +
+                 "empty slot, simply draws nothing there.")]
+        [SerializeField] private ElementVfxSettings[] _elements = Array.Empty<ElementVfxSettings>();
 
-        [SerializeField, Range(0.02f, 0.6f)] private float _explosionWidth = 0.22f;
+        [Tooltip("Prefab scale per metre of radius, for reactions and blasts. " +
+                 "The pack's explosions are about a metre across, so a blast of " +
+                 "radius three wants a scale of about 2.4.")]
+        [SerializeField, Range(0.1f, 3f)] private float _blastScalePerMetre = 0.8f;
 
         [Header("Damage numbers")]
         [Tooltip("How long a number stays up. Long enough to read, short enough " +
@@ -92,16 +132,11 @@ namespace TogetherWeFall.Config
 
         [SerializeField, Range(6, 32)] private int _statusIconFontSize = 11;
 
-        [Header("Pooling")]
-        [Tooltip("Line renderers kept alive and reused. Effects that fire dozens " +
-                 "of times a second must never allocate.")]
-        [SerializeField, Range(8, 512)] private int _poolSize = 96;
-
-        [Header("Authored effects")]
-        [Tooltip("How many copies of ONE particle prefab may be alive at once. " +
-                 "Past it the oldest one-shot is taken back rather than a new " +
-                 "one made — a trail on a projectile is never stolen. Per " +
-                 "prefab, so importing a pack of forty does not multiply this.")]
+        [Header("Pooled prefabs")]
+        [Tooltip("How many copies of ONE prefab may be alive at once. Past it the " +
+                 "oldest one-shot is taken back rather than a new one made — a " +
+                 "trail on a projectile is never stolen. Per prefab, so importing " +
+                 "a pack of forty does not multiply this.")]
         [SerializeField, Range(2, 64)] private int _particlesPerEffect = 16;
 
         [Tooltip("The least time a trail is left to fade after the thing carrying " +
@@ -123,14 +158,13 @@ namespace TogetherWeFall.Config
         public float BoltStrikeWidth => _boltStrikeWidth;
         public float BoltStrikeSeconds => _boltStrikeSeconds;
 
+        public float BlastScalePerMetre => _blastScalePerMetre;
+
         public float DamageNumberSeconds => _damageNumberSeconds;
         public float DamageNumberRise => _damageNumberRise;
         public int DamageNumberFontSize => _damageNumberFontSize;
         public float DamageNumberKillScale => _damageNumberKillScale;
         public int DamageNumberPoolSize => _damageNumberPoolSize;
-
-        public float ExplosionSeconds => _explosionSeconds;
-        public float ExplosionWidth => _explosionWidth;
 
         public float ExplosionShake => _explosionShake;
         public float ShakeIntervalSeconds => _shakeIntervalSeconds;
@@ -141,10 +175,50 @@ namespace TogetherWeFall.Config
         public float MassKillZoomPunch => _massKillZoomPunch;
         public float MassKillCooldownSeconds => _massKillCooldownSeconds;
 
-        public int PoolSize => _poolSize;
-
         public int ParticlesPerEffect => _particlesPerEffect;
         public float ParticleFadeSeconds => _particleFadeSeconds;
         public float ParticleMaxSeconds => _particleMaxSeconds;
+
+        /// <summary>
+        /// The element rows as a lookup, indexed by the enum value. Built once at
+        /// startup, like the audio cue table; a missing element comes back null
+        /// and draws nothing.
+        /// </summary>
+        public ElementVfxSettings[] BuildElementIndex()
+        {
+            int highest = 0;
+
+            foreach (DamageType value in Enum.GetValues(typeof(DamageType)))
+                highest = Mathf.Max(highest, (int)value);
+
+            var index = new ElementVfxSettings[highest + 1];
+
+            if (_elements == null)
+                return index;
+
+            for (int i = 0; i < _elements.Length; i++)
+            {
+                if (_elements[i] == null)
+                    continue;
+
+                int slot = (int)_elements[i].Element;
+
+                if (slot < 0 || slot >= index.Length)
+                    continue;
+
+                // First wins, and says so — the same rule as the audio cues.
+                if (index[slot] != null)
+                {
+                    Debug.LogWarning(
+                        $"[{nameof(VfxConfig)}] {_elements[i].Element} is listed twice — the second " +
+                        "row is ignored.", this);
+                    continue;
+                }
+
+                index[slot] = _elements[i];
+            }
+
+            return index;
+        }
     }
 }

@@ -106,7 +106,7 @@ namespace TogetherWeFall.Player
         }
 
         /// <summary>
-        /// One request per held button per frame.
+        /// One request per held or just-pressed button per frame.
         ///
         /// Deliberately not throttled here. A client that asks sixty times a
         /// second gets exactly as many casts as its cooldowns allow, because the
@@ -124,7 +124,11 @@ namespace TogetherWeFall.Player
 
             for (int slot = 0; slot < _input.CastSlotCount; slot++)
             {
-                if (!_input.IsCastHeld(slot))
+                // Pressed this frame counts as held. A tap that goes down and up
+                // inside one frame is not held at the moment it is read — and
+                // frames are long exactly when something like a video recorder
+                // is running, which is when taps started vanishing.
+                if (!_input.IsCastHeld(slot) && !_input.WasCastPressed(slot))
                     continue;
 
                 requests.Add(new SkillCastRequest

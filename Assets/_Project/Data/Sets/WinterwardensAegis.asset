@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6385964d0d314ec18add14df44862408, type: 3}
+  m_Name: WinterwardensAegis
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemSetDefinition
+  _setId: WinterwardensAegis
+  _setName: Winterwarden's Aegis
+  _members:
+  - {fileID: 11400000, guid: a0b6a3bd9cb6a134fa84e9544a9a9482, type: 2}
+  - {fileID: 11400000, guid: 7a3d09460cac4e343bdb7751b63eb32b, type: 2}
+  - {fileID: 11400000, guid: 9acf641896e5f4d47a90fe397a35d087, type: 2}
+  - {fileID: 11400000, guid: 224594103ea2dcd4fa7a42f279cf583b, type: 2}
+  - {fileID: 11400000, guid: f9c6ad5ffc133894c99007929d69c19a, type: 2}
+  _thresholds:
+  - _requiredPieceCount: 2
+    _bonuses:
+    - _stat: 6
+      _kind: 0
+      _value: 25
+    - _stat: 2
+      _kind: 1
+      _value: 25
+    _bonusSkillModifier: {fileID: 0}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 4
+    _bonuses:
+    - _stat: 3
+      _kind: 0
+      _value: 40
+    _bonusSkillModifier: {fileID: 11400000, guid: b9951659579923c4a96ba6264157b224,
+      type: 2}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 5
+    _bonuses:
+    - _stat: 3
+      _kind: 0
+      _value: 40
+    - _stat: 2
+      _kind: 1
+      _value: 25
+    _bonusSkillModifier: {fileID: 11400000, guid: b9951659579923c4a96ba6264157b224,
+      type: 2}
+    _bonusKeystone: 5

@@ -23,6 +23,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// NeedsRepath as input, the PathPoint buffer as output — is designed so
     /// that swap touches only this file.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(RepathRequestSystem))]
     public partial class PathfindingSystem : SystemBase

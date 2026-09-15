@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ffb4fefb0131f7842b57ce61080aa413, type: 3}
+  m_Name: GemShockburst
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemDefinition
+  _displayName: Shockburst Support
+  _icon: {fileID: -477945628, guid: 681e7e53eb6b2464796a3b703bbcd396, type: 3}
+  _model: {fileID: 0}
+  _backModel: {fileID: 0}
+  _stance: 0
+  _rarity: 2
+  _slot: 0
+  _isTwoHanded: 0
+  _baseStats: []
+  _affixes: []
+  _keystone: 0
+  _gemKind: 2
+  _gemSkill: {fileID: 0}
+  _gemSupport: {fileID: 11400000, guid: 20b058707d80e0044be2d9e7887087de, type: 2}
+  _gemSupportSecond: {fileID: 0}
+  _innateSkills: []
+  _signatureSkill: {fileID: 0}
+  _socketCount: 0
+  _linkGroups: 
+  _gridWidth: 1
+  _gridHeight: 1
+  _currencyValue: 0
+  _canRotate: 0

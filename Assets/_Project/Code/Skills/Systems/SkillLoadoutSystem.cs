@@ -14,6 +14,7 @@ namespace TogetherWeFall.Skills.Systems
     /// The number of keys is fixed and matches the four the input reader binds.
     /// Tying it to character progression is a decision for when there is any.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Player.Systems.PlayerCharacterRegistrySystem))]
     public partial struct SkillLoadoutSystem : ISystem

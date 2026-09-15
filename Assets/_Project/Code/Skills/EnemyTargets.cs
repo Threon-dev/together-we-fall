@@ -136,6 +136,36 @@ namespace TogetherWeFall.Skills
         }
 
         /// <summary>
+        /// The first enemy a body moving along a line would run into, or -1.
+        /// Only what is ahead counts, and only within halfWidth of the line;
+        /// along is how far down the line that body stands, or maxDistance.
+        /// </summary>
+        public int FindFirstAlong(
+            float3 origin, float3 direction, float maxDistance, float halfWidth, out float along)
+        {
+            int best = -1;
+            along = maxDistance;
+
+            for (int i = 0; i < Entities.Length; i++)
+            {
+                float3 offset = Transforms[i].Position - origin;
+                offset.y = 0f;
+
+                float forward = math.dot(offset, direction);
+                if (forward <= 0f || forward >= along)
+                    continue;
+
+                if (math.lengthsq(offset) - forward * forward > halfWidth * halfWidth)
+                    continue;
+
+                along = forward;
+                best = i;
+            }
+
+            return best;
+        }
+
+        /// <summary>
         /// Whether an offset from the centre falls inside the arc. Something
         /// standing exactly on the centre counts as inside — there is no
         /// direction to compare, and being on top of a swing should not save you.

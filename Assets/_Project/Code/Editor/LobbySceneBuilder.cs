@@ -142,9 +142,7 @@ namespace TogetherWeFall.EditorTools
             LobbyUI lobbyUI = SceneBuildUtility.CreateLobbyUI();
             SceneLoadBridge sceneLoader = SceneBuildUtility.CreateSceneLoadBridge();
 
-            Material vfxLineMaterial = SceneBuildUtility.CreateVfxLineMaterial("VfxLine");
-            VfxPresenter vfxPresenter =
-                SceneBuildUtility.CreateVfxPresenter(vfxConfig, vfxLineMaterial);
+            VfxPresenter vfxPresenter = SceneBuildUtility.CreateVfxPresenter(vfxConfig);
 
             CurtainPresenter curtainPresenter =
                 SceneBuildUtility.CreateCurtainPresenter();

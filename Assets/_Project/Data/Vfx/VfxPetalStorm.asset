@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxPetalStorm
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 7889401017342203591, guid: cfaf67d3192d9c2478c3fa6468f7954f, type: 3}
+  _projectile: {fileID: 2336456158585762187, guid: fcdd2d12995c4c14e93b63da003739ab, type: 3}
+  _hit: {fileID: 8905666514069622321, guid: a84cbbb54404c3d499340f02e684aab0, type: 3}
+  _scale: 1
+  _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

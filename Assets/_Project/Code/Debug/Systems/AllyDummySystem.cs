@@ -24,6 +24,7 @@ namespace TogetherWeFall.DebugTools.Systems
     /// the training dummy does the same in the other direction. A heal still goes
     /// through the resolver; this only takes it back down, slowly.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     [UpdateAfter(typeof(PlayerCharacterRegistrySystem))]
     public partial struct AllyDummySystem : ISystem

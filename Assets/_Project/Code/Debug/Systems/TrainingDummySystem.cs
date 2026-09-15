@@ -21,6 +21,7 @@ namespace TogetherWeFall.DebugTools.Systems
     /// it into the run tally, so the debug overlay measures real output against
     /// a target that never falls over.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(DamageResolutionSystem))]
     [UpdateBefore(typeof(DeathReactionSystem))]

@@ -206,7 +206,8 @@ namespace TogetherWeFall.DebugTools
 
         public void Dispose()
         {
-            if (!_ready)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (!_ready || World.DefaultGameObjectInjectionWorld is { IsCreated: true } == false)
                 return;
 
             _runQuery.Dispose();

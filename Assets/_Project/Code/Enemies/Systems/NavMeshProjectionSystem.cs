@@ -31,6 +31,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// thread covers a large crowd; if this ever shows up in a profile, the
     /// upgrade is a per-thread query pool, not a redesign.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SeparationSystem))]
     [UpdateBefore(typeof(MovementApplySystem))]

@@ -26,7 +26,7 @@ MonoBehaviour:
   - _stat: 8
     _value: 100
   - _stat: 9
-    _value: 1
+    _value: 10
   - _stat: 10
     _value: 5
   - _stat: 11

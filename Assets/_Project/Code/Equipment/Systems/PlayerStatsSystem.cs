@@ -19,6 +19,7 @@ namespace TogetherWeFall.Equipment.Systems
     /// give 2x, not 2.25x, and that difference is the entire reason the two
     /// modifier kinds are modelled separately.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(EquipmentSystem))]
     public partial struct PlayerStatsSystem : ISystem

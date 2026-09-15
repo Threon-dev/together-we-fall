@@ -158,8 +158,11 @@ namespace TogetherWeFall.Loot.Authoring
                                 DependsOn(innate[skill]);
                         }
 
-                        if (item.SignatureSkill != null)
-                            DependsOn(item.SignatureSkill);
+                        foreach (SkillDefinition signature in item.SignatureSkills)
+                        {
+                            if (signature != null)
+                                DependsOn(signature);
+                        }
                     }
                 }
             }
@@ -387,7 +390,14 @@ namespace TogetherWeFall.Loot.Authoring
                 blob.ActiveSkillCount =
                     Mathf.Min(item.ActiveSkillCount, blob.InnateSkillIds.Length);
 
-                blob.SignatureSkillId = item.SignatureSkillId;
+                // In key order, skipping holes, capped by what the list holds.
+                blob.SignatureSkillIds = default;
+
+                foreach (SkillDefinition signature in item.SignatureSkills)
+                {
+                    if (signature != null && blob.SignatureSkillIds.Length < blob.SignatureSkillIds.Capacity)
+                        blob.SignatureSkillIds.Add(signature.SkillId);
+                }
 
                 blob.SocketCount = item.SocketCount;
                 blob.LinkGroups = new FixedList32Bytes<byte>();

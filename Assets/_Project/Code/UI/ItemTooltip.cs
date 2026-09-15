@@ -600,10 +600,10 @@ namespace TogetherWeFall.UI
                     "welded into a socket.");
             }
 
-            if (item.SignatureSkillId != 0)
+            for (int i = 0; i < item.SignatureSkillIds.Length; i++)
             {
                 Line(detail,
-                    $"Always comes with {SkillName(skills, item.SignatureSkillId)} on the next key, " +
+                    $"Always comes with {SkillName(skills, item.SignatureSkillIds[i])} on the next key, " +
                     "welded into a socket of its own.");
             }
 
@@ -644,6 +644,9 @@ namespace TogetherWeFall.UI
 
                 case KeystoneEffect.ReactionsAlwaysConsume:
                     return "Keystone: every elemental reaction spends the status that fed it.";
+
+                case KeystoneEffect.SlowsAlsoWeaken:
+                    return "Keystone: everything you slow is also made vulnerable.";
 
                 default:
                     return $"Keystone: {keystone}.";
@@ -705,10 +708,15 @@ namespace TogetherWeFall.UI
                 Line(lines, $"{skill.BaseDamage:0.#} {skill.Type} damage");
             else if (skill.BaseDamage > 0f)
                 Line(lines, $"Heals {skill.BaseDamage:0.#}");
-            Line(lines, $"{skill.Cooldown:0.##} s cooldown");
+            // A beam's cooldown is its pulse, and its cost is paid per pulse.
+            bool beam = skill.Effect == SkillEffectKind.Beam;
+
+            Line(lines, beam
+                ? $"pulses every {skill.Cooldown:0.##} s while held"
+                : $"{skill.Cooldown:0.##} s cooldown");
 
             if (skill.ManaCost > 0f)
-                Line(lines, $"{skill.ManaCost:0.#} mana");
+                Line(lines, beam ? $"{skill.ManaCost:0.#} mana per pulse" : $"{skill.ManaCost:0.#} mana");
 
             if (skill.Range > 0f)
                 Line(lines, $"{skill.Range:0.#} m range");
@@ -788,6 +796,10 @@ namespace TogetherWeFall.UI
                     return "Steps behind body after body, striking each with your primary skill. " +
                            "Untouchable until the last blow; the cooldown starts then.";
 
+                case SkillEffectKind.DashStrike:
+                    return "Slides forward, stopping short of the first enemy or wall, and strikes " +
+                           "there with your primary skill. The cooldown starts with the blow.";
+
                 case SkillEffectKind.Volley:
                     return "Looses a fan of projectiles — a full ring when its arc is a circle.";
 
@@ -802,6 +814,11 @@ namespace TogetherWeFall.UI
 
                 case SkillEffectKind.Cyclone:
                     return "Spins, striking all around you again and again — it moves with you.";
+
+                case SkillEffectKind.Beam:
+                    return "Channels a beam along your aim, up to the first wall, for as long as you " +
+                           "hold the key: every pulse burns whatever stands in it and costs mana, " +
+                           "until you let go or run dry.";
 
                 default:
                     return effect.ToString();

@@ -28,6 +28,7 @@ namespace TogetherWeFall.Combat.Systems
     /// down, so nothing chases, targets or counts it any more — and then fades
     /// out over a moment. What kills a wave should look like a wave dying.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(DamageResolutionSystem))]
     public partial struct DeathReactionSystem : ISystem

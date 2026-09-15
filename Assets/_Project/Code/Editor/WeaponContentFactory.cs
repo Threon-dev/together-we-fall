@@ -147,10 +147,12 @@ namespace TogetherWeFall.EditorTools
                 SceneBuildUtility.EnsureInLootTable(table, item);
             }
 
-            // The blink, on every sword in the folder rather than only the ones
-            // this pack made — the hand-authored ones are swords too. Filled only
-            // when empty, so a sword somebody gave another skill keeps it.
+            // The blink and the dash, on every sword in the folder rather than
+            // only the ones this pack made — the hand-authored ones are swords
+            // too. Filled only when empty, so a sword somebody gave other skills
+            // keeps them.
             SkillDefinition blink = SkillContentFactory.CreateBlinkStrike();
+            SkillDefinition dash = SkillContentFactory.CreateDashStrike();
 
             foreach (string guid in AssetDatabase.FindAssets("t:ItemDefinition", new[] { ItemFolder + "/Swords" }))
             {
@@ -159,7 +161,15 @@ namespace TogetherWeFall.EditorTools
                     continue;
 
                 var serialized = new SerializedObject(sword);
-                FillIfEmpty(serialized, "_signatureSkill", blink);
+                SerializedProperty signatures = serialized.FindProperty("_signatureSkills");
+
+                if (signatures.arraySize == 0)
+                {
+                    signatures.arraySize = 2;
+                    signatures.GetArrayElementAtIndex(0).objectReferenceValue = blink;
+                    signatures.GetArrayElementAtIndex(1).objectReferenceValue = dash;
+                }
+
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
         }

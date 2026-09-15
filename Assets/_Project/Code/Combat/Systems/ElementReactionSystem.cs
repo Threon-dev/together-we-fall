@@ -43,6 +43,7 @@ namespace TogetherWeFall.Combat.Systems
     /// no rule authored would otherwise silently swallow the combination the
     /// player did build. Cascading reactions are deliberately out.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Skills.Systems.SkillHitSystem))]
     [UpdateBefore(typeof(DamageResolutionSystem))]
@@ -540,6 +541,7 @@ namespace TogetherWeFall.Combat.Systems
                     Kind = VfxEventKind.ElementBurst,
                     Position = target.Position,
                     Color = DamageTypePalette.For(announced),
+                    Element = announced,
                     Magnitude = rule.Kind == ElementReactionKind.Explosion
                         ? rule.Radius
                         : 1.2f

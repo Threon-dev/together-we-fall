@@ -11,6 +11,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// MovementData.DesiredVelocity. Replaces the stage-2 DirectSteeringSystem
     /// and writes the same field, so nothing downstream changed.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(PathfindingSystem))]
     public partial struct FollowPathSystem : ISystem

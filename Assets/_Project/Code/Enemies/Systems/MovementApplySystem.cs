@@ -18,6 +18,7 @@ namespace TogetherWeFall.Enemies.Systems
     /// Presentation state is updated here too — only the fields that will one
     /// day travel to the client, and no AI decisions.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SeparationSystem))]
     public partial struct MovementApplySystem : ISystem

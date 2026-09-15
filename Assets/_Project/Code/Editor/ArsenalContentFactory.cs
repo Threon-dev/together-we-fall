@@ -65,7 +65,7 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 2.4f;
                 s.ZoneDuration = 3f;
                 s.ZoneTickInterval = 0.5f;
-            }, "Fire/Fire_explosion_earth", null, "Range_attack/Hit_fire", scale: 0.8f);
+            }, "Environment/Fire/Field/FireField", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 2.4f);
 
             SkillDefinition petalStorm = Skill("PetalStorm", "Petal Storm", s =>
             {
@@ -77,7 +77,7 @@ namespace TogetherWeFall.EditorTools
                 s.ProjectileSpeed = 22f;
                 s.Count = 12;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Bleed);
-            }, "Burst/Flash_star", "Range_attack/Projectiles_green_shuriken", "Range_attack/Hit_green_shuriken", scale: 0.7f);
+            }, "Combat/Explosions/- Misc/PoofCloudStars", "Combat/Missiles/Ring/RingMissileRed", "Combat/Sword/SwordHit/SwordHitRed");
 
             SkillDefinition iceRing = Skill("IceRing", "Ice Ring", s =>
             {
@@ -88,7 +88,7 @@ namespace TogetherWeFall.EditorTools
                 s.Range = 10f;
                 s.ProjectileSpeed = 20f;
                 s.Count = 12;
-            }, "Burst/Burst_rings", "Range_attack/Projectiles_frost", "Range_attack/Hit_frost", scale: 0.7f);
+            }, "Combat/Nova/Basic/NovaBlue", "Combat/Missiles/Frost/FrostMissile", "Combat/Sword/SwordHit/SwordHitBlue");
 
             SkillDefinition aftershock = Skill("Aftershock", "Aftershock", s =>
             {
@@ -100,7 +100,7 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 1.8f;
                 s.Count = 5;
                 s.Interval = 0.06f;
-            }, "Top_down_attack/top_down_stone_dot", null, "Slash/Hit_stone", scale: 0.8f);
+            }, "Combat/Explosions/Earth/EarthExplosion", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 1.4f);
 
             SkillDefinition fallingStar = Skill("FallingStar", "Falling Star", s =>
             {
@@ -113,7 +113,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 1;
                 s.Interval = 0.3f;
                 s.Scatter = 0f;
-            }, "Top_down_attack/top_down_starfall_dot_purple", null, "Range_attack/Hit_light");
+            }, "Combat/Explosions/Sparkle/SparkleExplosionYellow", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 2.2f, lift: 0.4f);
 
             SkillDefinition staticBurst = Skill("StaticBurst", "Static Burst", s =>
             {
@@ -125,7 +125,8 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 3f;
                 s.BaseChains = 2;
                 s.ChainRange = 7f;
-            }, "Burst/Poof_electric", null, "Range_attack/Hit_electric");
+            }, "Combat/Magic/Nova/MagicNovaYellow", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 3f,
+                castSound: "Explosion/retro_explosion_lightning");
 
             SkillDefinition frostCrater = Skill("FrostCrater", "Frost Crater", s =>
             {
@@ -138,7 +139,8 @@ namespace TogetherWeFall.EditorTools
                 s.ZoneDuration = 3f;
                 s.ZoneTickInterval = 0.6f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Slow);
-            }, "Top_down_attack/top_down_ice_circle", null, "Range_attack/Hit_frost", scale: 0.8f);
+            }, "Interactive/Zone/Round/RoundZoneBlue", null, "Combat/Sword/SwordHit/SwordHitBlue", scale: 2.6f,
+                castSound: "Explosion/retro_explosion_ice");
 
             SkillDefinition venomBurst = Skill("VenomBurst", "Venom Burst", s =>
             {
@@ -148,7 +150,7 @@ namespace TogetherWeFall.EditorTools
                 s.Cooldown = 1f;
                 s.Range = 2f;
                 s.Radius = 3.2f;
-            }, "Area_generic/Area_generic_green_outbreak", null, "Range_attack/Hit_dark_magic", scale: 0.8f);
+            }, "Combat/Explosions/Poison/PoisonExplosionGreen", null, "Combat/Sword/SwordHit/SwordHitGreen", scale: 2.6f, lift: 0.4f);
 
             SkillDefinition emberMeteor = Skill("EmberMeteor", "Ember Meteor", s =>
             {
@@ -161,7 +163,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 1;
                 s.Interval = 0.35f;
                 s.Scatter = 0f;
-            }, "Top_down_attack/top_down_rocket_dot_pink", null, "Range_attack/Hit_fire");
+            }, "Combat/Explosions/Fire/FireExplosionYellow", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 2f, lift: 0.4f);
 
             SkillDefinition bladeWhirl = Skill("BladeWhirl", "Blade Whirl", s =>
             {
@@ -173,12 +175,28 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 2.8f;
                 s.Count = 3;
                 s.Interval = 0.12f;
-            }, "Slash/Slash_stone_once", null, "Slash/Hit_stone", lift: 0.9f, yaw: 180f);
+            }, "Combat/Sword/SlashRound/SlashRoundYellow", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 2.2f, lift: 0.9f,
+                castSound: "Combat/retro_sword_slash");
+
+            SkillDefinition singularity = Skill("Singularity", "Singularity", s =>
+            {
+                s.Effect = SkillEffectKind.PersistentZone;
+                s.DamageType = DamageType.Chaos;
+                s.BaseDamage = 6f;
+                s.Cooldown = 1f;
+                s.Range = 2f;
+                s.Radius = 3f;
+                s.ZoneDuration = 3f;
+                s.ZoneTickInterval = 0.4f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Slow);
+            }, "Interactive/Zone/Magic/MagicZonePurple", null, "Combat/Sword/SwordHit/SwordHitPurple", scale: 3f,
+                castSound: "Explosion/retro_explosion_blackhole3");
 
             all.AddRange(new[]
             {
                 emberGround, petalStorm, iceRing, aftershock, fallingStar,
-                staticBurst, frostCrater, venomBurst, emberMeteor, bladeWhirl
+                staticBurst, frostCrater, venomBurst, emberMeteor, bladeWhirl,
+                singularity
             });
 
             // ── Rain: the sky does the work ──────────────────────────────
@@ -202,7 +220,7 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportMeteorEmbers", SkillModifierKind.TriggerOnHit, 60f,
                         triggered: emberGround)
                 };
-            }, "Top_down_attack/top_down_rocket_circle_red", null, "Range_attack/Hit_fire", scale: 1.5f));
+            }, "Combat/Explosions/FireBig/FireBigExplosion", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 3f, lift: 0.4f));
 
             all.Add(Skill("MeteorShower", "Meteor Shower", s =>
             {
@@ -216,7 +234,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 10;
                 s.Interval = 0.1f;
                 s.Scatter = 5.5f;
-            }, "Top_down_attack/top_down_rocket_dot_pink", null, "Range_attack/Hit_fire"));
+            }, "Combat/Explosions/Fire/FireExplosionRed", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 1.8f, lift: 0.4f));
 
             all.Add(Skill("Starfall", "Starfall", s =>
             {
@@ -230,7 +248,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 14;
                 s.Interval = 0.07f;
                 s.Scatter = 6f;
-            }, "Top_down_attack/top_down_starfall_dot_purple", null, "Range_attack/Hit_light"));
+            }, "Combat/Explosions/Sparkle/SparkleExplosionPurple", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 1.5f, lift: 0.4f));
 
             all.Add(Skill("Blizzard", "Blizzard", s =>
             {
@@ -245,7 +263,7 @@ namespace TogetherWeFall.EditorTools
                 s.Interval = 0.09f;
                 s.Scatter = 5f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Slow);
-            }, "Top_down_attack/top_down_ice_dot", null, "Range_attack/Hit_frost"));
+            }, "Combat/Explosions/Frost/FrostExplosion", null, "Combat/Sword/SwordHit/SwordHitBlue", scale: 1.4f, lift: 0.4f));
 
             all.Add(Skill("Thunderstorm", "Thunderstorm", s =>
             {
@@ -264,7 +282,7 @@ namespace TogetherWeFall.EditorTools
                 s.BaseChains = 2;
                 s.ChainRange = 7f;
                 s.ChainDelay = 0.06f;
-            }, "Top_down_attack/top_down_lightning_dot_orange", null, "Range_attack/Hit_electric", scale: 1.2f));
+            }, "Environment/Lightning/Strike/LightningStrikeYellow", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 2f));
 
             all.Add(Skill("HammerOfJudgement", "Hammer of Judgement", s =>
             {
@@ -284,7 +302,8 @@ namespace TogetherWeFall.EditorTools
                 {
                     SkillContentFactory.Modifier("SupportJudgementEcho", SkillModifierKind.Echo, 3f)
                 };
-            }, "Top_down_attack/top_down_starfall_circle_rainbow", null, "Range_attack/Hit_light", scale: 1.4f));
+            }, "Combat/Nova/Sparkle/SparkleNovaRainbow", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 3.5f,
+                castSound: "Explosion/retro_explosion_holy02"));
 
             // ── Fissure: the ground tears open along the aim ─────────────
 
@@ -300,7 +319,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 7;
                 s.Interval = 0.06f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Stun);
-            }, "Top_down_attack/top_down_stone_dot", null, "Slash/Hit_stone", scale: 1.1f));
+            }, "Combat/Explosions/Earth/EarthExplosion", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 1.8f));
 
             all.Add(Skill("FlameWave", "Flame Wave", s =>
             {
@@ -313,7 +332,7 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 2f;
                 s.Count = 9;
                 s.Interval = 0.05f;
-            }, "Fire/Fire_explosion_air", null, "Range_attack/Hit_fire", scale: 0.9f));
+            }, "Combat/Explosions/Fire/FireExplosion", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 1.6f, lift: 0.4f));
 
             all.Add(Skill("GlacialCascade", "Glacial Cascade", s =>
             {
@@ -333,7 +352,8 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportCascadeShatter", SkillModifierKind.TriggerOnHit, 60f,
                         triggered: iceRing)
                 };
-            }, "Top_down_attack/top_down_ice_circle", null, "Slash/Hit_snow", scale: 0.7f));
+            }, "Combat/Magic/Pillarblast/MagicPillarBlastBlue", null, "Combat/Sword/SwordHit/SwordHitBlue", scale: 2.4f,
+                castSound: "Explosion/retro_explosion_ice"));
 
             all.Add(Skill("VoltaicRift", "Voltaic Rift", s =>
             {
@@ -348,7 +368,7 @@ namespace TogetherWeFall.EditorTools
                 s.Interval = 0.045f;
                 s.BaseChains = 1;
                 s.ChainRange = 6f;
-            }, "Top_down_attack/top_down_lightning_dot_orange", null, "Range_attack/Hit_electric", scale: 0.8f));
+            }, "Combat/Explosions/Lightning/LightningExplosionBlue", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 1.4f, lift: 0.4f));
 
             // ── Volley: fans and rings of projectiles ────────────────────
 
@@ -368,7 +388,8 @@ namespace TogetherWeFall.EditorTools
                 {
                     SkillContentFactory.Modifier("SupportBladeFanPierce", SkillModifierKind.Pierce, 1f)
                 };
-            }, "Burst/Flash_star", "Range_attack/Projectiles_green_shuriken", "Range_attack/Hit_green_shuriken", scale: 0.8f));
+            }, "Combat/Muzzleflash/Bullet/BulletMuzzleYellow", "Combat/Missiles/Ring/RingMissileYellow", "Combat/Sword/SwordHit/SwordHitRed", scale: 1.2f,
+                castSound: "Combat/retro_combat_slash"));
 
             all.Add(Skill("FrostShards", "Frost Shards", s =>
             {
@@ -381,7 +402,7 @@ namespace TogetherWeFall.EditorTools
                 s.ProjectileSpeed = 22f;
                 s.ArcDegrees = 360f;
                 s.Count = 16;
-            }, "Burst/Burst_rings", "Range_attack/Projectiles_frost", "Range_attack/Hit_frost", scale: 0.7f));
+            }, "Combat/Nova/Basic/NovaBlue", "Combat/Missiles/Frost/FrostMissile", "Combat/Sword/SwordHit/SwordHitBlue", scale: 1.2f));
 
             all.Add(Skill("SparkRing", "Spark Ring", s =>
             {
@@ -396,7 +417,7 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 10;
                 s.BaseChains = 1;
                 s.ChainRange = 6f;
-            }, "Burst/Poof_electric", "Range_attack/Projectiles_electric", "Range_attack/Hit_electric", scale: 0.6f));
+            }, "Combat/Nova/Sparkle/SparkleNovaYellow", "Combat/Missiles/Sparkle/SparkleMissileYellow", "Combat/Sword/SwordHit/SwordHitYellow", scale: 1.2f));
 
             all.Add(Skill("HellfireBarrage", "Hellfire Barrage", s =>
             {
@@ -410,7 +431,7 @@ namespace TogetherWeFall.EditorTools
                 s.ArcDegrees = 30f;
                 s.Count = 5;
                 s.Radius = 2f;
-            }, "Burst/Flash_generic", "Range_attack/Projectile_Fire", "Range_attack/Hit_fire", scale: 0.9f));
+            }, "Combat/Muzzleflash/FireBig/FireBigMuzzle", "Combat/Missiles/Fireball/FireballMissileRed", "Combat/Explosions/Fire/FireExplosionRed", scale: 1.2f));
 
             all.Add(Skill("Comet", "Comet", s =>
             {
@@ -429,7 +450,7 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportCometShards", SkillModifierKind.TriggerOnHit, 70f,
                         triggered: iceRing)
                 };
-            }, "Burst/Flash_dubble_circle", "Range_attack/Projectiles_frost", "Top_down_attack/top_down_ice_circle", scale: 1.4f));
+            }, "Combat/Muzzleflash/Frost/FrostMuzzle", "Combat/Missiles/FireballBig/FireballBigMissileBlue", "Combat/Explosions/FireBig/FireBigExplosionBlue", scale: 1.8f));
 
             // ── Leap: the body goes where the blow lands ─────────────────
 
@@ -443,7 +464,7 @@ namespace TogetherWeFall.EditorTools
                 s.Range = 12f;
                 s.Radius = 4f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Stun);
-            }, "Top_down_attack/top_down_stone_circle", null, "Slash/Hit_stone", scale: 1.3f));
+            }, "Combat/Fighting/GroundSlam", null, "Combat/Sword/SwordHit/SwordHitRed"));
 
             all.Add(Skill("StormDive", "Storm Dive", s =>
             {
@@ -456,7 +477,7 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 4.5f;
                 s.BaseChains = 3;
                 s.ChainRange = 8f;
-            }, "Top_down_attack/top_down_lightning_circle_blue", null, "Range_attack/Hit_electric", scale: 1.3f));
+            }, "Environment/Lightning/Strike/LightningStrikeBlue", null, "Combat/Sword/SwordHit/SwordHitYellow", scale: 3f));
 
             all.Add(Skill("CataclysmLeap", "Cataclysm Leap", s =>
             {
@@ -472,7 +493,7 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportCataclysmEmbers", SkillModifierKind.TriggerOnHit, 80f,
                         triggered: emberGround)
                 };
-            }, "Top_down_attack/top_down_rocket_circle_red", null, "Range_attack/Hit_fire", scale: 1.5f));
+            }, "Combat/Explosions/Nuke/NukeExplosionRed", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 1.5f));
 
             // ── Cyclone and melee: the caster is the storm ───────────────
 
@@ -488,7 +509,8 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 6;
                 s.Interval = 0.18f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Bleed);
-            }, "Slash/Slash_stone_long", null, "Slash/Hit_stone", lift: 0.9f, yaw: 180f));
+            }, "Combat/Sword/SlashSpherical/SlashSphericalYellow", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 2.6f, lift: 0.9f,
+                castSound: "Combat/retro_sword_slash_blood"));
 
             all.Add(Skill("InfernoSpin", "Inferno Spin", s =>
             {
@@ -501,7 +523,8 @@ namespace TogetherWeFall.EditorTools
                 s.Radius = 3f;
                 s.Count = 8;
                 s.Interval = 0.14f;
-            }, "Slash/Slash_fire_long", null, "Slash/Hit_fire", lift: 0.9f, yaw: 180f));
+            }, "Combat/Sword/SlashRound/SlashRoundRed", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed", scale: 2.4f, lift: 0.9f,
+                castSound: "Combat/retro_sword_slash"));
 
             all.Add(Skill("FrostVortex", "Frost Vortex", s =>
             {
@@ -515,7 +538,8 @@ namespace TogetherWeFall.EditorTools
                 s.Count = 7;
                 s.Interval = 0.16f;
                 s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Slow);
-            }, "Slash/Slash_snow_long", null, "Slash/Hit_snow", lift: 0.9f, yaw: 180f));
+            }, "Combat/Sword/SlashRound/SlashRoundBlue", null, "Combat/Sword/SwordHit/SwordHitBlue", scale: 2.8f, lift: 0.9f,
+                castSound: "Combat/retro_sword_slash"));
 
             all.Add(Skill("TectonicSlam", "Tectonic Slam", s =>
             {
@@ -533,7 +557,7 @@ namespace TogetherWeFall.EditorTools
                 {
                     SkillContentFactory.Modifier("SupportTectonicEcho", SkillModifierKind.Echo, 2f)
                 };
-            }, "Slash/Slash_stone_once", null, "Slash/Hit_stone", scale: 1.3f, lift: 0.9f, yaw: 180f));
+            }, "Combat/Fighting/BodySlam", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 1.2f));
 
             // ── Bursts and bolts that spread ─────────────────────────────
 
@@ -551,7 +575,8 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportBlossomPetals", SkillModifierKind.TriggerOnHit, 80f,
                         triggered: petalStorm)
                 };
-            }, "Burst/Burst_sharp", null, "Range_attack/Hit_green_shuriken", scale: 1.4f));
+            }, "Combat/Sword/SlashSpherical/SlashSphericalRed", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 2f, lift: 0.9f,
+                castSound: "Combat/retro_sword_slash"));
 
             all.Add(Skill("PlagueBurst", "Plague Burst", s =>
             {
@@ -569,7 +594,7 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportPlagueSpread", SkillModifierKind.ExplodeOnKill, 3.5f,
                         secondary: 70f)
                 };
-            }, "Area_generic/Area_generic_green_outbreak", null, "Range_attack/Hit_dark_magic", scale: 1.5f));
+            }, "Combat/Explosions/- Misc/SmokeGrenadeExplosion", null, "Combat/Sword/SwordHit/SwordHitGreen", scale: 3.5f, lift: 0.4f));
 
             all.Add(Skill("SoulRend", "Soul Rend", s =>
             {
@@ -587,7 +612,216 @@ namespace TogetherWeFall.EditorTools
                     SkillContentFactory.Modifier("SupportSoulRendCull", SkillModifierKind.CullingStrike, 10f),
                     SkillContentFactory.Modifier("SupportSoulRendMana", SkillModifierKind.ManaOnKill, 2f)
                 };
-            }, "Burst/Flash_dubble_circle", null, "Range_attack/Hit_dark_magic", scale: 0.8f));
+            }, "Combat/Muzzleflash/Symbol/SymbolMuzzlePurple", null, "Combat/Death/Soul/DeathSoulPurple", scale: 1.2f, lift: 0.9f,
+                castSound: "Shoot/retro_shoot_soul", hitSound: "Explosion/retro_explosion_soul"));
+
+            // ── Orbs and bombs: the pack's missiles, each with its own burst ─
+
+            all.Add(Skill("VoidOrb", "Void Orb", s =>
+            {
+                s.Effect = SkillEffectKind.Projectile;
+                s.DamageType = DamageType.Chaos;
+                s.BaseDamage = 30f;
+                s.Cooldown = 2.4f;
+                s.ManaCost = 24f;
+                s.Range = 18f;
+                s.ProjectileSpeed = 11f;
+                s.Radius = 2.5f;
+
+                // Where it bursts, a well opens and holds the crowd in place.
+                s.Modifiers = new[]
+                {
+                    SkillContentFactory.Modifier("SupportVoidOrbWell", SkillModifierKind.TriggerOnHit, 60f,
+                        triggered: singularity)
+                };
+            }, "Combat/Muzzleflash/BlackHole/BlackHoleMuzzlePurple", "Combat/Missiles/BlackHole/BlackHoleMissilePurple",
+                "Combat/Explosions/BlackHole/BlackHoleExplosionPurple", scale: 1.6f));
+
+            all.Add(Skill("DoomOrb", "Doom Orb", s =>
+            {
+                s.Effect = SkillEffectKind.Projectile;
+                s.DamageType = DamageType.Fire;
+                s.BaseDamage = 90f;
+                s.Cooldown = 6f;
+                s.ManaCost = 45f;
+                s.Range = 20f;
+                s.ProjectileSpeed = 8f;
+                s.Radius = 6f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Ignite);
+            }, "Combat/Muzzleflash/Rocket - Nuke/RocketMuzzle", "Combat/Missiles/Nuke/NukeMissile",
+                "Combat/Explosions/Nuke/NukeExplosion", scale: 1.6f));
+
+            all.Add(Skill("LavaBomb", "Lava Bomb", s =>
+            {
+                s.Effect = SkillEffectKind.Projectile;
+                s.DamageType = DamageType.Fire;
+                s.BaseDamage = 28f;
+                s.Cooldown = 1.6f;
+                s.ManaCost = 18f;
+                s.Range = 16f;
+                s.ProjectileSpeed = 16f;
+                s.Radius = 2.8f;
+
+                // The splash keeps burning where it landed.
+                s.Modifiers = new[]
+                {
+                    SkillContentFactory.Modifier("SupportLavaBombPool", SkillModifierKind.TriggerOnHit, 50f,
+                        triggered: emberGround)
+                };
+            }, "Combat/Muzzleflash/Liquids/LavaMuzzle", "Combat/Missiles/Liquids/LavaMissile",
+                "Combat/Explosions/Liquids/LavaExplosion", scale: 1.4f));
+
+            all.Add(Skill("AcidFlask", "Acid Flask", s =>
+            {
+                s.Effect = SkillEffectKind.Projectile;
+                s.DamageType = DamageType.Chaos;
+                s.BaseDamage = 14f;
+                s.Cooldown = 0.9f;
+                s.ManaCost = 10f;
+                s.Range = 14f;
+                s.ProjectileSpeed = 18f;
+                s.Radius = 2.4f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Poison);
+            }, "Combat/Muzzleflash/Liquids/AcidMuzzle", "Combat/Missiles/Liquids/AcidMissile",
+                "Combat/Explosions/Liquids/AcidExplosion", scale: 1.4f));
+
+            all.Add(Skill("PlasmaBolt", "Plasma Bolt", s =>
+            {
+                s.Effect = SkillEffectKind.Projectile;
+                s.DamageType = DamageType.Lightning;
+                s.BaseDamage = 20f;
+                s.Cooldown = 0.8f;
+                s.ManaCost = 12f;
+                s.Range = 22f;
+                s.ProjectileSpeed = 32f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Shock);
+
+                // Splits on the first body, and its halves split again.
+                s.Modifiers = new[]
+                {
+                    SkillContentFactory.Modifier("SupportPlasmaBoltFork", SkillModifierKind.Fork, 2f)
+                };
+            }, "Combat/Muzzleflash/Plasma/PlasmaMuzzleBlue", "Combat/Missiles/Plasma/PlasmaMissileBlue",
+                "Combat/Explosions/Plasma/PlasmaExplosionBlue", scale: 1.2f));
+
+            all.Add(Skill("ShadowDaggers", "Shadow Daggers", s =>
+            {
+                s.Effect = SkillEffectKind.Volley;
+                s.DamageType = DamageType.Chaos;
+                s.BaseDamage = 10f;
+                s.Cooldown = 0.6f;
+                s.ManaCost = 9f;
+                s.Range = 16f;
+                s.ProjectileSpeed = 34f;
+                s.ArcDegrees = 40f;
+                s.Count = 5;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Vulnerable);
+            }, "Combat/Muzzleflash/Shadow/ShadowMuzzlePurple", "Combat/Missiles/Shadow/ShadowMissilePurple",
+                "Combat/Explosions/Shadow/ShadowExplosionPurple", scale: 1.1f));
+
+            // ── Close and wide: a cone of fire and a flurry of claws ─────
+
+            all.Add(Skill("DragonsBreath", "Dragon's Breath", s =>
+            {
+                s.Effect = SkillEffectKind.MeleeArc;
+                s.DamageType = DamageType.Fire;
+                s.BaseDamage = 22f;
+                s.Cooldown = 0.9f;
+                s.ManaCost = 12f;
+                s.Range = 6f;
+                s.Radius = 6f;
+                s.ArcDegrees = 50f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Ignite);
+
+                // The pack's flamethrower loops, and a looping prefab plays for
+                // the presenter's whole one-shot ceiling — four seconds of flame
+                // for a press under one. Its big fire muzzle is the same cone once.
+            }, "Combat/Muzzleflash/FireBig/FireBigMuzzleRed", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed",
+                scale: 2.5f, lift: 0.9f, castSound: "Shoot/retro_shoot_fireball3"));
+
+            all.Add(Skill("RendingClaws", "Rending Claws", s =>
+            {
+                s.Effect = SkillEffectKind.MeleeArc;
+                s.DamageType = DamageType.Physical;
+                s.BaseDamage = 14f;
+                s.Cooldown = 0.45f;
+                s.ManaCost = 4f;
+                s.Range = 3f;
+                s.Radius = 3f;
+                s.ArcDegrees = 100f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Bleed);
+            }, "Combat/Fighting/Claw/ClawBlood", null, "Combat/Sword/SwordHit/SwordHitRed", scale: 2f, lift: 0.9f));
+
+            all.Add(Skill("PillarsOfDawn", "Pillars of Dawn", s =>
+            {
+                s.Effect = SkillEffectKind.Fissure;
+                s.DamageType = DamageType.Lightning;
+                s.BaseDamage = 18f;
+                s.Cooldown = 1.5f;
+                s.ManaCost = 18f;
+                s.Range = 15f;
+                s.Radius = 2f;
+                s.Count = 6;
+                s.Interval = 0.09f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Shock);
+            }, "Combat/Magic/Pillarblast/MagicPillarBlastYellow", null, "Combat/Sword/SwordHit/SwordHitYellow",
+                scale: 2f, castSound: "Explosion/retro_explosion_holy"));
+
+            // ── Tornadoes: a zone you can see moving ─────────────────────
+            //
+            // Four seconds each, which is also the presenter's ceiling on a
+            // looping prefab: a longer zone would outlive its own tornado.
+
+            all.Add(Skill("FireTornado", "Fire Tornado", s =>
+            {
+                s.Effect = SkillEffectKind.PersistentZone;
+                s.DamageType = DamageType.Fire;
+                s.BaseDamage = 10f;
+                s.Cooldown = 3.5f;
+                s.ManaCost = 28f;
+                s.Range = 14f;
+                s.Radius = 2.6f;
+                s.ZoneDuration = 4f;
+                s.ZoneTickInterval = 0.4f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Ignite);
+            }, "Interactive/Tornado/v2/TornadoFire", null, "Combat/Explosions/BasicTiny/BasicTinyExplosionRed",
+                scale: 1.2f, castSound: "Explosion/retro_explosion_incendiary"));
+
+            all.Add(Skill("Tempest", "Tempest", s =>
+            {
+                s.Effect = SkillEffectKind.PersistentZone;
+                s.DamageType = DamageType.Lightning;
+                s.BaseDamage = 8f;
+                s.Cooldown = 3.5f;
+                s.ManaCost = 28f;
+                s.Range = 14f;
+                s.Radius = 2.8f;
+                s.ZoneDuration = 4f;
+                s.ZoneTickInterval = 0.5f;
+                s.BaseChains = 1;
+                s.ChainRange = 6f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Shock);
+            }, "Interactive/Tornado/v2/TornadoLightning", null, "Combat/Sword/SwordHit/SwordHitYellow",
+                scale: 1.2f, castSound: "Explosion/retro_explosion_storm"));
+
+            // ── Channel: held, it burns; released, it stops ──────────────
+            //
+            // The cooldown is one pulse and the cost is per pulse: the host
+            // already casts while a key is held, so this pulses about eight
+            // times a second for about twelve mana a second.
+
+            all.Add(Skill("SearingRay", "Searing Ray", s =>
+            {
+                s.Effect = SkillEffectKind.Beam;
+                s.DamageType = DamageType.Fire;
+                s.BaseDamage = 6f;
+                s.Cooldown = 0.12f;
+                s.ManaCost = 1.5f;
+                s.Range = 14f;
+                s.Radius = 0.8f;
+                s.AppliedStatus = ElementContentFactory.Status(StatusEffectType.Ignite);
+            }, "Combat/Beams/Laser/Setup/Beam/LaserBeamRed", null, "Combat/Explosions/Laser/LaserExplosionRed",
+                scale: 1.5f, lift: 0.9f, castSound: "Beam/retro_beam_laser"));
 
             return all.ToArray();
         }
@@ -606,12 +840,15 @@ namespace TogetherWeFall.EditorTools
             string hit,
             float scale = 1f,
             float lift = 0f,
-            float yaw = 0f)
+            float yaw = 0f,
+            string castSound = null,
+            string hitSound = null)
         {
             SkillDefinition skill = SkillContentFactory.Skill(asset, display, fill);
 
             SkillVfxSet set = SkillVfxContentFactory.Set(
-                "Vfx" + asset, Fx(cast), Fx(projectile), Fx(hit), scale, lift, yaw);
+                "Vfx" + asset, Fx(cast), Fx(projectile), Fx(hit), scale, lift, yaw,
+                Snd(castSound), Snd(hitSound));
 
             var serialized = new SerializedObject(skill);
             SerializedProperty field = serialized.FindProperty("_vfx");
@@ -627,6 +864,13 @@ namespace TogetherWeFall.EditorTools
 
         private static string Fx(string path)
             => string.IsNullOrEmpty(path) ? null : $"{Pack}/{path}.prefab";
+
+        /// <summary>
+        /// A clip under the pack's Sound folder — only for a set whose prefabs
+        /// carry none: the pack's missiles and explosions bring their own.
+        /// </summary>
+        private static string Snd(string path)
+            => string.IsNullOrEmpty(path) ? null : $"{SkillVfxContentFactory.Sounds}/{path}.wav";
 
         // ─────────────────────────────────────────────────────────────────
         // Gems
@@ -688,6 +932,19 @@ namespace TogetherWeFall.EditorTools
             shelf.Active("DeathBlossom", "Death Blossom", ItemRarity.Epic, DamageType.Physical);
             shelf.Active("PlagueBurst", "Plague Burst", ItemRarity.Rare, DamageType.Chaos);
             shelf.Active("SoulRend", "Soul Rend", ItemRarity.Rare, DamageType.Chaos);
+
+            shelf.Active("VoidOrb", "Void Orb", ItemRarity.Epic, DamageType.Chaos);
+            shelf.Active("DoomOrb", "Doom Orb", ItemRarity.Legendary, DamageType.Fire);
+            shelf.Active("LavaBomb", "Lava Bomb", ItemRarity.Rare, DamageType.Fire);
+            shelf.Active("AcidFlask", "Acid Flask", ItemRarity.Uncommon, DamageType.Chaos);
+            shelf.Active("PlasmaBolt", "Plasma Bolt", ItemRarity.Rare, DamageType.Lightning);
+            shelf.Active("ShadowDaggers", "Shadow Daggers", ItemRarity.Uncommon, DamageType.Chaos);
+            shelf.Active("DragonsBreath", "Dragon's Breath", ItemRarity.Rare, DamageType.Fire);
+            shelf.Active("RendingClaws", "Rending Claws", ItemRarity.Uncommon, DamageType.Physical);
+            shelf.Active("PillarsOfDawn", "Pillars of Dawn", ItemRarity.Rare, DamageType.Lightning);
+            shelf.Active("FireTornado", "Fire Tornado", ItemRarity.Epic, DamageType.Fire);
+            shelf.Active("Tempest", "Tempest", ItemRarity.Epic, DamageType.Lightning);
+            shelf.Active("SearingRay", "Searing Ray", ItemRarity.Rare, DamageType.Fire);
         }
 
         /// <summary>How many elements a pattern has, and how fast they come.</summary>
@@ -1206,6 +1463,10 @@ namespace TogetherWeFall.EditorTools
                 "GemInfernoSpin", "GemFrostVortex", "GemTectonicSlam", "GemDeathBlossom",
                 "GemPlagueBurst", "GemSoulRend",
 
+                "GemVoidOrb", "GemDoomOrb", "GemLavaBomb", "GemAcidFlask", "GemPlasmaBolt",
+                "GemShadowDaggers", "GemDragonsBreath", "GemRendingClaws", "GemPillarsOfDawn",
+                "GemFireTornado", "GemTempest", "GemSearingRay",
+
                 "GemEcho", "GemBarrage", "GemConcussiveRounds", "GemFireInfusion", "GemStormInfusion",
                 "GemRapidSequence", "GemShatterRing", "GemAftershock", "GemResonance", "GemCorpseDetonation"
             };
@@ -1234,7 +1495,7 @@ namespace TogetherWeFall.EditorTools
                 "Rebuild the scene so the skill database and the effect presenter know the arsenal.");
         }
 
-        private static bool Lists(SerializedProperty entries, Object item)
+        internal static bool Lists(SerializedProperty entries, Object item)
         {
             for (int i = 0; i < entries.arraySize; i++)
             {

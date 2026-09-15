@@ -12,6 +12,7 @@ namespace TogetherWeFall.Vfx.Systems
     /// draws. Keeping them apart means that when the network arrives, the answer
     /// to "does this replicate" is a property of which entity it lives on.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
     public partial struct VfxEventRegistrySystem : ISystem
     {

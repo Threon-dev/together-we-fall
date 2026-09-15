@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 
 namespace TogetherWeFall.Enemies
@@ -22,6 +23,8 @@ namespace TogetherWeFall.Enemies
     /// a room open — without a single query anywhere having to learn what a
     /// corpse is, because queries filter by enabled state already.
     /// </summary>
+    // The enabled bit is replicated: a client draws, counts and hides by it.
+    [GhostEnabledBit]
     public struct EnemyTag : IComponentData, IEnableableComponent
     {
     }

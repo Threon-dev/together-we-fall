@@ -13,10 +13,11 @@ MonoBehaviour:
   m_Name: VfxWeaponArrow
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
   _cast: {fileID: 0}
-  _projectile: {fileID: 5793227601758880575, guid: 1197ebc056fedd64f9683a4e270352d0,
-    type: 3}
+  _projectile: {fileID: 5793227601758880575, guid: 1197ebc056fedd64f9683a4e270352d0, type: 3}
   _hit: {fileID: 0}
   _scale: 1
   _lift: 0
   _yaw: 0
   _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: 616aafbbabf60b74d8c2d34678f26cc1, type: 3}
+  _hitSound: {fileID: 8300000, guid: d0292f2c3a064ea46b74db3d7f51a5b3, type: 3}

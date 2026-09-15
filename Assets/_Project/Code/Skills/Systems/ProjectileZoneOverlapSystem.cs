@@ -33,6 +33,7 @@ namespace TogetherWeFall.Skills.Systems
     /// misses is one that enters the far edge of a zone and lands in the same
     /// frame — sixteen milliseconds of a fifty-frame journey.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillCastSystem))]
     [UpdateBefore(typeof(SkillProjectileSystem))]
@@ -137,6 +138,7 @@ namespace TogetherWeFall.Skills.Systems
                         Kind = VfxEventKind.ElementBurst,
                         Position = transform.Position,
                         Color = DamageTypePalette.For(element),
+                        Element = element,
                         Magnitude = 0.8f
                     });
                 }

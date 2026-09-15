@@ -2813,7 +2813,8 @@ namespace TogetherWeFall.UI
             if (_portrait != null)
                 _portrait.SetShown(false);
 
-            if (!_hasWorld)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (!_hasWorld || World.DefaultGameObjectInjectionWorld is { IsCreated: true } == false)
                 return;
 
             _characterQuery.Dispose();

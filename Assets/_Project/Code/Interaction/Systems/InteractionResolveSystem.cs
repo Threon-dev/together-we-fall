@@ -26,6 +26,7 @@ namespace TogetherWeFall.Interaction.Systems
     /// which is why adding a lever or a downed ally to revive costs this file
     /// nothing.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct InteractionResolveSystem : ISystem
     {

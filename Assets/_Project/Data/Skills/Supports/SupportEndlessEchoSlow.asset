@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41fd596fbd191dd4fbc52d162a39a43d, type: 3}
+  m_Name: SupportEndlessEchoSlow
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillModifier
+  _kind: 11
+  _value: -80
+  _secondaryValue: 60
+  _convertTo: 1
+  _triggeredSkill: {fileID: 0}
+  _triggerCondition: 0
+  _triggerCooldown: 3
+  _procChance: 0.35
+  _condition: 0
+  _requiredElement: 1
+  _requiredStatus: 1
+  _threshold: 0.35
+  _requiredCount: 3
+  _appliedStatus: {fileID: 0}

@@ -28,6 +28,12 @@ namespace TogetherWeFall.Shared
         public float3 Position;
 
         /// <summary>
+        /// Which way the body faces. Carried so a remote player's body can be
+        /// turned the way its owner turned it; no enemy system reads it.
+        /// </summary>
+        public float3 Facing;
+
+        /// <summary>
         /// Dead or disconnected players stay in the buffer but are not valid
         /// targets. Removing the element would shift indices and break
         /// ChaseTarget references within the same frame.

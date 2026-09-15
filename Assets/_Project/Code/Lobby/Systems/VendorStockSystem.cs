@@ -5,6 +5,7 @@ using TogetherWeFall.Equipment;
 using TogetherWeFall.Interaction;
 using TogetherWeFall.Inventory;
 using TogetherWeFall.Loot;
+using TogetherWeFall.Network;
 
 namespace TogetherWeFall.Lobby.Systems
 {
@@ -28,6 +29,7 @@ namespace TogetherWeFall.Lobby.Systems
     /// the pool slots for the whole session, and the pool is the ceiling on
     /// every item that exists at once.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial struct VendorStockSystem : ISystem
     {
@@ -51,6 +53,7 @@ namespace TogetherWeFall.Lobby.Systems
             state.RequireForUpdate<ItemDatabase>();
             state.RequireForUpdate<LootPrefabs>();
             state.RequireForUpdate<VendorComponent>();
+            state.RequireForUpdate<NetworkPrefabs>();
         }
 
         public void OnUpdate(ref SystemState state)
@@ -106,9 +109,9 @@ namespace TogetherWeFall.Lobby.Systems
                 Height = math.max(1, component.StockHeight)
             };
 
-            // No ContainerOwner, on purpose. See the class comment.
-            Entity container = entityManager.CreateEntity(
-                typeof(InventoryGridComponent), typeof(InventoryCell));
+            // No ContainerOwner, on purpose. See the class comment. A ghost, so every
+            // client's shop window draws the shelf the host actually holds.
+            Entity container = entityManager.Instantiate(SystemAPI.GetSingleton<NetworkPrefabs>().VendorShelf);
 
             entityManager.SetName(container, "VendorStock");
             entityManager.SetComponentData(container, grid);

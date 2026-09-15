@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6385964d0d314ec18add14df44862408, type: 3}
+  m_Name: PyrelordsMantle
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemSetDefinition
+  _setId: PyrelordsMantle
+  _setName: Pyrelord's Mantle
+  _members:
+  - {fileID: 11400000, guid: b4d0c781404493a438a335924abafb51, type: 2}
+  - {fileID: 11400000, guid: 6e8f575d162d88745830e9949a3fcdb2, type: 2}
+  - {fileID: 11400000, guid: 25f3a6cf6147b9d42b93519f447c565e, type: 2}
+  - {fileID: 11400000, guid: e3a30e6d98744e74db67210c47685649, type: 2}
+  _thresholds:
+  - _requiredPieceCount: 2
+    _bonuses:
+    - _stat: 5
+      _kind: 0
+      _value: 25
+    - _stat: 0
+      _kind: 1
+      _value: 10
+    _bonusSkillModifier: {fileID: 0}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 4
+    _bonuses:
+    - _stat: 0
+      _kind: 1
+      _value: 15
+    _bonusSkillModifier: {fileID: 11400000, guid: ff091f6619c0072409ba7b03d383a1e4,
+      type: 2}
+    _bonusKeystone: 0

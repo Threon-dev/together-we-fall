@@ -12,9 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxReavingSweep
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 4446863190969154290, guid: 27186846b1e80f348a6ca8a2bd44f73c, type: 3}
+  _cast: {fileID: 2760612568586380608, guid: b79d0c1a17e961746a38142cd41dfb3d, type: 3}
   _projectile: {fileID: 0}
-  _hit: {fileID: 3775273307930507393, guid: b8cbf0802f081c245853f60240f107cc, type: 3}
-  _scale: 1
+  _hit: {fileID: 8905666514069622321, guid: a84cbbb54404c3d499340f02e684aab0, type: 3}
+  _scale: 3
   _lift: 0.9
-  _yaw: 180
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

@@ -11,6 +11,7 @@ namespace TogetherWeFall.Interaction.Systems
     /// is in the scene, so nothing downstream needs a "has it been created yet"
     /// branch in every frame.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
     public partial struct InteractionRegistrySystem : ISystem
     {

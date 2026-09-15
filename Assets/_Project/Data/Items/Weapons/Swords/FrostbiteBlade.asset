@@ -29,7 +29,9 @@ MonoBehaviour:
   _gemSupportSecond: {fileID: 0}
   _innateSkills:
   - {fileID: 11400000, guid: 0a4ec077e7257c640a51add312d39b9b, type: 2}
-  _signatureSkill: {fileID: 11400000, guid: abf1985ccccf7d14694d8cb86844cb76, type: 2}
+  _signatureSkills:
+  - {fileID: 11400000, guid: abf1985ccccf7d14694d8cb86844cb76, type: 2}
+  - {fileID: 11400000, guid: f8250618d277c1c4f947aa275af3ab57, type: 2}
   _socketCount: 0
   _linkGroups: 
   _gridWidth: 1

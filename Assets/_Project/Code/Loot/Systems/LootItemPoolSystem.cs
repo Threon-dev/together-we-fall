@@ -12,6 +12,7 @@ namespace TogetherWeFall.Loot.Systems
     /// costs one system and removes the category rather than leaving an argument
     /// about where the threshold is.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct LootItemPoolSystem : ISystem
     {

@@ -12,8 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxSpark
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 230651131596242121, guid: d8a8bbe703ee8174e9754da9050b17a9, type: 3}
-  _projectile: {fileID: 7653787099927154482, guid: db5486219ba247746b2df5fe8cfb8119, type: 3}
-  _hit: {fileID: 934617562227915448, guid: 4e05db48b6a7d5141bc36642f3a63223, type: 3}
-  _scale: 0.5
+  _cast: {fileID: 2808348530489147330, guid: 3461816018753cd47bf084b9caf3a823, type: 3}
+  _projectile: {fileID: 991721430914735036, guid: 93c6d496ed5bae747a559021258b93a4, type: 3}
+  _hit: {fileID: 6275196997387888742, guid: 69db682fcfc28ea4c81ca9c6552580da, type: 3}
+  _scale: 1.2
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

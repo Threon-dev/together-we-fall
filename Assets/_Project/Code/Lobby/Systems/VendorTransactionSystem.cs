@@ -30,6 +30,7 @@ namespace TogetherWeFall.Lobby.Systems
     /// safe: payment only frees cells, so a fit found before payment is still a
     /// fit after it.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(VendorStockSystem))]
     public partial struct VendorTransactionSystem : ISystem

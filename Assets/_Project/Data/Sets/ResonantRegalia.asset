@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6385964d0d314ec18add14df44862408, type: 3}
+  m_Name: ResonantRegalia
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.ItemSetDefinition
+  _setId: ResonantRegalia
+  _setName: Resonant Regalia
+  _members:
+  - {fileID: 11400000, guid: b0338d21820d483409c2d6107ba65f5d, type: 2}
+  - {fileID: 11400000, guid: 122e1a62583595144b9e154ad9e8498f, type: 2}
+  - {fileID: 11400000, guid: e40765de421bb38478bf7ee0cc9e97e4, type: 2}
+  - {fileID: 11400000, guid: 02d7f79d6dc8246469ae888ba64330c9, type: 2}
+  - {fileID: 11400000, guid: faddbcf70b2084f48a02d5de37b80f8c, type: 2}
+  _thresholds:
+  - _requiredPieceCount: 2
+    _bonuses:
+    - _stat: 1
+      _kind: 1
+      _value: 12
+    _bonusSkillModifier: {fileID: 0}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 4
+    _bonuses:
+    - _stat: 8
+      _kind: 0
+      _value: 20
+    _bonusSkillModifier: {fileID: 11400000, guid: dd57313b985575940b3e47d77668c152,
+      type: 2}
+    _bonusKeystone: 0
+  - _requiredPieceCount: 5
+    _bonuses:
+    - _stat: 1
+      _kind: 1
+      _value: 15
+    _bonusSkillModifier: {fileID: 11400000, guid: 58f06476595266f47a64e3310f97c888,
+      type: 2}
+    _bonusKeystone: 3

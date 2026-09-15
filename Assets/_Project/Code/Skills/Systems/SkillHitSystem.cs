@@ -24,6 +24,7 @@ namespace TogetherWeFall.Skills.Systems
     /// chain reads as a single flash — the convention asks for fifty to a
     /// hundred milliseconds between jumps, and the skill asset carries it.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SkillAreaSystem))]
     public partial struct SkillHitSystem : ISystem
@@ -281,15 +282,22 @@ namespace TogetherWeFall.Skills.Systems
                 Position = hit.Origin,
                 EndPosition = jump.Origin,
                 Color = DamageTypePalette.For(hit.Type),
+                Element = hit.Type,
                 Magnitude = math.max(0.05f, hit.ChainDelay)
             });
 
-            audio.Add(new AudioEvent
+            // Only a chain nobody authored a look for. One with a set is heard
+            // through that set's impact sound, which the jump's own hit already
+            // plays — both would be two zaps for one jump.
+            if (hit.VfxId == 0)
             {
-                Cue = AudioCue.ChainZap,
-                Position = jump.Origin,
-                Volume = 0.7f
-            });
+                audio.Add(new AudioEvent
+                {
+                    Cue = AudioCue.ChainZap,
+                    Position = jump.Origin,
+                    Volume = 0.7f
+                });
+            }
 
             return dealt;
         }

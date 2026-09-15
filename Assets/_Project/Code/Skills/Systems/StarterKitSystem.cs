@@ -59,6 +59,7 @@ namespace TogetherWeFall.Skills.Systems
     /// Items come from the loot pool like every other item in the game, so the
     /// pool stays the ceiling on how many exist at once.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Equipment.Systems.SocketSystem))]
     public partial struct StarterKitSystem : ISystem

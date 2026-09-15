@@ -182,6 +182,7 @@ namespace TogetherWeFall.Skills
             switch (effect)
             {
                 case SkillEffectKind.Volley:
+                case SkillEffectKind.Beam:
                     return SkillEffectKind.Projectile;
 
                 case SkillEffectKind.LeapSlam:
@@ -270,6 +271,15 @@ namespace TogetherWeFall.Skills
             // A blink deals nothing of its own — its blows are the primary key's
             // skill — so the only supports it can spend are the ones about the
             // blink: how many steps, how often, how many stored, what it costs.
+            // A dash is the same bargain with a single blow: how often, how many
+            // stored, what it costs — and nothing about the blow itself.
+            if (skill.Effect == SkillEffectKind.DashStrike)
+            {
+                return kind == SkillModifierKind.ReducedCooldown ||
+                       kind == SkillModifierKind.AddedCharges ||
+                       (kind == SkillModifierKind.IncreasedManaCost && skill.ManaCost > 0f);
+            }
+
             if (skill.Effect == SkillEffectKind.BlinkStrike)
             {
                 return kind == SkillModifierKind.AddedChains ||
@@ -331,10 +341,11 @@ namespace TogetherWeFall.Skills
                     return IsPattern(skill.Effect) && skill.Effect != SkillEffectKind.Volley;
 
                 // A body lands in one place, so copies of a leap would be the
-                // same blast stacked on itself.
+                // same blast stacked on itself. A channel is one beam from one
+                // hand: copies would strike along lines nobody can see.
                 case SkillModifierKind.Multicast:
                 case SkillModifierKind.IncreasedSpread:
-                    return skill.Effect != SkillEffectKind.LeapSlam;
+                    return skill.Effect != SkillEffectKind.LeapSlam && skill.Effect != SkillEffectKind.Beam;
 
                 // A zone carries no element but its own and has no pulse to
                 // infuse; the rest all strike bodies.
@@ -342,9 +353,11 @@ namespace TogetherWeFall.Skills
                     return skill.Effect != SkillEffectKind.PersistentZone;
 
                 // A chain is one effect touching several bodies, and firing per
-                // jump would make the count depend on how crowded the room is.
+                // jump would make the count depend on how crowded the room is. A
+                // beam pulses eight times a second, and a trigger per pulse would
+                // be a cast per frame for as long as the button is held.
                 case SkillModifierKind.TriggerOnHit:
-                    return skill.Effect != SkillEffectKind.ChainBolt;
+                    return skill.Effect != SkillEffectKind.ChainBolt && skill.Effect != SkillEffectKind.Beam;
 
                 // Nothing to make more expensive. True of exactly the two
                 // attacks welded into weapons, which are free on purpose.
@@ -365,7 +378,8 @@ namespace TogetherWeFall.Skills
             if (AppliesTo(kind, skill))
                 return string.Empty;
 
-            if (skill.Effect == SkillEffectKind.BlinkStrike && kind != SkillModifierKind.IncreasedManaCost)
+            if ((skill.Effect == SkillEffectKind.BlinkStrike || skill.Effect == SkillEffectKind.DashStrike) &&
+                kind != SkillModifierKind.IncreasedManaCost)
                 return "its blows are the primary key's skill — link this there";
 
             if (IsSupportive(skill.Effect) && kind != SkillModifierKind.IncreasedManaCost)
@@ -401,13 +415,17 @@ namespace TogetherWeFall.Skills
 
                 case SkillModifierKind.Multicast:
                 case SkillModifierKind.IncreasedSpread:
-                    return "a body lands in one place";
+                    return skill.Effect == SkillEffectKind.Beam
+                        ? "a channel is one beam from one hand"
+                        : "a body lands in one place";
 
                 case SkillModifierKind.InfuseElement:
                     return "a zone burns with its own element only";
 
                 case SkillModifierKind.TriggerOnHit:
-                    return "a bolt is one effect touching many bodies";
+                    return skill.Effect == SkillEffectKind.Beam
+                        ? "a beam pulses too often to trigger on each pulse"
+                        : "a bolt is one effect touching many bodies";
 
                 case SkillModifierKind.IncreasedManaCost:
                     return "it costs nothing to cast";

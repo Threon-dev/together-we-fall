@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.NetCode;
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
@@ -89,6 +90,8 @@ namespace TogetherWeFall.Skills
     /// zone is one with this flag down, found by a query rather than kept in a
     /// list somebody has to keep in step.
     /// </summary>
+    // The enabled bit is replicated: a client draws, counts and hides by it.
+    [GhostEnabledBit]
     public struct ZoneActive : IComponentData, IEnableableComponent
     {
     }

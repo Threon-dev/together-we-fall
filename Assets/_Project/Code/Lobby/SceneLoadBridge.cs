@@ -78,7 +78,8 @@ namespace TogetherWeFall.Lobby
 
         private void OnDestroy()
         {
-            if (_hasWorld)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (_hasWorld && World.DefaultGameObjectInjectionWorld is { IsCreated: true })
                 _transitionQuery.Dispose();
         }
     }

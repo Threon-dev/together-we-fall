@@ -96,18 +96,28 @@ namespace TogetherWeFall.Skills.Systems
                         Kind = VfxEventKind.Explosion,
                         Position = area.Position,
                         Color = DamageTypePalette.For(area.Type),
-                        Magnitude = area.Radius
+                        Element = area.Type,
+                        Magnitude = area.Radius,
+
+                        // So the presenter can leave a skill's blast to its set.
+                        VfxId = area.VfxId
                     });
 
-                    SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
+                    // Only a blast nobody authored — a corpse, a reaction. A
+                    // skill's own blast is heard through its visual set, and
+                    // both would be two bangs for one explosion.
+                    if (area.VfxId == 0)
                     {
-                        Cue = AudioCue.Explosion,
-                        Position = area.Position,
+                        SystemAPI.GetSingletonBuffer<AudioEvent>().Add(new AudioEvent
+                        {
+                            Cue = AudioCue.Explosion,
+                            Position = area.Position,
 
-                        // Scaled by the blast, so a big one is heard over a wave
-                        // of small ones instead of being gated behind them.
-                        Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
-                    });
+                            // Scaled by the blast, so a big one is heard over a wave
+                            // of small ones instead of being gated behind them.
+                            Volume = math.clamp(area.Radius * 0.25f, 0.6f, 2f)
+                        });
+                    }
                 }
 
                 // A meteor, a step of a fissure, the landing of a leap: the

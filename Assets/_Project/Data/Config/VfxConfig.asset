@@ -13,11 +13,31 @@ MonoBehaviour:
   m_Name: VfxConfig
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.VfxConfig
   _chainLinkSeconds: 0.12
-  _chainLinkWidth: 0.16
-  _boltStrikeWidth: 0.3
+  _chainLinkWidth: 0.5
+  _boltStrikeWidth: 0.8
   _boltStrikeSeconds: 0.18
-  _explosionSeconds: 0.22
-  _explosionWidth: 0.22
+  _elements:
+  - _element: 0
+    _beam: {fileID: 1007036860295384550, guid: 0a1669f81d640c1408b0832c37123b1c, type: 3}
+    _reaction: {fileID: 1429051815527586051, guid: 97a38e16bb408094d9ad80b8c86c6680, type: 3}
+    _blast: {fileID: 2255632572835796183, guid: 9b0fc9f9fd77cb14590612d0f3e0191f, type: 3}
+  - _element: 1
+    _beam: {fileID: 2937978127602580411, guid: 9b7a9a20f20f70c4ca62f76ad8cd8889, type: 3}
+    _reaction: {fileID: 8836799133796033606, guid: 6e59b652d72be0d458bcd71bf4fcfc52, type: 3}
+    _blast: {fileID: 4374370317186983222, guid: 45c94e769ce2b854b8117ae90d091a3e, type: 3}
+  - _element: 2
+    _beam: {fileID: 8402537926220541681, guid: 7daa70621fdb3e84381348a0b2196539, type: 3}
+    _reaction: {fileID: 3823991152681772940, guid: 86a5dc3ffbff84441a1c5867e587719f, type: 3}
+    _blast: {fileID: 4011251727955164085, guid: 011166512bd46c64ca8c123c04893048, type: 3}
+  - _element: 3
+    _beam: {fileID: 8619111962493600891, guid: d7c5f6064361fe5479324845b9acb3b2, type: 3}
+    _reaction: {fileID: 7452251589034526786, guid: 862683083c17b0f44a9ed7f31a45dcf7, type: 3}
+    _blast: {fileID: 6275196997387888742, guid: 69db682fcfc28ea4c81ca9c6552580da, type: 3}
+  - _element: 4
+    _beam: {fileID: 297947378644186478, guid: 5be685ae36f4c2748a008dd0f9acde36, type: 3}
+    _reaction: {fileID: 6029745161529549647, guid: 2b2464296ab37cf46930c3fc4be6a75e, type: 3}
+    _blast: {fileID: 190977125545363565, guid: f2fc3fd7a9e17524e90129a815d4495f, type: 3}
+  _blastScalePerMetre: 0.8
   _damageNumberSeconds: 0.75
   _damageNumberRise: 1.6
   _damageNumberFontSize: 18
@@ -30,4 +50,3 @@ MonoBehaviour:
   _massKillWindowSeconds: 0.1
   _massKillZoomPunch: 0
   _massKillCooldownSeconds: 0.1
-  _poolSize: 96

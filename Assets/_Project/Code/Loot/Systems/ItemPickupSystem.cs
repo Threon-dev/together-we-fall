@@ -29,6 +29,7 @@ namespace TogetherWeFall.Loot.Systems
     /// Picking up is not a special case of interaction, it is the same case. The
     /// resolver already decided who reached what and settled any race over it.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(InteractionResolveSystem))]
     public partial struct ItemPickupSystem : ISystem

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
+  m_Name: VfxSingularity
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
+  _cast: {fileID: 8859353969006809990, guid: 0833430cc42a36b4b949eba1ee83e240, type: 3}
+  _projectile: {fileID: 0}
+  _hit: {fileID: 6735855905082439185, guid: 67b3dfe0e28148946b3a199983595214, type: 3}
+  _scale: 3
+  _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 8300000, guid: c29d7e0230212a64d9606b0ae5e0ef9f, type: 3}
+  _hitSound: {fileID: 0}

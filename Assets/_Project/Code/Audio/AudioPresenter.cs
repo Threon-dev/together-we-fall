@@ -143,7 +143,27 @@ namespace TogetherWeFall.Audio
             events.Clear();
         }
 
-        private void TryPlay(in AudioEvent sound)
+        /// <summary>
+        /// Plays a clip an authored effect brought with it, under the budgets of
+        /// the cue it stands in for.
+        ///
+        /// The one entry that does not come from the queue, and it is still
+        /// presentation talking to presentation: the VFX presenter already knows
+        /// a fireball landed here, because the simulation said so once. A second
+        /// announcement carrying a set id would be the same fact twice, and the
+        /// clip would still have to be looked up here. What must not move is the
+        /// budget — so the clip goes through the cue's allowance, gap and volume
+        /// like anything else.
+        /// </summary>
+        public void PlayAuthored(AudioCue cue, AudioClip clip, Vector3 position)
+        {
+            if (!_hasWorld || clip == null)
+                return;
+
+            TryPlay(new AudioEvent { Cue = cue, Position = position, Volume = 1f }, clip);
+        }
+
+        private void TryPlay(in AudioEvent sound, AudioClip authored = null)
         {
             int cue = (int)sound.Cue;
 
@@ -154,7 +174,7 @@ namespace TogetherWeFall.Audio
 
             // A cue nobody has recorded a clip for is a normal state for a
             // prototype, not an error to shout about every frame.
-            if (settings == null || !settings.HasClips)
+            if (settings == null || (authored == null && !settings.HasClips))
                 return;
 
             if (_voicesThisFrame >= _config.MaxVoicesPerFrame)
@@ -184,7 +204,7 @@ namespace TogetherWeFall.Audio
             if (source == null)
                 return;
 
-            Configure(source, settings, sound, volume);
+            Configure(source, settings, sound, volume, authored);
             source.Play();
 
             _voicesThisFrame++;
@@ -210,10 +230,12 @@ namespace TogetherWeFall.Audio
         }
 
         private void Configure(
-            AudioSource source, AudioCueSettings settings, in AudioEvent sound, float volume)
+            AudioSource source, AudioCueSettings settings, in AudioEvent sound, float volume,
+            AudioClip authored)
         {
-            AudioClip[] clips = settings.Clips;
-            AudioClip clip = clips[_random.NextInt(0, clips.Length)];
+            AudioClip clip = authored != null
+                ? authored
+                : settings.Clips[_random.NextInt(0, settings.Clips.Length)];
 
             source.clip = clip;
             source.volume = Mathf.Clamp01(volume);
@@ -241,7 +263,8 @@ namespace TogetherWeFall.Audio
         {
             _pool.Release();
 
-            if (_hasWorld)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (_hasWorld && World.DefaultGameObjectInjectionWorld is { IsCreated: true })
                 _eventsQuery.Dispose();
         }
     }

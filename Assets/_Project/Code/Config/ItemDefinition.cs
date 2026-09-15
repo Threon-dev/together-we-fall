@@ -159,12 +159,12 @@ namespace TogetherWeFall.Config
         [SerializeField] private SkillDefinition[] _innateSkills =
             Array.Empty<SkillDefinition>();
 
-        [Tooltip("A skill this weapon always comes with, never rolled and never " +
-                 "rerolled. Welded after the rolled ones into a link group of its " +
-                 "own, so it lands on the next key — the right mouse button for a " +
-                 "main-hand weapon — and a socket added at the forge joins it. " +
-                 "Empty for almost everything.")]
-        [SerializeField] private SkillDefinition _signatureSkill;
+        [Tooltip("Skills this weapon always comes with, never rolled and never " +
+                 "rerolled. Each is welded after the rolled ones into a link group " +
+                 "of its own, so they land on the next keys in order — the right " +
+                 "mouse button, then Q, for a main-hand weapon — and a socket added " +
+                 "at the forge joins the last. Empty for almost everything.")]
+        [SerializeField] private SkillDefinition[] _signatureSkills = Array.Empty<SkillDefinition>();
 
         [Header("Sockets")]
         [Tooltip("Holes in this piece of gear. Fixed per item — rolling them " +
@@ -313,16 +313,14 @@ namespace TogetherWeFall.Config
             _innateSkills ?? Array.Empty<SkillDefinition>();
 
         /// <summary>
-        /// The fixed extra skill, or null.
+        /// The fixed extra skills, in key order. Never null.
         ///
-        /// A deliberate exception to "one attack per hand": a sword's blink is
-        /// not a second attack — it lands no blow of its own — and it is not
-        /// rolled, so it does not compete with the attack the hand holds.
+        /// A deliberate exception to "one attack per hand": a sword's blink and
+        /// dash are not second attacks — each lands the primary key's blow rather
+        /// than one of its own — and they are not rolled, so they do not compete
+        /// with the attack the hand holds.
         /// </summary>
-        public SkillDefinition SignatureSkill => _signatureSkill;
-
-        public int SignatureSkillId =>
-            _signatureSkill != null ? ComputeId(_signatureSkill.DisplayName) : 0;
+        public SkillDefinition[] SignatureSkills => _signatureSkills ?? Array.Empty<SkillDefinition>();
 
         /// <summary>The modifier a Support gem carries, or null.</summary>
         public SkillModifier GemSupportModifier =>

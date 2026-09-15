@@ -40,6 +40,12 @@ namespace TogetherWeFall.Player
         private float _verticalVelocity;
         private bool _initialized;
 
+        private bool _sliding;
+        private Vector3 _slideFrom;
+        private Vector3 _slideTo;
+        private float _slideSeconds;
+        private float _slideElapsed;
+
         /// <summary>
         /// Told who reads the devices, and handed a question to ask about the
         /// panels rather than a panel to look at.
@@ -101,11 +107,65 @@ namespace TogetherWeFall.Player
 
             _controller.enabled = true;
             _verticalVelocity = 0f;
+            _sliding = false;
+        }
+
+        /// <summary>
+        /// Carries the capsule to here over a few frames, facing that way, fast
+        /// out and easing in. The host already stopped the path short of walls
+        /// and bodies; the controller's own collision is only a second guard.
+        /// </summary>
+        public void Slide(Vector3 position, Vector3 facing, float seconds)
+        {
+            if (_controller == null)
+                _controller = GetComponent<CharacterController>();
+
+            _slideFrom = transform.position;
+            _slideTo = position;
+            _slideSeconds = Mathf.Max(0.01f, seconds);
+            _slideElapsed = 0f;
+            _sliding = true;
+            _verticalVelocity = 0f;
+
+            facing.y = 0f;
+            if (facing.sqrMagnitude > 0.0001f)
+                transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+        }
+
+        private void StepSlide()
+        {
+            Vector3 before = SlidePoint();
+            _slideElapsed = Mathf.Min(_slideElapsed + Time.deltaTime, _slideSeconds);
+
+            Vector3 step = SlidePoint() - before;
+            step.y = 0f;
+            _controller.Move(step);
+
+            if (_slideElapsed >= _slideSeconds)
+                _sliding = false;
+        }
+
+        /// <summary>Where the slide is by now: quadratic ease-out, so it snaps off the mark and settles.</summary>
+        private Vector3 SlidePoint()
+        {
+            float t = _slideElapsed / _slideSeconds;
+            return Vector3.Lerp(_slideFrom, _slideTo, 1f - (1f - t) * (1f - t));
         }
 
         private void Update()
         {
-            if (!_initialized || Held)
+            if (!_initialized)
+                return;
+
+            // Before Held: the host holds the body for the whole dash, and the
+            // slide is what moves it.
+            if (_sliding)
+            {
+                StepSlide();
+                return;
+            }
+
+            if (Held)
                 return;
 
             PlayerMoveIntent intent = _input.ReadIntent(transform.position);

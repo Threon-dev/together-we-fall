@@ -73,10 +73,46 @@ namespace TogetherWeFall.Bootstrap
         [Tooltip("Optional. Without it the game plays identically and silently.")]
         [SerializeField] private AudioPresenter _audioPresenter;
 
+        [Tooltip("Optional. Without it other players still play, and cannot be seen.")]
+        [SerializeField] private TogetherWeFall.Network.RemotePlayerPresenter _remotePlayers;
+
+        /// <summary>
+        /// The id a freshly started local server hands its first client. See
+        /// <see cref="ResolvePlayerId"/>.
+        /// </summary>
+        private const int LocalHostPlayerId = 1;
+
         private readonly DebugRunStatusProbe _statusProbe = new DebugRunStatusProbe();
 
         private EntityQuery _enemyQuery;
         private bool _hasEnemyQuery;
+
+        /// <summary>
+        /// This screen's player: the NetworkId of the client world's connection.
+        ///
+        /// Asked once, here, and handed to every bridge — the one-answer rule the
+        /// publisher's id always followed, now with the answer coming from the
+        /// network instead of a serialised zero. A session started from the menu
+        /// is connected before this scene loads. Pressing Play in a gameplay
+        /// scene hosts locally, and that connection can still be a frame away;
+        /// ponytail: the only client of a fresh local server is always id 1, so
+        /// that is assumed rather than waited for.
+        /// </summary>
+        private static int ResolvePlayerId()
+        {
+            World world = World.DefaultGameObjectInjectionWorld;
+
+            if (world != null && world.IsCreated)
+            {
+                using EntityQuery query = world.EntityManager.CreateEntityQuery(
+                    ComponentType.ReadOnly<Unity.NetCode.NetworkId>());
+
+                if (!query.IsEmptyIgnoreFilter)
+                    return query.GetSingleton<Unity.NetCode.NetworkId>().Value;
+            }
+
+            return LocalHostPlayerId;
+        }
 
         private void Awake()
         {
@@ -94,7 +130,10 @@ namespace TogetherWeFall.Bootstrap
             _input.Initialize(_cameraRig);
             _player.Initialize(_input, uiCapturing);
 
-            _positionPublisher.Initialize();
+            _positionPublisher.Initialize(ResolvePlayerId());
+
+            if (_remotePlayers != null)
+                _remotePlayers.Initialize(_positionPublisher.PlayerId);
             _spawnTrigger.Initialize();
 
             if (_inventoryUI != null)
@@ -123,9 +162,11 @@ namespace TogetherWeFall.Bootstrap
             if (_actionPublisher != null)
                 _actionPublisher.Initialize(_input, _positionPublisher.PlayerId, uiCapturing);
 
-            // After the camera, because the presenter shakes it.
+            // After the camera, because the presenter shakes it. The audio
+            // presenter is handed over before its own Initialize, which is fine:
+            // it is only asked to play from LateUpdate, and refuses until ready.
             if (_vfxPresenter != null)
-                _vfxPresenter.Initialize(_cameraRig);
+                _vfxPresenter.Initialize(_cameraRig, _audioPresenter);
 
             if (_curtainPresenter != null)
                 _curtainPresenter.Initialize();
@@ -177,8 +218,40 @@ namespace TogetherWeFall.Bootstrap
                 return;
 
             _dungeon.Initialize();
-            _player.WarpToFloor(_dungeon.BeginRun(_dungeon.ResolveSeed()));
+
+            // That line: the host resolves the seed and tells everybody, and a
+            // client builds from the number it is sent.
+            if (_seedChannel.IsHost)
+            {
+                uint seed = _dungeon.ResolveSeed();
+                _seedChannel.Send(seed);
+                StartRun(seed);
+                return;
+            }
+
+            // The motor is off until the floor exists, or the capsule falls
+            // through the place the entrance is about to be. Off rather than
+            // Held: PlayerPositionPublisher writes Held from the character's warp
+            // every frame, and would let go of the body straight away.
+            _player.enabled = false;
+            StartCoroutine(WaitForSeed());
         }
+
+        private readonly TogetherWeFall.Network.DungeonSeedChannel _seedChannel =
+            new TogetherWeFall.Network.DungeonSeedChannel();
+
+        private System.Collections.IEnumerator WaitForSeed()
+        {
+            uint seed;
+
+            while (!_seedChannel.TryTake(out seed))
+                yield return null;
+
+            StartRun(seed);
+            _player.enabled = true;
+        }
+
+        private void StartRun(uint seed) => _player.WarpToFloor(_dungeon.BeginRun(seed));
 
         /// <summary>
         /// The HUD must not know about ECS, so the query lives here and only a
@@ -214,7 +287,8 @@ namespace TogetherWeFall.Bootstrap
 
         private void OnDestroy()
         {
-            if (_hasEnemyQuery)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (_hasEnemyQuery && World.DefaultGameObjectInjectionWorld is { IsCreated: true })
                 _enemyQuery.Dispose();
 
             _statusProbe.Dispose();

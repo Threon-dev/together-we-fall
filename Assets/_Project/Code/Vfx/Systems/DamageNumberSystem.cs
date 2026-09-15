@@ -21,6 +21,7 @@ namespace TogetherWeFall.Vfx.Systems
     /// which is the difference between a figure the player can read and five of
     /// them stacked on the same pixel.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(DamageResolutionSystem))]
     public partial struct DamageNumberSystem : ISystem

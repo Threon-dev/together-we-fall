@@ -26,6 +26,7 @@ namespace TogetherWeFall.Inventory.Systems
     /// What it never does is decide. GridFit holds the rules; this reads a
     /// request, checks it is allowed to be asked, and writes down what happened.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TogetherWeFall.Loot.Systems.ItemPickupSystem))]
     public partial struct InventoryPlacementSystem : ISystem

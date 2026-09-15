@@ -12,8 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d15d14fd6c8d4a05bd7e79189fa0d772, type: 3}
   m_Name: VfxArc
   m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillVfxSet
-  _cast: {fileID: 8307689965681055727, guid: 8050863a467fe9e46acb029a0fa570fc, type: 3}
-  _projectile: {fileID: 1941226523401448535, guid: 29b2996708b32e54b8ce949211316ed5, type: 3}
-  _hit: {fileID: 31835927839385643, guid: 82430a8cbe341974ca88fc0319c48f72, type: 3}
-  _scale: 0.5
+  _cast: {fileID: 7632941776938525914, guid: 628e3e543d8b97d449fa1fcf3b1a9a4f, type: 3}
+  _projectile: {fileID: 7588190025987079737, guid: e1e75fbe954adb9478425dd5393c9539, type: 3}
+  _hit: {fileID: 5377929886163509407, guid: 381783eda7657bc46816c29a324f3139, type: 3}
+  _scale: 1
   _lift: 0
+  _yaw: 0
+  _sweepsRight: 0
+  _castSound: {fileID: 0}
+  _hitSound: {fileID: 0}

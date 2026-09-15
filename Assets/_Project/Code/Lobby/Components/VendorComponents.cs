@@ -109,4 +109,12 @@ namespace TogetherWeFall.Lobby
         public bool Succeeded =>
             Status == VendorTransactionStatus.Bought || Status == VendorTransactionStatus.Sold;
     }
+    /// <summary>
+    /// Marks the container a vendor sells from. The shelf is a ghost and the
+    /// vendor is not, so a client finds its shop's shelf by this tag rather
+    /// than through the vendor's StockContainer, which only the host fills.
+    /// </summary>
+    public struct VendorShelf : IComponentData
+    {
+    }
 }

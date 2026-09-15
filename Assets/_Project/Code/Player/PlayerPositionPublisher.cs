@@ -19,9 +19,7 @@ namespace TogetherWeFall.Player
     [DefaultExecutionOrder(100)]
     public sealed class PlayerPositionPublisher : MonoBehaviour
     {
-        [Tooltip("Player identifier. Always 0 in a local game; in a networked " +
-                 "one this comes from the connection id.")]
-        [SerializeField] private int _playerId;
+        private int _playerId;
 
         private EntityManager _entityManager;
         private EntityQuery _registryQuery;
@@ -37,8 +35,12 @@ namespace TogetherWeFall.Player
         /// </summary>
         public int PlayerId => _playerId;
 
-        public void Initialize()
+        public void Initialize(int playerId)
         {
+            // The connection's NetworkId, handed over by GameBootstrap. In a
+            // networked game two bodies must not both answer to the same id.
+            _playerId = playerId;
+
             World world = World.DefaultGameObjectInjectionWorld;
             if (world == null || !world.IsCreated)
             {
@@ -83,6 +85,7 @@ namespace TogetherWeFall.Player
             {
                 PlayerId = _playerId,
                 Position = (float3)transform.position,
+                Facing = (float3)transform.forward,
                 IsTargetable = true
             };
 
@@ -97,7 +100,8 @@ namespace TogetherWeFall.Player
         {
             // The player left the scene — drop them out of targeting, but keep
             // the element in the buffer so other indices do not shift.
-            if (!_hasWorld || _registryQuery.IsEmptyIgnoreFilter)
+            // Netcode disposes its worlds before the scene is torn down when play mode ends.
+            if (!_hasWorld || World.DefaultGameObjectInjectionWorld is { IsCreated: true } == false || _registryQuery.IsEmptyIgnoreFilter)
                 return;
 
             Entity registry = _registryQuery.GetSingletonEntity();
@@ -138,7 +142,10 @@ namespace TogetherWeFall.Player
                 if (warp.Version != _seenWarp)
                 {
                     _seenWarp = warp.Version;
-                    _motor.Teleport(warp.Position, warp.Facing);
+                    if (warp.SlideSeconds > 0f)
+                        _motor.Slide(warp.Position, warp.Facing, warp.SlideSeconds);
+                    else
+                        _motor.Teleport(warp.Position, warp.Facing);
                 }
 
                 return;

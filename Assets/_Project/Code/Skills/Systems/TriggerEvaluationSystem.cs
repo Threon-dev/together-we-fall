@@ -31,6 +31,7 @@ namespace TogetherWeFall.Skills.Systems
     /// buffers on gear entities through the EntityManager, and it does so on the
     /// frames something died rather than on every frame.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(DeathReactionSystem))]
     public partial struct TriggerEvaluationSystem : ISystem

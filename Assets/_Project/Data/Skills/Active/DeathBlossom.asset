@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e9b264467090da44a34c9771d9817de, type: 3}
+  m_Name: DeathBlossom
+  m_EditorClassIdentifier: Assembly-CSharp::TogetherWeFall.Config.SkillDefinition
+  _displayName: Death Blossom
+  _effect: 2
+  _damageType: 0
+  _baseDamage: 24
+  _cooldown: 2
+  _manaCost: 20
+  _range: 16
+  _radius: 3.5
+  _arcDegrees: 360
+  _projectileSpeed: 26
+  _zoneDuration: 5
+  _zoneTickInterval: 0.5
+  _baseChains: 0
+  _chainRange: 8
+  _chainDelay: 0.07
+  _count: 1
+  _interval: 0.1
+  _scatter: 4
+  _appliedStatus: {fileID: 0}
+  _vfx: {fileID: 11400000, guid: 3fd0d849eaeb36840a3d53b7a63f126c, type: 2}
+  _modifiers:
+  - {fileID: 11400000, guid: 3f2c6e7d3707e7c499a6308f5c821029, type: 2}

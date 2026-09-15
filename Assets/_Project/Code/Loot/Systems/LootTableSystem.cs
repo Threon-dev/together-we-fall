@@ -22,6 +22,7 @@ namespace TogetherWeFall.Loot.Systems
     /// Rolling is two-stage — rarity first, then an item of that rarity — which
     /// is what makes the weights on a table mean what they say. See LootTableBlob.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(ChestInteractionSystem))]
     public partial struct LootTableSystem : ISystem

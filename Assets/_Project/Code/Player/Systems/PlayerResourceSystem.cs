@@ -27,6 +27,7 @@ namespace TogetherWeFall.Player.Systems
     /// the wrong length every time a ring is swapped, which is exactly the kind
     /// of thing nobody can reproduce on purpose.
     /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(PlayerStatsSystem))]
     public partial struct PlayerResourceSystem : ISystem

@@ -763,11 +763,12 @@ namespace TogetherWeFall.Skills
             FixedList64Bytes<int> candidates = blob.InnateSkillIds;
 
             bool rerolled = false;
+            FixedList32Bytes<int> signatures = blob.SignatureSkillIds;
 
             for (int i = 0; i < sockets.Length && candidates.Length > 0; i++)
             {
-                // The signature skill is not a roll, so it is not rerolled.
-                if (!sockets[i].IsWelded || sockets[i].WeldedSkillId == blob.SignatureSkillId)
+                // A signature skill is not a roll, so it is not rerolled.
+                if (!sockets[i].IsWelded || signatures.Contains(sockets[i].WeldedSkillId))
                     continue;
 
                 int pick = random.NextInt(0, candidates.Length);
@@ -791,10 +792,10 @@ namespace TogetherWeFall.Skills
         {
             int count = blob.ActiveSkillCount;
 
-            // The signature skill takes one more head, after the rolled ones —
-            // so ArmDefaultAttack, which walks welded sockets in order, puts it
-            // on the next key.
-            int heads = count + (blob.SignatureSkillId != 0 ? 1 : 0);
+            // Each signature skill takes one more head, after the rolled ones —
+            // so ArmDefaultAttack, which walks welded sockets in order, puts them
+            // on the next keys.
+            int heads = count + blob.SignatureSkillIds.Length;
 
             if (heads <= 0)
                 return;
@@ -840,7 +841,7 @@ namespace TogetherWeFall.Skills
                 // rolled heads never run out before the signature's turn.
                 if (filled.Length > count)
                 {
-                    socket.WeldedSkillId = blob.SignatureSkillId;
+                    socket.WeldedSkillId = blob.SignatureSkillIds[filled.Length - count - 1];
                 }
                 else
                 {
